@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/envelope/v1.schema.json",
+  "title": "HUDHUD Integration Message Envelope v1",
+  "description": "ADR-0002 envelope wire shape. Payload schemas are versioned independently via event_version.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "envelope_version",
+    "event_id",
+    "event_type",
+    "event_version",
+    "occurred_at",
+    "producer",
+    "message_kind",
+    "aggregate_scope",
+    "correlation_id",
+    "data_classification",
+    "pii_present",
+    "payload"
+  ],
+  "properties": {
+    "envelope_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Envelope wire-format version (distinct from event_version)."
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique idempotency key for this message instance."
+    },
+    "event_type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+    },
+    "event_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Payload schema version for this event_type."
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 UTC with Z suffix."
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "producer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "message_kind": {
+      "type": "string",
+      "enum": ["domain", "integration", "command", "reply", "projection"]
+    },
+    "aggregate_scope": {
+      "type": "string",
+      "enum": ["aggregate", "non_aggregate"]
+    },
+    "aggregate_type": {
+      "type": ["string", "null"],
+      "maxLength": 64
+    },
+    "aggregate_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "aggregate_version": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "correlation_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "causation_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "traceparent": {
+      "type": ["string", "null"],
+      "pattern": "^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$"
+    },
+    "tracestate": {
+      "type": ["string", "null"]
+    },
+    "tenant_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "organization_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "data_classification": {
+      "type": "string",
+      "enum": ["public", "internal", "confidential", "restricted"]
+    },
+    "pii_present": {
+      "type": "boolean"
+    },
+    "schema_uri": {
+      "type": ["string", "null"],
+      "format": "uri"
+    },
+    "payload": {
+      "type": "object",
+      "description": "Message-specific body; schema governed by event_type + event_version."
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "media_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ref_type", "bucket", "key"],
+        "additionalProperties": false,
+        "properties": {
+          "ref_type": { "type": "string", "maxLength": 32 },
+          "bucket": { "type": "string", "maxLength": 256 },
+          "key": { "type": "string", "maxLength": 1024 },
+          "content_type": { "type": ["string", "null"], "maxLength": 128 }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "aggregate_scope": { "const": "aggregate" } },
+        "required": ["aggregate_scope"]
+      },
+      "then": {
+        "required": ["aggregate_type", "aggregate_id"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "aggregate_scope": { "const": "aggregate" },
+          "message_kind": { "enum": ["domain", "integration", "command"] }
+        },
+        "required": ["aggregate_scope", "message_kind"]
+      },
+      "then": {
+        "required": ["aggregate_version"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "aggregate_scope": { "const": "non_aggregate" } },
+        "required": ["aggregate_scope"]
+      },
+      "then": {
+        "properties": {
+          "aggregate_type": { "type": "null" },
+          "aggregate_id": { "type": "null" },
+          "aggregate_version": { "type": "null" }
+        }
+      }
+    }
+  ]
+}

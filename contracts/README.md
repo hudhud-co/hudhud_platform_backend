@@ -26,4 +26,5 @@ Cross-service events must support:
 
 ## Current Stage
 
-Foundation F0 — contract artifacts will be added when the first service publishes events.
+Foundation F0 — `event_envelope` package and `contracts/events/envelope/` schema are available.
+See `packages/event_envelope/` and `contracts/events/envelope/README.md`.

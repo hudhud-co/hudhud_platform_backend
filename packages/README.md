@@ -35,4 +35,4 @@ packages/
 
 ## Current Stage
 
-Foundation F0 — no shared packages created yet.
+`event_envelope` — see `packages/event_envelope/` and `contracts/events/envelope/`.
