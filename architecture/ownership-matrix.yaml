@@ -1,0 +1,199 @@
+version: 1
+description: >
+  Data and API ownership matrix. Maps bounded contexts to write/read responsibilities.
+  "Writer" means canonical owner of mutable state; "Reader" means allowed read projection
+  or query via API/events only.
+
+ownership:
+
+  auth_identity:
+    canonical_writer: auth_identity
+    readers: [customer, merchant_store, pickup, delivery, gateway]
+    api_owner: auth_identity
+    event_publisher: auth_identity
+    database_owner: auth_identity
+
+  customer:
+    canonical_writer: undecided
+    readers: [send_parcel, tracking, support_claims]
+    api_owner: undecided
+    event_publisher: undecided
+    database_owner: undecided
+
+  address_book:
+    canonical_writer: address_book
+    readers: [order, send_parcel]
+    api_owner: address_book
+    event_publisher: address_book
+    database_owner: address_book
+
+  merchant_store:
+    canonical_writer: merchant_store
+    readers: [order, shipment, wallet_cod, send_parcel]
+    api_owner: merchant_store
+    event_publisher: merchant_store
+    database_owner: merchant_store
+
+  serviceability:
+    canonical_writer: serviceability
+    readers: [send_parcel, order]
+    api_owner: serviceability
+    event_publisher: serviceability
+    database_owner: undecided
+
+  pricing_quote:
+    canonical_writer: pricing_quote
+    readers: [send_parcel, order]
+    api_owner: pricing_quote
+    event_publisher: pricing_quote
+    database_owner: undecided
+
+  order:
+    canonical_writer: order
+    readers: [send_parcel, shipment]
+    api_owner: order
+    event_publisher: order
+    database_owner: order
+
+  send_parcel:
+    canonical_writer: send_parcel
+    readers: []
+    api_owner: send_parcel
+    event_publisher: send_parcel
+    database_owner: undecided
+
+  shipment:
+    canonical_writer: shipment
+    readers: [tracking, control_tower, pickup, hub, linehaul, delivery, notification]
+    api_owner: shipment
+    event_publisher: shipment
+    database_owner: shipment
+    invariants:
+      - sole_lifecycle_state_writer
+      - no_direct_status_mutation_by_other_contexts
+
+  pickup:
+    canonical_writer: pickup
+    readers: [shipment, hub]
+    api_owner: pickup
+    event_publisher: pickup
+    database_owner: pickup
+    writes_to_other_contexts:
+      legacy_violation: shipment.status
+      platform_replacement: publish pickup.fact.* events
+
+  hub:
+    canonical_writer: hub
+    readers: [shipment, linehaul]
+    api_owner: hub
+    event_publisher: hub
+    database_owner: hub
+    writes_to_other_contexts:
+      legacy_violation: shipment.status
+      platform_replacement: publish hub.fact.* events
+
+  linehaul:
+    canonical_writer: linehaul
+    readers: [shipment, hub]
+    api_owner: linehaul
+    event_publisher: linehaul
+    database_owner: linehaul
+    writes_to_other_contexts:
+      legacy_violation: shipment.status
+      platform_replacement: publish linehaul.fact.* events
+
+  delivery:
+    canonical_writer: delivery
+    readers: [shipment, wallet_cod, finance_settlement]
+    api_owner: delivery
+    event_publisher: delivery
+    database_owner: delivery
+    writes_to_other_contexts:
+      legacy_violation: shipment.status
+      platform_replacement: publish delivery.fact.* events and delivery.command.*
+    separate_facts:
+      - cod_collection_record
+      - physical_delivery_completion
+
+  tracking:
+    canonical_writer: none
+    readers: [tracking]
+    api_owner: tracking
+    event_publisher: none
+    database_owner: none
+    notes: read projection only
+
+  control_tower:
+    canonical_writer: none
+    readers: [control_tower]
+    api_owner: control_tower
+    event_publisher: none
+    database_owner: none
+    notes: read aggregation only
+
+  wallet_cod:
+    canonical_writer: wallet_cod
+    readers: [finance_settlement, merchant_store]
+    api_owner: wallet_cod
+    event_publisher: wallet_cod
+    database_owner: wallet_cod
+    separate_facts:
+      - cod_collection_vs_wallet_credit
+
+  finance_settlement:
+    canonical_writer: finance_settlement
+    readers: [merchant_store]
+    api_owner: finance_settlement
+    event_publisher: finance_settlement
+    database_owner: finance_settlement
+    status: policy_blocked
+
+  notification:
+    canonical_writer: notification
+    readers: []
+    api_owner: notification
+    event_publisher: notification
+    database_owner: notification
+
+  support_claims:
+    canonical_writer: support_claims
+    readers: [customer]
+    api_owner: support_claims
+    event_publisher: support_claims
+    database_owner: support_claims
+
+  media_proof:
+    canonical_writer: undecided
+    readers: [control_tower, pickup, delivery, support_claims]
+    api_owner: undecided
+    event_publisher: undecided
+    database_owner: undecided
+
+  audit:
+    canonical_writer: audit
+    readers: [control_tower]
+    api_owner: audit
+    event_publisher: audit
+    database_owner: undecided
+
+  gateway:
+    canonical_writer: none
+    readers: []
+    api_owner: gateway
+    event_publisher: none
+    database_owner: none
+    forbidden:
+      - domain_table_ownership
+      - business_orchestration
+
+cross_cutting_rules:
+  - name: shipment_lifecycle
+    rule: Only shipment context writes canonical shipment lifecycle state
+  - name: physical_delivery
+    rule: Delivery completion is irreversible; finance failures do not roll back
+  - name: cod_accounting
+    rule: COD collection and wallet credit are separate accounting facts
+  - name: cross_service_fk
+    rule: Forbidden — use IDs and events instead
+  - name: legacy_dependency
+    rule: hudhud-backend is never a runtime dependency

@@ -1,0 +1,394 @@
+version: 1
+description: >
+  Bounded context boundaries for HUDHUD platform. Distinguishes target domain semantics
+  from transitional deployable groupings. Deployable count is NOT fixed here — it is
+  determined separately by team size, infrastructure, migration risk, and operational cost.
+
+bounded_contexts:
+
+  auth_identity:
+    display_name: Auth and Identity
+    legacy_owner: auth
+    legacy_module_path: app/modules/auth
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: []
+    data_ownership:
+      strategy: undecided
+      legacy_tables: [users, user_sessions, otp_requests, roles, permissions, legal_documents]
+      notes: RBAC seed in app/core/db/auth_rbac_seed.py — must not become shared package ORM
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: []
+
+  customer:
+    display_name: Customer
+    legacy_owner: auth
+    legacy_module_path: partial — no standalone module; spread across auth, address_book, send_parcel, tracking, support
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: [customer_identity_boundary_adr]
+    data_ownership:
+      strategy: undecided
+      legacy_tables: partial — profile fields in auth tables
+      notes: Customer is a partial capability in legacy, not a module
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: []
+
+  address_book:
+    display_name: Address Book
+    legacy_owner: address_book
+    legacy_module_path: app/modules/address_book
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: []
+    data_ownership:
+      strategy: undecided
+      legacy_tables: [pickup_addresses, receiver_contacts]
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: []
+
+  merchant_store:
+    display_name: Merchant and Store
+    legacy_owner: merchant
+    legacy_module_path: app/modules/merchant, app/modules/merchant_applications
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: []
+    data_ownership:
+      strategy: undecided
+      legacy_tables: [merchants, store_locations, store_categories, store_products, store_team, store_warehouse_assignments]
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: []
+
+  serviceability:
+    display_name: Serviceability
+    legacy_owner: send_parcel
+    legacy_module_path: app/modules/send_parcel/domain/serviceability.py
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: [serviceability_engine_adr]
+    data_ownership:
+      strategy: undecided
+      legacy_tables: none — env-based allowlist only
+      notes: partial — city:area allowlist, no geo engine
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: []
+
+  pricing_quote:
+    display_name: Pricing and Quote
+    legacy_owner: send_parcel
+    legacy_module_path: app/modules/send_parcel/domain/pricing.py
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: [pricing_model_adr]
+    data_ownership:
+      strategy: undecided
+      legacy_tables: none — rule version send_parcel_v1 in code
+      notes: partial — flat IQD tariff only
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: []
+
+  order:
+    display_name: Order
+    legacy_owner: order
+    legacy_module_path: app/modules/order
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: []
+    data_ownership:
+      strategy: undecided
+      legacy_tables: [orders]
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: []
+
+  send_parcel:
+    display_name: Send Parcel
+    legacy_owner: send_parcel
+    legacy_module_path: app/modules/send_parcel
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: []
+    data_ownership:
+      strategy: undecided
+      legacy_tables: none — orchestrates order + shipment creation
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: []
+
+  shipment:
+    display_name: Shipment
+    legacy_owner: shipment
+    legacy_module_path: app/modules/shipment
+    proposed_platform_owner: shipment
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: [shipment_sole_lifecycle_writer]
+    data_ownership:
+      strategy: dedicated_database
+      legacy_tables: [shipments, shipment_events, delivery_evidence_attachments]
+      notes: Platform invariant — sole canonical writer of shipment lifecycle state
+    allowed_dependencies: []
+    public_api_ownership: shipment
+    published_events: [shipment.lifecycle.changed]
+    consumed_events: [pickup.fact.accepted, hub.fact.inbound, linehaul.fact.dispatched, linehaul.fact.arrived, delivery.command.complete]
+
+  pickup:
+    display_name: Pickup
+    legacy_owner: pickup
+    legacy_module_path: app/modules/pickup, app/modules/pickup_scheduling
+    proposed_platform_owner: pickup
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: [shipment_sole_lifecycle_writer]
+    data_ownership:
+      strategy: dedicated_database
+      legacy_tables: [pickup_batches, pickup_tasks, pickup_handover, pickup_evidence, pickup_scheduling]
+      notes: Legacy directly mutates shipment status — must migrate to fact publication
+    allowed_dependencies: [shipment]
+    public_api_ownership: pickup
+    published_events: [pickup.fact.accepted, pickup.fact.handover_completed]
+    consumed_events: []
+
+  hub:
+    display_name: Hub
+    legacy_owner: hub
+    legacy_module_path: app/modules/hub
+    proposed_platform_owner: hub
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: [shipment_sole_lifecycle_writer]
+    data_ownership:
+      strategy: dedicated_database
+      legacy_tables: [hubs, hub_operations]
+      notes: Legacy directly mutates shipment status — must migrate to fact publication. Hub and Linehaul remain separate bounded contexts.
+    allowed_dependencies: [shipment]
+    public_api_ownership: hub
+    published_events: [hub.fact.inbound, hub.fact.condition_checked]
+    consumed_events: []
+
+  linehaul:
+    display_name: Linehaul
+    legacy_owner: linehaul
+    legacy_module_path: app/modules/linehaul
+    proposed_platform_owner: linehaul
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: [shipment_sole_lifecycle_writer]
+    data_ownership:
+      strategy: dedicated_database
+      legacy_tables: [linehaul_trips, linehaul_trip_shipments]
+      notes: Legacy directly mutates shipment status — must migrate to fact publication. Not merged with Hub.
+    allowed_dependencies: [shipment]
+    public_api_ownership: linehaul
+    published_events: [linehaul.fact.dispatched, linehaul.fact.arrived]
+    consumed_events: []
+
+  delivery:
+    display_name: Delivery
+    legacy_owner: delivery_task
+    legacy_module_path: app/modules/delivery, app/modules/delivery_task
+    proposed_platform_owner: delivery
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: [shipment_sole_lifecycle_writer, physical_delivery_irreversible]
+    data_ownership:
+      strategy: dedicated_database
+      legacy_tables: [delivery_tasks, delivery_cod_collections, delivery_evidence]
+      notes: Physical delivery is irreversible operational fact
+    allowed_dependencies: [shipment]
+    public_api_ownership: delivery
+    published_events: [delivery.fact.completed, delivery.fact.failed, delivery.fact.cod_collected]
+    consumed_events: []
+
+  tracking:
+    display_name: Tracking
+    legacy_owner: tracking
+    legacy_module_path: app/modules/tracking
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: []
+    data_ownership:
+      strategy: read_projection
+      legacy_tables: none — reads shipments/events
+    allowed_dependencies: [shipment]
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: [shipment.lifecycle.changed]
+
+  control_tower:
+    display_name: Control Tower
+    legacy_owner: control_tower
+    legacy_module_path: app/modules/control_tower
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: []
+    data_ownership:
+      strategy: read_projection
+      legacy_tables: none — aggregation reads
+      notes: partial in legacy — ops visibility only
+    allowed_dependencies: [shipment]
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: []
+
+  wallet_cod:
+    display_name: Wallet and COD
+    legacy_owner: wallet
+    legacy_module_path: app/modules/wallet
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: [cod_wallet_separation]
+    data_ownership:
+      strategy: undecided
+      legacy_tables: [wallet_accounts, wallet_ledger_entries, payout_requests]
+      notes: COD collection in delivery_task is separate fact from wallet credit
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: [wallet.fact.cod_credited]
+    consumed_events: [delivery.fact.cod_collected]
+
+  finance_settlement:
+    display_name: Finance and Settlement
+    legacy_owner: missing
+    legacy_module_path: none
+    proposed_platform_owner: finance
+    transitional_deployable_candidate: policy_blocked
+    extraction_status: not_started
+    policy_prerequisites: [double_entry_ledger_adr, settlement_policy_adr]
+    data_ownership:
+      strategy: dedicated_database
+      legacy_tables: []
+      notes: policy-blocked in legacy Phase 1 — platform will use double-entry ledger
+    allowed_dependencies: [wallet_cod, delivery]
+    public_api_ownership: finance
+    published_events: []
+    consumed_events: [delivery.fact.cod_collected, wallet.fact.cod_credited]
+
+  notification:
+    display_name: Notification
+    legacy_owner: notification
+    legacy_module_path: app/modules/notification
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: []
+    data_ownership:
+      strategy: undecided
+      legacy_tables: [notification_preferences, device_tokens, in_app_notifications, push_outbox]
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: [shipment.lifecycle.changed]
+
+  support_claims:
+    display_name: Support and Claims
+    legacy_owner: support
+    legacy_module_path: app/modules/support, app/modules/claims
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: []
+    data_ownership:
+      strategy: undecided
+      legacy_tables: [support_tickets, support_claims, claims]
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: []
+
+  media_proof:
+    display_name: Media and Proof
+    legacy_owner: proof
+    legacy_module_path: app/modules/proof, evidence in pickup/shipment/delivery_task
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: [evidence_ownership_adr]
+    data_ownership:
+      strategy: undecided
+      legacy_tables: [proof_records]
+      notes: partial — proof module is stub; evidence spread across operational modules
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: []
+
+  audit:
+    display_name: Audit
+    legacy_owner: audit
+    legacy_module_path: app/modules/audit
+    proposed_platform_owner: undecided
+    transitional_deployable_candidate: pending_adr
+    extraction_status: pending_legacy_audit
+    policy_prerequisites: []
+    data_ownership:
+      strategy: undecided
+      legacy_tables: [audit_logs]
+      notes: Cross-cutting append-only — may remain shared or per-service outbox emission
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: []
+
+  gateway:
+    display_name: Gateway
+    legacy_owner: n/a
+    legacy_module_path: n/a — new platform component
+    proposed_platform_owner: gateway
+    transitional_deployable_candidate: gateway
+    extraction_status: not_started
+    policy_prerequisites: [no_gateway_business_orchestration]
+    data_ownership:
+      strategy: none
+      legacy_tables: []
+      notes: Gateway must not own domain tables
+    allowed_dependencies: []
+    public_api_ownership: gateway
+    published_events: []
+    consumed_events: []
+
+shared_packages:
+  allowed_categories:
+    - event_envelope
+    - tracing
+    - idempotency
+    - http_client_primitives
+    - logging_helpers
+  forbidden_categories:
+    - domain_models
+    - orm_models
+    - repositories
+    - business_logic
+    - alembic_migrations
+
+legacy_reference:
+  repository: hudhud-backend
+  path: /Users/mohammadakbari/Development/Projects/Python/hudhud-backend
+  role: read_only_reference
+  runtime_dependency: forbidden
