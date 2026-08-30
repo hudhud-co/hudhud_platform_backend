@@ -1,0 +1,55 @@
+# ADR-0002 durable consumer templates (D4 pattern).
+# One durable per consuming service + logical subscription/projection.
+# Replicas of the same consumer group share one durable.
+# Different services/projections use different durables.
+# No durable per event instance; no single global durable for an entire stream.
+
+version: 1
+defaults:
+  ack_policy: explicit
+  ack_wait: 30s
+  max_deliver: 5
+  max_ack_pending: 100
+  deliver_policy: all
+  replay_policy: instant
+  duplicate_window: 2m
+  max_waiting: 512
+  backoff:
+    - 5s
+    - 30s
+    - 2m
+    - 10m
+    - 30m
+
+consumers:
+  - stream: HUDHUD_PICKUP
+    durable_name: shipment_pickup_facts_v1
+    filter_subject: hudhud.pickup.pickup.fact.>
+    description: >
+      Shipment service inbox projection for pickup facts.
+      Distinct from other services consuming pickup stream subjects.
+
+  - stream: HUDHUD_SHIPMENT
+    durable_name: tracking_lifecycle_v1
+    filter_subject: hudhud.shipment.shipment.fact.>
+    description: >
+      Tracking projection durable — independent from shipment's own handlers.
+
+  - stream: HUDHUD_DELIVERY
+    durable_name: finance_cod_collected_v1
+    filter_subject: hudhud.delivery.delivery.fact.cod_collected.v1
+    description: >
+      Finance projection durable for COD collected facts.
+      Filter-limited — not a stream-wide global durable.
+
+  - stream: HUDHUD_SHIPMENT
+    durable_name: notification_lifecycle_v1
+    filter_subject: hudhud.shipment.>
+    description: >
+      Notification consumer on shipment stream — separate durable from tracking.
+
+  - stream: HUDHUD_DLQ
+    durable_name: platform_dlq_observer_v1
+    filter_subject: hudhud.dlq.>
+    description: >
+      Operational observer for poison/quarantine subjects (foundation smoke only).

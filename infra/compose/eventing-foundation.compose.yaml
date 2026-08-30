@@ -1,0 +1,72 @@
+# HUDHUD eventing foundation — isolated local JetStream topology (ADR-0002).
+# Single-node, replicas=1, file-backed storage. Not HA/quorum.
+# No fixed host ports unless NATS_*_HOST_PORT variables are set.
+
+name: hudhud-eventing-foundation
+
+services:
+  nats:
+    image: nats:2.10-alpine
+    container_name: hudhud-eventing-nats
+    profiles:
+      - eventing
+    restart: unless-stopped
+    env_file:
+      - path: ../eventing/config/defaults.env
+        required: false
+    environment:
+      JETSTREAM_STORE_DIR: /data/jetstream
+    entrypoint: ["/bin/sh", "/etc/nats/entrypoint.sh"]
+    volumes:
+      - type: volume
+        source: hudhud_eventing_jetstream
+        target: /data/jetstream
+      - type: bind
+        source: ../eventing/nats/entrypoint.sh
+        target: /etc/nats/entrypoint.sh
+        read_only: true
+    networks:
+      - hudhud_eventing
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    labels:
+      hudhud.eventing: foundation
+      hudhud.jetstream.replicas: "1"
+      hudhud.jetstream.ha: "false"
+
+  eventing-bootstrap:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    container_name: hudhud-eventing-bootstrap
+    profiles:
+      - eventing
+    restart: "no"
+    working_dir: /repo
+    volumes:
+      - type: bind
+        source: ../..
+        target: /repo
+    environment:
+      NATS_URL: nats://nats:4222
+      UV_CACHE_DIR: /tmp/uv-cache
+    command:
+      - /bin/sh
+      - -c
+      - uv run python infra/eventing/scripts/bootstrap_topology.py
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - hudhud_eventing
+
+networks:
+  hudhud_eventing:
+    name: hudhud_eventing
+    driver: bridge
+
+volumes:
+  hudhud_eventing_jetstream:
+    name: hudhud_eventing_jetstream

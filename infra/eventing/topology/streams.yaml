@@ -1,0 +1,69 @@
+# ADR-0002 hybrid per-context JetStream streams (foundation topology only).
+# JetStream is transport with bounded retention — NOT legal/accounting audit storage.
+# num_replicas: 1 — single-node durability, not HA/quorum.
+
+version: 1
+defaults:
+  retention: limits
+  storage: file
+  num_replicas: 1
+  discard: old
+  max_msg_size_bytes: 262144
+  duplicate_window: 2m
+
+streams:
+  - name: HUDHUD_SHIPMENT
+    subjects:
+      - hudhud.shipment.>
+    max_age: 7d
+    description: Shipment bounded-context operational events
+
+  - name: HUDHUD_PICKUP
+    subjects:
+      - hudhud.pickup.>
+    max_age: 7d
+    description: Pickup bounded-context operational events
+
+  - name: HUDHUD_HUB
+    subjects:
+      - hudhud.hub.>
+    max_age: 7d
+    description: Hub bounded-context operational events
+
+  - name: HUDHUD_LINEHAUL
+    subjects:
+      - hudhud.linehaul.>
+    max_age: 7d
+    description: Linehaul bounded-context operational events
+
+  - name: HUDHUD_DELIVERY
+    subjects:
+      - hudhud.delivery.>
+    max_age: 7d
+    description: Delivery bounded-context operational events
+
+  - name: HUDHUD_WALLET
+    subjects:
+      - hudhud.wallet.>
+    max_age: 30d
+    description: Wallet/COD operational events (provisional retention)
+
+  - name: HUDHUD_NOTIFICATION
+    subjects:
+      - hudhud.notification.>
+    max_age: 3d
+    description: Notification bounded-context operational events
+
+  - name: HUDHUD_AUDIT
+    subjects:
+      - hudhud.audit.>
+    max_age: 365d
+    description: >
+      Bounded transport window for audit-class events only.
+      Permanent audit retention belongs to the Audit service — not JetStream.
+
+  - name: HUDHUD_DLQ
+    subjects:
+      - hudhud.dlq.>
+    max_age: 30d
+    description: Poison/quarantine transport (provisional retention)

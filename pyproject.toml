@@ -10,6 +10,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "nats-py>=2.9",
     "pytest>=8.0",
     "ruff>=0.8",
 ]
@@ -47,3 +48,6 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v"
+markers = [
+    "integration: requires Docker runtime for eventing infrastructure proof",
+]
