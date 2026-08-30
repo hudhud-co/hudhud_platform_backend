@@ -1,0 +1,58 @@
+# HUDHUD legacy CDC feasibility lab (ADR-0007 / ADR-0006).
+# Isolated PostgreSQL 16 logical decoding proof — not connected to legacy, NATS, or production.
+# No host ports published; dedicated network and volume only.
+
+name: hudhud-legacy-cdc-lab
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hudhud-cdc-lab-postgres
+    profiles:
+      - cdc-lab
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cdc_lab_owner
+      POSTGRES_PASSWORD: cdc_lab_password_not_for_production
+      POSTGRES_DB: cdc_lab
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=8
+      - -c
+      - max_wal_senders=8
+      - -c
+      - max_slot_wal_keep_size=64MB
+      - -c
+      - log_min_messages=warning
+    volumes:
+      - type: volume
+        source: hudhud_cdc_lab_pgdata
+        target: /var/lib/postgresql/data
+      - type: bind
+        source: ./init
+        target: /docker-entrypoint-initdb.d
+        read_only: true
+    networks:
+      - hudhud_cdc_lab
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cdc_lab_owner -d cdc_lab"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    labels:
+      hudhud.lab: legacy-cdc
+      hudhud.cdc.plugin: test_decoding
+      hudhud.cdc.ha: "false"
+
+networks:
+  hudhud_cdc_lab:
+    name: hudhud_cdc_lab
+    driver: bridge
+
+volumes:
+  hudhud_cdc_lab_pgdata:
+    name: hudhud_cdc_lab_pgdata
