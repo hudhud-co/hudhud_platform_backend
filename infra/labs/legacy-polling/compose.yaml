@@ -1,0 +1,45 @@
+# HUDHUD legacy polling completeness lab — isolated PostgreSQL 16 (ADR-0007).
+# Synthetic schema only; no legacy database connection or production mounts.
+# No fixed host ports; dedicated network and volume.
+
+name: hudhud-legacy-polling-lab
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hudhud-polling-lab-postgres
+    profiles:
+      - polling-lab
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: polling_lab
+      POSTGRES_PASSWORD: polling_lab_dev_only
+      POSTGRES_DB: polling_lab
+    volumes:
+      - type: volume
+        source: hudhud_polling_lab_pgdata
+        target: /var/lib/postgresql/data
+      - type: bind
+        source: ./schema
+        target: /docker-entrypoint-initdb.d
+        read_only: true
+    networks:
+      - hudhud_polling_lab
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U polling_lab -d polling_lab"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    labels:
+      hudhud.lab: legacy-polling
+      hudhud.adr: "0007"
+
+networks:
+  hudhud_polling_lab:
+    name: hudhud_polling_lab
+    driver: bridge
+
+volumes:
+  hudhud_polling_lab_pgdata:
+    name: hudhud_polling_lab_pgdata

@@ -1,0 +1,169 @@
+# Machine-checkable polling strategy outcome matrix (ADR-0007 lab).
+# scenario keys must match tests/polling_lab/scenarios.py
+# outcome: complete | gap | duplicate_safe | unprovable
+
+strategies:
+  timestamp_only:
+    description: "WHERE occurred_at > cursor_ts"
+    requires_schema_change: false
+    can_prove_completeness: false
+  uuid_only:
+    description: "WHERE id > cursor_uuid (UUID v4 PK)"
+    requires_schema_change: false
+    can_prove_completeness: false
+  timestamp_uuid:
+    description: "WHERE (occurred_at, id) > (cursor_ts, cursor_id)"
+    requires_schema_change: false
+    can_prove_completeness: false
+  updated_at_only:
+    description: "WHERE updated_at > cursor_ts on mutable entities"
+    requires_schema_change: false
+    can_prove_completeness: false
+  overlap_window_dedupe:
+    description: "Poll with fixed lookback window + PK deduplication"
+    requires_schema_change: false
+    can_prove_completeness: false
+    requires_unbounded_lookback_for: [late_commit_earlier_ts, long_running_txn_cross_boundary]
+  monotonic_sequence:
+    description: "WHERE capture_seq > cursor_seq on lab_events_sequenced"
+    requires_schema_change: true
+    can_prove_completeness: true
+    completeness_scope: append_only_with_durable_sequence
+
+scenarios:
+  uuid_non_monotonic_order:
+    description: "UUID v4 PKs do not sort with time"
+  same_timestamp_tiebreak:
+    description: "Multiple rows share identical occurred_at"
+  late_commit_earlier_ts:
+    description: "Row commits after poll with application occurred_at below HWM"
+  long_running_txn_cross_boundary:
+    description: "Uncommitted row spans a poll; later rows advance HWM first"
+  update_after_hwm:
+    description: "Mutable row updated after cursor passed it"
+  hard_delete_no_tombstone:
+    description: "Row deleted after capture; no tombstone"
+  persisted_cursor_restart:
+    description: "Bridge restarts from lab_bridge_cursor without replay gap"
+  overlap_window_dedupe:
+    description: "Fixed lookback catches late rows; dedupe prevents double-apply"
+  timestamp_uuid_composite:
+    description: "PostgreSQL composite tuple ordering for (occurred_at, id)"
+  monotonic_sequence_append:
+    description: "BIGSERIAL capture_seq on append-only stream"
+  snapshot_post_hwm:
+    description: "HWM snapshot at T0 plus continuous post-HWM capture"
+  concurrent_writers:
+    description: "Parallel sessions inserting concurrently"
+
+expected_outcomes:
+  uuid_non_monotonic_order:
+    timestamp_only: complete
+    uuid_only: gap
+    timestamp_uuid: complete
+    updated_at_only: unprovable
+    overlap_window_dedupe: complete
+    monotonic_sequence: complete
+  same_timestamp_tiebreak:
+    timestamp_only: gap
+    uuid_only: gap
+    timestamp_uuid: complete
+    updated_at_only: unprovable
+    overlap_window_dedupe: duplicate_safe
+    monotonic_sequence: complete
+  late_commit_earlier_ts:
+    timestamp_only: gap
+    uuid_only: gap
+    timestamp_uuid: gap
+    updated_at_only: unprovable
+    overlap_window_dedupe: duplicate_safe
+    monotonic_sequence: complete
+  long_running_txn_cross_boundary:
+    timestamp_only: gap
+    uuid_only: gap
+    timestamp_uuid: gap
+    updated_at_only: unprovable
+    overlap_window_dedupe: duplicate_safe
+    monotonic_sequence: complete
+  update_after_hwm:
+    timestamp_only: gap
+    uuid_only: gap
+    timestamp_uuid: gap
+    updated_at_only: duplicate_safe
+    overlap_window_dedupe: gap
+    monotonic_sequence: unprovable
+  hard_delete_no_tombstone:
+    timestamp_only: unprovable
+    uuid_only: unprovable
+    timestamp_uuid: unprovable
+    updated_at_only: unprovable
+    overlap_window_dedupe: unprovable
+    monotonic_sequence: unprovable
+  persisted_cursor_restart:
+    timestamp_only: complete
+    uuid_only: complete
+    timestamp_uuid: complete
+    updated_at_only: unprovable
+    overlap_window_dedupe: duplicate_safe
+    monotonic_sequence: complete
+  overlap_window_dedupe:
+    timestamp_only: gap
+    uuid_only: gap
+    timestamp_uuid: gap
+    updated_at_only: unprovable
+    overlap_window_dedupe: duplicate_safe
+    monotonic_sequence: complete
+  timestamp_uuid_composite:
+    timestamp_only: gap
+    uuid_only: gap
+    timestamp_uuid: complete
+    updated_at_only: unprovable
+    overlap_window_dedupe: duplicate_safe
+    monotonic_sequence: complete
+  monotonic_sequence_append:
+    timestamp_only: complete
+    uuid_only: complete
+    timestamp_uuid: complete
+    updated_at_only: unprovable
+    overlap_window_dedupe: complete
+    monotonic_sequence: complete
+  snapshot_post_hwm:
+    timestamp_only: complete
+    uuid_only: complete
+    timestamp_uuid: complete
+    updated_at_only: unprovable
+    overlap_window_dedupe: duplicate_safe
+    monotonic_sequence: complete
+  concurrent_writers:
+    timestamp_only: complete
+    uuid_only: gap
+    timestamp_uuid: complete
+    updated_at_only: unprovable
+    overlap_window_dedupe: complete
+    monotonic_sequence: complete
+
+proven_unsafe_for_legacy_bridge:
+  - "uuid_only on shipment_events-style UUID PK streams"
+  - "timestamp_only when multiple rows share occurred_at/created_at"
+  - "timestamp_uuid when application timestamps can precede HWM at commit time"
+  - "updated_at_only as universal HWM (ADR-0006 H2)"
+  - "any append-only poll without tombstones on hard-delete tables"
+
+conditions_for_safe_polling:
+  append_only_event_streams:
+    - "Use (occurred_at, id) or (created_at, id) composite cursor with UUID tie-break"
+    - "Accept duplicate_safe delivery; inbox dedupe on deterministic event_id (ADR-0002)"
+    - "Late-commit rows with earlier application timestamps require overlap lookback or CDC"
+  mutable_entities:
+    - "updated_at alone is insufficient; CDC or tombstones for deletes/updates"
+  completeness_proof:
+    - "Monotonic DB-generated sequence on capture table proves append-only completeness"
+    - "Hard deletes without tombstones make completeness unprovable via poll alone"
+
+evidence_classification:
+  postgresql_behavior: "Scenarios 1-12 in synthetic lab"
+  legacy_suitability_inference: "Analogous patterns from ADR-0007 shipment_events / audit_logs"
+  unresolved_production_evidence:
+    - "Real legacy write-path coverage for every status mutation"
+    - "Production poll lag SLO and zero-gap drill (ADR-0007 E3)"
+    - "Hard-delete frequency on operational tables"
