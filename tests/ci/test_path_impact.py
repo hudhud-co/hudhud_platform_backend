@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +23,25 @@ from path_impact import (  # noqa: E402
 
 def _impact(*lines: str):
     return calculate_impact(changed_lines=list(lines))
+
+
+_GITHUB_FORMAT_DOCS_ONLY_CMD = [
+    sys.executable,
+    str(CALCULATE_SCRIPT),
+    "--format",
+    "github",
+    "--changed-file",
+    "M\tdocs/audit/legacy-baseline.md",
+]
+
+
+def _cli_env(*, github_output: str | None = None) -> dict[str, str]:
+    env = os.environ.copy()
+    if github_output is None:
+        env.pop("GITHUB_OUTPUT", None)
+    else:
+        env["GITHUB_OUTPUT"] = github_output
+    return env
 
 
 def test_one_service_change() -> None:
@@ -200,22 +220,61 @@ def test_cli_with_changed_file_flag() -> None:
 
 def test_cli_github_format() -> None:
     result = subprocess.run(
-        [
-            sys.executable,
-            str(CALCULATE_SCRIPT),
-            "--format",
-            "github",
-            "--changed-file",
-            "M\tdocs/audit/legacy-baseline.md",
-        ],
+        _GITHUB_FORMAT_DOCS_ONLY_CMD,
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         check=False,
+        env=_cli_env(),
     )
     assert result.returncode == 0, result.stderr
     assert "full_validation=false" in result.stdout
     assert "docs_only=true" in result.stdout
+    assert "fail_safe=false" in result.stdout
+    assert "run_service_scoped=false" in result.stdout
+    assert "affected_services=[]" in result.stdout
+    assert "affected_packages=[]" in result.stdout
+    assert "impact_json=" in result.stdout
+
+
+def test_cli_github_format_writes_github_output_file(tmp_path: Path) -> None:
+    github_output = tmp_path / "github_output.txt"
+    result = subprocess.run(
+        _GITHUB_FORMAT_DOCS_ONLY_CMD,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=_cli_env(github_output=str(github_output)),
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+    contents = github_output.read_text(encoding="utf-8")
+    expected_prefix = (
+        "full_validation=false\n"
+        "fail_safe=false\n"
+        "docs_only=true\n"
+        "run_service_scoped=false\n"
+        "affected_services=[]\n"
+        "affected_packages=[]\n"
+        "impact_json<<EOF\n"
+    )
+    assert contents.startswith(expected_prefix)
+    assert contents.endswith("\nEOF\n")
+
+    raw_json = contents.removeprefix(expected_prefix).removesuffix("\nEOF\n")
+    payload = json.loads(raw_json)
+    assert raw_json == json.dumps(payload, sort_keys=True)
+    assert payload["fail_safe"] is False
+    assert payload["impact"]["docs_only"] is True
+    assert payload["impact"]["affected_services"] == []
+    assert payload["impact"]["affected_packages"] == []
+    assert payload["validation_scope"]["full_validation"] is False
+    assert payload["validation_scope"]["run_service_scoped"] is False
+    assert payload["validation_scope"]["run_architecture_gates"] is True
+    assert payload["validation_scope"]["run_governance_gates"] is True
+    assert payload["validation_scope"]["run_quality_gates"] is True
 
 
 def test_git_diff_integration_when_base_available() -> None:
