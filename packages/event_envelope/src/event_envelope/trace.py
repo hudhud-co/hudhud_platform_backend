@@ -56,7 +56,11 @@ def apply_trace_context_policy(
     *,
     policy: TraceContextPolicy,
 ) -> str | None:
-    """Apply the documented reject/normalize policy for traceparent."""
+    """Apply the documented reject/normalize policy for traceparent.
+
+    NORMALIZE drops invalid values to ``None`` without retaining the original unsafe
+    string. Producers MUST use REJECT so invalid trace context cannot be emitted silently.
+    """
     if value is None:
         return None
     if policy == TraceContextPolicy.IGNORE:

@@ -30,7 +30,7 @@ This directory holds Architecture Decision Records (ADRs) for the HUDHUD platfor
 | [ADR-0004](0004-identity-gateway-and-service-trust.md) | Identity, Gateway, and service trust | **Proposed** | Identity owns auth identity; domain services own membership/policy; Gateway routes only | Customer/Organization ownership; hub/driver grant ownership finalization | ADR-0001, ADR-0002, ADR-0006 |
 | [ADR-0005](0005-cod-wallet-ledger-and-settlement.md) | COD, wallet, ledger, and settlement | **Proposed — Policy Blocked** | Double-entry finance authority recommended; Wallet as projection; Delivery→Finance not Delivery→Wallet | Policy register P-01–P-17; COA; commission/settlement rules | ADR-0002 (Accepted), ADR-0003 (Accepted), ADR-0004 (Proposed) |
 | [ADR-0006](0006-one-writer-data-cutover-and-reconciliation.md) | One-writer data cutover | **Accepted** | One-writer cutover; semantic reconciliation; credential revocation; zero-gap HWM capture | CDC/replication tooling; per-context cutover execution | ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005 |
-| [ADR-0007](0007-legacy-event-bridge-strategy.md) | Legacy event bridge strategy | **Proposed** | Transitional legacy→JetStream capture; read-only bridge; hybrid poll/CDC; native outbox retirement | Bridge lag SLO; zero-gap drill; CDC capacity proof; contract registration | ADR-0001, ADR-0002, ADR-0003, ADR-0005, ADR-0006 |
+| [ADR-0007](0007-legacy-event-bridge-strategy.md) | Legacy event bridge strategy | **Proposed** | Transitional legacy→JetStream capture; read-only bridge candidate; hybrid poll/CDC/WAL/outbox options | Capture mechanism completeness proof; bridge lag SLO; zero-gap drill; contract registration | ADR-0001, ADR-0002, ADR-0003, ADR-0005, ADR-0006 |
 
 ## ADR Numbering Reference
 

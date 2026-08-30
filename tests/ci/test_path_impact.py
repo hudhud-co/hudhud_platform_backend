@@ -97,6 +97,23 @@ def test_unknown_path_fails_safe() -> None:
     assert result.fail_safe is True
 
 
+def test_eventing_tests_classified_as_infrastructure() -> None:
+    result = _impact("M\ttests/eventing/test_topology_config.py")
+    assert result.impact_flags["infrastructure"] is True
+    assert result.full_validation is True
+
+
+def test_port_registry_classified_as_architecture() -> None:
+    result = _impact("M\tarchitecture/runtime-port-registry.yaml")
+    assert result.impact_flags["architecture"] is True
+    assert result.full_validation is True
+
+
+def test_port_verifier_script_triggers_full_validation() -> None:
+    result = _impact("M\tscripts/quality/verify_port_allocations.py")
+    assert result.full_validation is True
+
+
 def test_deleted_file_still_classified() -> None:
     result = _impact("D\tservices/shipment/src/shipment/main.py")
     assert result.affected_services == ["shipment"]

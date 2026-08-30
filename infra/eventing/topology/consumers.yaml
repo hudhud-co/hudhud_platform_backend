@@ -3,6 +3,8 @@
 # Replicas of the same consumer group share one durable.
 # Different services/projections use different durables.
 # No durable per event instance; no single global durable for an entire stream.
+#
+# All entries below are PROVISIONAL foundation examples — not accepted domain contracts.
 
 version: 1
 defaults:
@@ -26,30 +28,44 @@ consumers:
     durable_name: shipment_pickup_facts_v1
     filter_subject: hudhud.pickup.pickup.fact.>
     description: >
-      Shipment service inbox projection for pickup facts.
+      [provisional] Shipment service inbox projection for pickup facts.
       Distinct from other services consuming pickup stream subjects.
 
   - stream: HUDHUD_SHIPMENT
     durable_name: tracking_lifecycle_v1
     filter_subject: hudhud.shipment.shipment.fact.>
     description: >
-      Tracking projection durable — independent from shipment's own handlers.
+      [provisional] Tracking projection durable — independent from shipment's own handlers.
 
   - stream: HUDHUD_DELIVERY
     durable_name: finance_cod_collected_v1
     filter_subject: hudhud.delivery.delivery.fact.cod_collected.v1
     description: >
-      Finance projection durable for COD collected facts.
-      Filter-limited — not a stream-wide global durable.
+      [provisional] Finance consumer for operational COD collected facts published by Delivery.
+      Finance owns financial posting; Delivery never writes Wallet authority.
+
+  - stream: HUDHUD_SHIPMENT
+    durable_name: finance_shipment_delivered_v1
+    filter_subject: hudhud.shipment.shipment.fact.delivered.v1
+    description: >
+      [provisional] Finance consumer for ShipmentDelivered canonical facts.
+      Correlates with CodCollected by shipment_id (ADR-0003/0005).
+
+  - stream: HUDHUD_FINANCE
+    durable_name: wallet_merchant_payable_v1
+    filter_subject: hudhud.finance.finance.fact.merchant_payable_recognized.v1
+    description: >
+      [provisional] Wallet projection consumer — Finance-authorized merchant payable only.
+      Wallet is a projection; Finance is the posting authority.
 
   - stream: HUDHUD_SHIPMENT
     durable_name: notification_lifecycle_v1
     filter_subject: hudhud.shipment.>
     description: >
-      Notification consumer on shipment stream — separate durable from tracking.
+      [provisional] Notification consumer on shipment stream — separate durable from tracking.
 
   - stream: HUDHUD_DLQ
     durable_name: platform_dlq_observer_v1
     filter_subject: hudhud.dlq.>
     description: >
-      Operational observer for poison/quarantine subjects (foundation smoke only).
+      [provisional] Operational observer for poison/quarantine subjects (foundation smoke only).

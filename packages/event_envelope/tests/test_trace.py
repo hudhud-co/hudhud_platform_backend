@@ -3,9 +3,23 @@
 from __future__ import annotations
 
 import pytest
-from helpers import load_example
+from helpers import (
+    AGGREGATE_ID,
+    CORRELATION_ID,
+    EVENT_ID,
+    OCCURRED_AT,
+    load_example,
+)
 
-from event_envelope import EnvelopeSerdePolicy, EnvelopeValidationError, deserialize_envelope
+from event_envelope import (
+    AggregateScope,
+    DataClassification,
+    EnvelopeSerdePolicy,
+    EnvelopeValidationError,
+    EventEnvelope,
+    MessageKind,
+    deserialize_envelope,
+)
 from event_envelope.trace import (
     TraceContextPolicy,
     apply_trace_context_policy,
@@ -38,6 +52,27 @@ def test_normalize_policy_strips_invalid() -> None:
 def test_reject_policy_raises() -> None:
     with pytest.raises(EnvelopeValidationError):
         apply_trace_context_policy("bad", policy=TraceContextPolicy.REJECT)
+
+
+def test_producer_model_build_rejects_invalid_traceparent() -> None:
+    with pytest.raises(EnvelopeValidationError, match="traceparent"):
+        EventEnvelope(
+            event_id=EVENT_ID,
+            event_type="delivery.command.complete",
+            event_version=1,
+            occurred_at=OCCURRED_AT,
+            producer="delivery",
+            message_kind=MessageKind.COMMAND,
+            aggregate_scope=AggregateScope.AGGREGATE,
+            aggregate_type="delivery_task",
+            aggregate_id=AGGREGATE_ID,
+            aggregate_version=1,
+            correlation_id=CORRELATION_ID,
+            traceparent="invalid",
+            data_classification=DataClassification.INTERNAL,
+            pii_present=False,
+            payload={},
+        )
 
 
 def test_ignore_policy_drops_invalid_on_deserialize() -> None:

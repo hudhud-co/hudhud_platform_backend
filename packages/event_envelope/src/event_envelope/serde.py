@@ -36,10 +36,18 @@ class EnvelopeSerdePolicy:
 
     compatibility: EnvelopeCompatibility = ENVELOPE_COMPATIBILITY_POLICY
     limits: EnvelopeLimits = DEFAULT_ENVELOPE_LIMITS
-    unknown_field_policy: UnknownFieldPolicy = UnknownFieldPolicy.IGNORE
+    unknown_field_policy: UnknownFieldPolicy = UnknownFieldPolicy.PRESERVE
     trace_context_policy: TraceContextPolicy = TraceContextPolicy.NORMALIZE
 
     def serialize(self, envelope: EventEnvelope) -> str:
+        if (
+            self.unknown_field_policy == UnknownFieldPolicy.REJECT
+            and envelope.unknown_fields
+        ):
+            raise EnvelopeValidationError(
+                "envelope",
+                f"unknown fields not permitted: {', '.join(sorted(envelope.unknown_fields))}",
+            )
         payload = envelope_to_json_dict(envelope)
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=_json_default)
         self.limits.validate_envelope_size(len(encoded.encode("utf-8")))
@@ -48,6 +56,17 @@ class EnvelopeSerdePolicy:
     def deserialize(self, raw: str | bytes | dict[str, Any]) -> EventEnvelope:
         data = json.loads(raw) if isinstance(raw, (str, bytes)) else dict(raw)
         return parse_envelope_json(data, policy=self)
+
+
+# Role-aware defaults: producers are strict; consumers preserve or reject explicitly.
+PRODUCER_SERDE_POLICY = EnvelopeSerdePolicy(
+    unknown_field_policy=UnknownFieldPolicy.REJECT,
+    trace_context_policy=TraceContextPolicy.REJECT,
+)
+CONSUMER_SERDE_POLICY = EnvelopeSerdePolicy(
+    unknown_field_policy=UnknownFieldPolicy.PRESERVE,
+    trace_context_policy=TraceContextPolicy.NORMALIZE,
+)
 
 
 def envelope_to_json_dict(envelope: EventEnvelope) -> dict[str, Any]:
@@ -60,7 +79,7 @@ def envelope_to_json_str(
     *,
     policy: EnvelopeSerdePolicy | None = None,
 ) -> str:
-    serde = policy or EnvelopeSerdePolicy()
+    serde = policy or PRODUCER_SERDE_POLICY
     return serde.serialize(envelope)
 
 
@@ -79,7 +98,7 @@ def parse_envelope_json(
     policy: EnvelopeSerdePolicy | None = None,
 ) -> EventEnvelope:
     """Parse a JSON object into a validated :class:`EventEnvelope`."""
-    serde = policy or EnvelopeSerdePolicy()
+    serde = policy or CONSUMER_SERDE_POLICY
     serde.compatibility.validate_envelope_version(int(data.get("envelope_version", 1)))
 
     unknown_keys = set(data) - EventEnvelope.known_field_names()
@@ -113,5 +132,5 @@ def deserialize_envelope(
     policy: EnvelopeSerdePolicy | None = None,
 ) -> EventEnvelope:
     """Deserialize JSON into a validated envelope."""
-    serde = policy or EnvelopeSerdePolicy()
+    serde = policy or CONSUMER_SERDE_POLICY
     return serde.deserialize(raw)

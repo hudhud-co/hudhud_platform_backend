@@ -13,6 +13,7 @@ from helpers import (
 )
 
 from event_envelope import (
+    CONSUMER_SERDE_POLICY,
     EnvelopeSerdePolicy,
     EnvelopeValidationError,
     UnknownFieldPolicy,
@@ -21,6 +22,7 @@ from event_envelope import (
     serialize_envelope,
 )
 from event_envelope.compatibility import EnvelopeCompatibility
+from event_envelope.limits import DEFAULT_ENVELOPE_LIMITS
 
 
 def test_deterministic_round_trip() -> None:
@@ -39,11 +41,20 @@ def test_unsupported_envelope_version_rejected() -> None:
         deserialize_envelope(data)
 
 
-def test_unknown_fields_ignored_by_default() -> None:
+def test_unknown_fields_preserved_by_consumer_default() -> None:
     data = load_example("aggregate_command.json")
     data["future_field"] = "additive"
     envelope = deserialize_envelope(data)
-    assert envelope.event_type == "delivery.command.complete"
+    roundtrip = json.loads(serialize_envelope(envelope, policy=CONSUMER_SERDE_POLICY))
+    assert roundtrip["future_field"] == "additive"
+
+
+def test_unknown_fields_rejected_by_producer_default() -> None:
+    data = load_example("aggregate_command.json")
+    data["future_field"] = "additive"
+    envelope = deserialize_envelope(data)
+    with pytest.raises(EnvelopeValidationError, match="unknown fields"):
+        serialize_envelope(envelope)
 
 
 def test_unknown_fields_rejected_in_strict_mode() -> None:
@@ -59,8 +70,16 @@ def test_unknown_fields_preserved_when_configured() -> None:
     data["future_field"] = "additive"
     policy = EnvelopeSerdePolicy(unknown_field_policy=UnknownFieldPolicy.PRESERVE)
     envelope = deserialize_envelope(data, policy=policy)
-    roundtrip = json.loads(serialize_envelope(envelope))
+    roundtrip = json.loads(serialize_envelope(envelope, policy=CONSUMER_SERDE_POLICY))
     assert roundtrip["future_field"] == "additive"
+
+
+def test_transport_limit_coherent_with_hard_envelope_limit() -> None:
+    DEFAULT_ENVELOPE_LIMITS.validate_transport_coherence()
+    assert (
+        DEFAULT_ENVELOPE_LIMITS.transport_max_msg_bytes
+        >= DEFAULT_ENVELOPE_LIMITS.hard_envelope_bytes
+    )
 
 
 def test_compatibility_additive_vs_breaking() -> None:

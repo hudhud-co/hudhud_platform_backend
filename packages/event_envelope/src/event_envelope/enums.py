@@ -31,11 +31,14 @@ class AggregateScope(StrEnum):
     NON_AGGREGATE = "non_aggregate"
 
 
-# Message kinds that require aggregate_version when aggregate-scoped and ordering applies.
+# Message kinds that require aggregate_version when aggregate-scoped.
+# REPLY is intentionally excluded — unordered command results may omit aggregate_version.
+# PROJECTION is included — aggregate read-model sequencing requires a monotonic version.
 ORDERING_MESSAGE_KINDS: frozenset[MessageKind] = frozenset(
     {
         MessageKind.DOMAIN,
         MessageKind.INTEGRATION,
         MessageKind.COMMAND,
+        MessageKind.PROJECTION,
     }
 )

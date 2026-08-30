@@ -336,23 +336,24 @@ allocations:
 
   - id: platform-nats-client
     role: nats_client_websocket_disabled
-    binding_kind: staging_reservation
+    binding_kind: internal_container
     protocol: tcp
-    statement: reservation
+    statement: configurable
     evidence:
+      - infra/compose/eventing-foundation.compose.yaml
       - docs/adr/0002-event-envelope-outbox-inbox-and-jetstream.md
-      - NATS default client port 4222 (verify image pin at implementation)
     bindings:
       - environment: platform_local_dev
         active: false
         public_exposure: false
         host:
-          type: fixed
-          port: 4222
+          type: unpublished
         container:
           port: 4222
-        network_scope: platform_shared_infra
-        notes: reserved; compose not scaffolded (infra/README.md F0)
+        network_scope: platform_eventing_internal
+        notes: >
+          Eventing foundation Compose uses internal networking only by default.
+          Optional host bind via local override and NATS_CLIENT_HOST_PORT env.
       - environment: platform_staging
         active: false
         public_exposure: false
@@ -372,21 +373,22 @@ allocations:
 
   - id: platform-nats-monitoring
     role: nats_http_monitoring
-    binding_kind: staging_reservation
+    binding_kind: internal_container
     protocol: tcp
-    statement: reservation
+    statement: configurable
     evidence:
+      - infra/compose/eventing-foundation.compose.yaml
       - docs/adr/0002-event-envelope-outbox-inbox-and-jetstream.md
     bindings:
       - environment: platform_local_dev
         active: false
         public_exposure: false
         host:
-          type: fixed
-          port: 8222
+          type: unpublished
         container:
           port: 8222
-        network_scope: platform_shared_infra
+        network_scope: platform_eventing_internal
+        notes: internal monitor port; optional host bind via NATS_MONITOR_HOST_PORT override
       - environment: platform_staging
         active: false
         public_exposure: false
@@ -406,26 +408,23 @@ allocations:
 
   - id: platform-gateway-http
     role: gateway_http_listener
-    binding_kind: environment_configurable
+    binding_kind: unresolved
     protocol: tcp
-    statement: configurable
+    statement: unresolved
     evidence:
       - docs/adr/0004-identity-gateway-and-service-trust.md
-      - legacy deploy/env.prod.example PORT name
     bindings:
       - environment: platform_local_dev
         active: false
         public_exposure: false
         host:
-          type: env_var
-          name: GATEWAY_HTTP_PORT
-          default_unverified: null
+          type: unresolved
         container:
-          port: 8080
-          type: env_var
-          name: GATEWAY_HTTP_PORT
+          type: unresolved
         network_scope: platform_edge
-        notes: host bind chosen at compose authoring time; not frozen
+        notes: >
+          ADR-0004 Proposed — Gateway deferred from Wave 2 eventing foundation.
+          Not an active or approved allocation in current integration scope.
       - environment: platform_staging
         active: false
         public_exposure: false
@@ -436,13 +435,13 @@ allocations:
         network_scope: platform_edge
       - environment: platform_production
         active: false
-        public_exposure: true
+        public_exposure: false
         host:
           type: unresolved
         container:
           type: unresolved
         network_scope: platform_edge
-        notes: public exposure via edge TLS terminator; exact host port unresolved
+        notes: public exposure via edge TLS terminator; ADR-0004 dependent
 
   - id: platform-transitional-http-range
     role: transitional_deployable_http_block
@@ -464,7 +463,9 @@ allocations:
           start: 8000
           end: 8049
         network_scope: per_deployable_isolated
-        notes: provisional block for up to 3–5 transitional runtimes; not assigned per context
+        notes: >
+          proposed reservation for up to 3–5 transitional runtimes — not an accepted allocation
+          until capacity proof and compose authoring evidence exist
       - environment: platform_staging
         active: false
         public_exposure: false

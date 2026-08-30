@@ -216,9 +216,13 @@ def classify_path(
     prefix_rules: list[tuple[str, ImpactCategory]] = [
         ("contracts/", ImpactCategory.CONTRACTS),
         ("architecture/", ImpactCategory.ARCHITECTURE),
+        ("docs/architecture/", ImpactCategory.ARCHITECTURE),
         ("docs/adr/", ImpactCategory.GOVERNANCE),
+        ("infra/eventing/", ImpactCategory.INFRASTRUCTURE),
+        ("infra/compose/", ImpactCategory.INFRASTRUCTURE),
         ("infra/", ImpactCategory.INFRASTRUCTURE),
         (".github/", ImpactCategory.CI_TOOLING),
+        ("scripts/quality/", ImpactCategory.CI_TOOLING),
         ("scripts/", ImpactCategory.CI_TOOLING),
     ]
     for prefix, mapped in prefix_rules:
@@ -250,8 +254,12 @@ def classify_path(
                 test_area = tests_match.group(1)
                 if test_area in {"architecture", "governance"}:
                     category = ImpactCategory.GOVERNANCE
-                elif test_area == "ci":
-                    category = ImpactCategory.CI_TOOLING
+                elif test_area in {"ci", "eventing"}:
+                    category = (
+                        ImpactCategory.CI_TOOLING
+                        if test_area == "ci"
+                        else ImpactCategory.INFRASTRUCTURE
+                    )
                 elif test_area in services:
                     category = ImpactCategory.SERVICE
                     service = test_area

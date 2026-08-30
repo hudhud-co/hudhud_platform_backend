@@ -29,7 +29,7 @@ sign-off.
 | Item | Source | Implication |
 |------|--------|-------------|
 | Foundation F0 — no platform compose yet | `infra/README.md` | Platform host binds are reservations/unresolved |
-| 16 GB single host | `infra/README.md`, ADR-0001 | Deployment isolation, not HA |
+| 16 GB single host (planning input) | `infra/README.md`, ADR-0001 | Cited as planning scenario — not verified production host evidence in this repository |
 | Legacy prod stack | `docs/audit/legacy-runtime-inventory.md` | app loopback `:8001`, Postgres, Redis, MinIO |
 | Legacy dev host publishes | `hudhud-backend/deploy/docker-compose.local.yml` | `8001`, `5433`, `6380`, `9000`, `9001` |
 | Legacy prod MinIO loopback | `hudhud-backend/deploy/docker-compose.prod.yml` | `127.0.0.1:9010→9000` |
@@ -60,10 +60,10 @@ Full machine-readable registry: [`architecture/runtime-port-registry.yaml`](../.
 
 | Role | Local reservation | Staging | Production | Notes |
 |------|-------------------|---------|------------|-------|
-| NATS client | `4222` (inactive) | unresolved | unresolved | Verify against pinned `nats:2.x` image |
-| NATS monitoring | `8222` (inactive) | unresolved | unresolved | HTTP monitoring port |
-| Transitional HTTP block | `8100–8149` (inactive) | unresolved | unresolved | For up to 3–5 runtimes; not per-context assigned |
-| Gateway HTTP | `GATEWAY_HTTP_PORT` env | unresolved | unresolved, public edge | ADR-0004 |
+| NATS client | internal only by default | unresolved | unresolved | Eventing Compose publishes no fixed host ports unless local override |
+| NATS monitoring | internal only by default | unresolved | unresolved | See `infra/compose/eventing-foundation.compose.yaml` |
+| Transitional HTTP block | `8100–8149` (proposed reservation, inactive) | unresolved | unresolved | Not an accepted allocation — pending capacity proof |
+| Gateway HTTP | ADR-0004 dependent (proposed) | unresolved | unresolved | **Not in Wave 2 / S1** — deferred until ADR-0004 accepted |
 | Observability ingress | unresolved | unresolved | unresolved | Prometheus/Grafana/Loki not scaffolded |
 | Per-service Postgres | internal `5432` only | unpublished | unpublished | Repeatable per isolated network |
 
@@ -91,24 +91,25 @@ infrastructure. They are planning aids, not production facts.
 **Validation:** legacy `docker stats` on production host; record p95 CPU/RSS — **unresolved
 evidence in platform repo**.
 
-### Scenario S1 — Wave 0 infrastructure only
+### Scenario S1 — Wave 2 eventing foundation (current integration scope)
 
 | Component | Count | Replicas | Notes |
 |-----------|-------|----------|-------|
 | NATS JetStream | 1 server | `replicas: 1` per stream (ADR-0002) | Single-node; no HA |
-| Gateway skeleton | 1 | 1 | No business tables |
 | Observability (optional) | 0–1 stack | 1 | Ports unresolved |
-| Transitional app runtimes | 0 | — | Messaging scaffold only |
+| Transitional app runtimes | 0 | — | Eventing foundation only — **Gateway deferred** (ADR-0004 Proposed) |
 
-**Memory budget formula (proposal):**
+**Memory budget formula (proposal — Wave 2 scope only):**
 
 ```text
 nats_ram_mb ≈ 256 + (jetstream_storage_gb × 64)   # tune after disk benchmark
-gateway_ram_mb ≈ 128 + (worker_count × 64)
 observability_ram_mb ≈ unresolved until stack chosen
-wave0_total_mb ≈ nats_ram_mb + gateway_ram_mb + observability_ram_mb + os_reserve_mb
-os_reserve_mb ≥ 2048   # assumption for 16 GB host
+wave2_eventing_total_mb ≈ nats_ram_mb + observability_ram_mb + os_reserve_mb
+os_reserve_mb ≥ 2048   # planning assumption for 16 GB host scenario
 ```
+
+Gateway is **not** included in the current Wave 2 formula. Future Gateway capacity remains
+ADR-0004-dependent and unresolved.
 
 **Validation procedure:**
 
@@ -182,7 +183,7 @@ From ADR-0002 **[decision/proposal]** — numeric values are **provisional defau
 |--------------|----------------------|---------|----------|---------------|
 | Operational (`HUDHUD_*` ops) | 3–7d | File | 1 | Size ≈ `publish_rate × avg_bytes × age` |
 | Wallet | 30d | File | 1 | Longer retention — higher disk |
-| Audit transport (`HUDHUD_AUDIT`) | 365d (provisional) | File | 1 | **Not** legal archive — Audit service owns long-term |
+| Audit transport (`HUDHUD_AUDIT`) | 365d (provisional) | File | 1 | **Transport window only** — not legal archive; size planning MUST account for large provisional window until capacity proof replaces default |
 | DLQ (`HUDHUD_DLQ`) | 30d (provisional) | File | 1 | Poison isolation |
 
 **Disk formula (proposal):**
@@ -372,7 +373,7 @@ centralized aggregation for staging/prod — **unresolved stack**.
 3. Initial transitional plateau = 3–5 runtimes (ADR-0001 proposal).
 4. NATS client/monitoring ports `4222`/`8222` match pinned image defaults — verify at bootstrap.
 5. Platform local HTTP block `8100–8149` avoids verified legacy dev ports — reservation only.
-6. 16 GB host reserves ≥ 2 GB for OS/cache (ADR-0001 planning).
+6. 16 GB host reserves ≥ 2 GB for OS/cache — **planning assumption**, not verified production evidence.
 
 ---
 
@@ -387,7 +388,7 @@ centralized aggregation for staging/prod — **unresolved stack**.
 7. Second-host timeline for full per-context split.
 8. Redis shared vs. per-service on platform.
 9. Team size / on-call rotation affecting deployable count (ADR-0001).
-10. Gateway production public bind and TLS termination topology (ADR-0004).
+10. Gateway production public bind and TLS termination topology (ADR-0004) — **deferred from Wave 2**.
 
 ---
 

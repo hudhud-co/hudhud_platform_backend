@@ -24,7 +24,7 @@ class EnvelopeCompatibility:
 
     supported_envelope_version: int = SUPPORTED_ENVELOPE_VERSION
     min_envelope_version: int = 1
-    unknown_field_policy: UnknownFieldPolicy = UnknownFieldPolicy.IGNORE
+    unknown_field_policy: UnknownFieldPolicy = UnknownFieldPolicy.PRESERVE
 
     def validate_envelope_version(self, envelope_version: int) -> None:
         if envelope_version < self.min_envelope_version:
@@ -55,7 +55,11 @@ ENVELOPE_UPGRADE_EXPECTATIONS: dict[str, str] = {
         "Producers MUST NOT emit envelope_version greater than the consumer's supported version."
     ),
     "consumer_behind": (
-        "Consumers on envelope_version N MUST ignore unknown additive fields from version N."
+        "Consumers on envelope_version N MUST preserve or explicitly reject unknown additive "
+        "fields — silent lossy dropping is forbidden as the default interoperability behavior."
+    ),
+    "producer_strict": (
+        "Producers and build-time validation MUST reject unknown top-level envelope fields."
     ),
     "breaking_change": (
         "Removing or renaming required envelope fields requires incrementing envelope_version."

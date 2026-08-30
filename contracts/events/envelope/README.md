@@ -25,7 +25,7 @@ envelope defined in [ADR-0002](../../docs/adr/0002-event-envelope-outbox-inbox-a
 
 | Change type | Policy |
 |-------------|--------|
-| Add optional top-level field | Additive within same `envelope_version`; consumers MUST ignore unknown fields |
+| Add optional top-level field | Additive within same `envelope_version`; consumers MUST preserve or explicitly reject unknown fields |
 | Remove or rename required field | Breaking — increment `envelope_version` |
 | Unsupported `envelope_version` | Consumers MUST reject with explicit error (no silent coercion) |
 
@@ -44,10 +44,13 @@ Envelope compatibility and payload-schema compatibility are **distinct**. A prod
 
 1. **Producers** emit `envelope_version` equal to the schema they implement; MUST NOT emit a
    greater version than published consumers support.
-2. **Consumers** on `envelope_version` N MUST tolerate unknown additive fields (forward compatible).
-3. **Consumers** MUST reject `envelope_version` > supported with a structured error (no payload
+2. **Consumers** on `envelope_version` N MUST preserve additive unknown fields on deserialize
+   (default `PRESERVE`) or reject them explicitly (`REJECT`). Silent lossy dropping is forbidden
+   as the default interoperability behavior.
+3. **Producers** and build-time validation MUST reject unknown top-level fields (`REJECT`).
+4. **Consumers** MUST reject `envelope_version` > supported with a structured error (no payload
    logging at INFO when `pii_present` is true).
-4. **Payload evolution** follows per-`event_type` contracts; inbox deduplication remains on
+5. **Payload evolution** follows per-`event_type` contracts; inbox deduplication remains on
    `event_id` regardless of `event_version`.
 
 ## Artifacts

@@ -85,6 +85,26 @@ def test_required_aggregate_version_for_ordering_kinds() -> None:
         )
 
 
+def test_projection_requires_aggregate_version_when_aggregate_scoped() -> None:
+    with pytest.raises(EnvelopeValidationError, match="aggregate_version"):
+        EventEnvelope(
+            event_id=EVENT_ID,
+            event_type="tracking.projection.timeline_row",
+            event_version=1,
+            occurred_at=OCCURRED_AT,
+            producer="tracking",
+            message_kind=MessageKind.PROJECTION,
+            aggregate_scope=AggregateScope.AGGREGATE,
+            aggregate_type="shipment",
+            aggregate_id=AGGREGATE_ID,
+            aggregate_version=None,
+            correlation_id=CORRELATION_ID,
+            data_classification=DataClassification.INTERNAL,
+            pii_present=False,
+            payload={},
+        )
+
+
 def test_reply_without_aggregate_version_allowed() -> None:
     envelope = EventEnvelope(
         event_id=EVENT_ID,

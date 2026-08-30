@@ -260,27 +260,46 @@ Scores: **Low** / **Med** / **High** (qualitative — **proposal**, not measured
 
 ## Decision
 
-**[proposal] Recommended strategy (status remains Proposed):**
+**[proposal] Recommended strategy (status remains Proposed — implementation blocked):**
 
-Adopt **O5 — narrowly scoped hybrid**, with **Phase 1 default capture = O3 (proven monotonic polling)** via a platform **Legacy Event Bridge** deployable:
+Adopt **O5 — narrowly scoped hybrid**, with **O3 (proven monotonic polling) as a candidate
+capture mechanism** pending completeness proof for each stream. Polling is **not** the Phase 1
+default until a safe monotonic cursor is verified for every relevant write path.
 
 1. **Read-only** legacy PostgreSQL role scoped to `SELECT` on approved capture tables only.
-2. **Durable bridge cursor store** in platform-owned DB (not legacy) recording per-stream `(table, occurred_at|created_at, id)` high-water mark.
+   This is a **narrow, transitional, least-privilege exception** to the steady-state
+   no-cross-service-database-access rule. It is observable, auditable, write-prohibited, and
+   must retire at the ADR-0006 credential-revocation gate for the bridged cluster.
+2. **Durable bridge cursor store** in platform-owned DB (not legacy) recording per-stream
+   `(table, occurred_at|created_at, id)` high-water mark.
 3. **Publish** ADR-0002 envelopes to JetStream with:
    - `producer`: `legacy_bridge` **[proposal]**
-   - `metadata.source_module`, `metadata.source_table`, `metadata.source_pk`, `metadata.source_position` **[proposal]**
+   - `metadata.source_module`, `metadata.source_table`, `metadata.source_pk`,
+     `metadata.source_position` **[proposal]**
    - `metadata.replay` / `metadata.replay_source` when applicable
    - Deterministic `event_id` = UUIDv5(namespace, `{table}:{pk}:{position}`) **[proposal]**
-4. **Pre-HWM / post-HWM:** Align with ADR-0006 stage 3 — record bridge cursor at HWM **before or atomically with** consumer backfill snapshot; continuous polling guarantees post-HWM rows reach JetStream before consumer cutover.
-5. **Retire** bridge stream when ADR-0006 stage 13 completes for that fact class; native service outbox becomes sole publisher.
+     using immutable source coordinates; `event_id` is distinct from cursor/position and
+     replay of the same source row MUST reproduce the same `event_id`.
+4. **Pre-HWM / post-HWM:** Align with ADR-0006 stage 3 — record bridge cursor at HWM **before
+   or atomically with** consumer backfill snapshot; continuous capture must guarantee post-HWM
+   rows reach JetStream before consumer cutover **once a mechanism is proven**.
+5. **Retire** bridge stream when ADR-0006 stage 13 completes for that fact class; native
+   service outbox becomes sole publisher.
 
-**Phase 2 escalation (unresolved):** Add **O2 CDC** for table clusters where polling lag or completeness proof fails (hot mutable tables, hard deletes, non-event status paths).
+**Phase 2 escalation (unresolved):** Add **O2 CDC** for table clusters where polling lag or
+completeness proof fails (hot mutable tables, hard deletes, non-event status paths). **O1 legacy
+transactional outbox** remains viable when legacy mutation is explicitly authorized — it is
+outside this evidence task, not permanently forbidden.
 
-**Explicitly not selected as Phase 1 default:**
+**Explicitly not selected without completeness proof:**
 
+- **O3 polling as Phase 1 default** — legacy evidence reports UUID PKs and timestamps but does
+  not yet prove a monotonic, gap-free source position for every relevant write.
+- **`updated_at` or `occurred_at` alone** as a universally safe high-water mark — vulnerable to
+  late inserts, equal timestamps, clock skew, hard deletes, transaction visibility lag, and
+  incomplete multi-writer coverage.
 - **O1** — requires legacy mutation (forbidden without separate authorization).
 - **O4** — insufficient durability for ADR-0006.
-- **`updated_at`-only polling** on `shipments` — forbidden unless completeness proven (not evidenced).
 
 **[decision boundary] Forbidden regardless of option:**
 

@@ -15,6 +15,8 @@ from event_envelope.errors import (
 from event_envelope.limits import DEFAULT_ENVELOPE_LIMITS, EnvelopeLimits
 from event_envelope.media_refs import MediaRef
 from event_envelope.serde import (
+    CONSUMER_SERDE_POLICY,
+    PRODUCER_SERDE_POLICY,
     EnvelopeSerdePolicy,
     deserialize_envelope,
     envelope_to_json_dict,
@@ -32,6 +34,8 @@ __all__ = [
     "EnvelopeCompatibility",
     "EnvelopeLimits",
     "EnvelopeMetadata",
+    "CONSUMER_SERDE_POLICY",
+    "PRODUCER_SERDE_POLICY",
     "EnvelopeSerdePolicy",
     "EnvelopeValidationError",
     "EventEnvelope",

@@ -42,11 +42,21 @@ streams:
     max_age: 7d
     description: Delivery bounded-context operational events
 
+  - name: HUDHUD_FINANCE
+    subjects:
+      - hudhud.finance.>
+    max_age: 30d
+    description: >
+      Finance bounded-context financial posting and settlement facts (ADR-0005).
+      Finance owns authoritative posting; Wallet consumes Finance-authorized facts only.
+
   - name: HUDHUD_WALLET
     subjects:
       - hudhud.wallet.>
     max_age: 30d
-    description: Wallet/COD operational events (provisional retention)
+    description: >
+      Wallet projection transport only — merchant payable updates authorized by Finance.
+      Delivery never publishes here; Wallet is not financial authority.
 
   - name: HUDHUD_NOTIFICATION
     subjects:

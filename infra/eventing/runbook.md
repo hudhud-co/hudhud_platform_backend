@@ -9,7 +9,11 @@ Infrastructure only — no domain subjects, outbox/inbox tables, or application 
 - **Not HA/quorum** — host loss stops availability until recovery; no R1→R3 upgrade without maintenance.
 - **Not legal/accounting audit storage** — `HUDHUD_AUDIT` is a bounded transport window only; the Audit bounded context owns long-term retention.
 - **At-least-once transport** — exactly-once is not claimed.
-- **Local-dev credentials** — auth disabled by default; production credentials require ADR-0004.
+- **Local-dev credentials** — `NATS_AUTH_ENABLED=false` is an explicit **development-only**
+  configuration in `config/defaults.env.example`. It does **not** mean production NATS
+  authentication is approved or blocked solely by ADR-0004.
+- Production requires per-service credentials, subject ACLs, TLS/secret management, and
+  ADR-0004 service-identity decisions — all **unresolved** in this foundation scope.
 
 ## Layout
 
@@ -76,7 +80,8 @@ Foundation labels on the `nats` service: `hudhud.jetstream.replicas=1`, `hudhud.
 | `HUDHUD_HUB` | `hudhud.hub.>` | 7d |
 | `HUDHUD_LINEHAUL` | `hudhud.linehaul.>` | 7d |
 | `HUDHUD_DELIVERY` | `hudhud.delivery.>` | 7d |
-| `HUDHUD_WALLET` | `hudhud.wallet.>` | 30d |
+| `HUDHUD_FINANCE` | `hudhud.finance.>` | 30d |
+| `HUDHUD_WALLET` | `hudhud.wallet.>` | 30d (Finance-authorized projection transport only) |
 | `HUDHUD_NOTIFICATION` | `hudhud.notification.>` | 3d |
 | `HUDHUD_AUDIT` | `hudhud.audit.>` | 365d (transport only) |
 | `HUDHUD_DLQ` | `hudhud.dlq.>` | 30d |
@@ -100,6 +105,8 @@ Example durables (foundation templates):
 | `shipment_pickup_facts_v1` | `HUDHUD_PICKUP` | `hudhud.pickup.pickup.fact.>` |
 | `tracking_lifecycle_v1` | `HUDHUD_SHIPMENT` | `hudhud.shipment.shipment.fact.>` |
 | `finance_cod_collected_v1` | `HUDHUD_DELIVERY` | `hudhud.delivery.delivery.fact.cod_collected.v1` |
+| `finance_shipment_delivered_v1` | `HUDHUD_SHIPMENT` | `hudhud.shipment.shipment.fact.delivered.v1` |
+| `wallet_merchant_payable_v1` | `HUDHUD_FINANCE` | `hudhud.finance.finance.fact.merchant_payable_recognized.v1` |
 | `notification_lifecycle_v1` | `HUDHUD_SHIPMENT` | `hudhud.shipment.>` |
 
 Pull consumer defaults (provisional): `AckWait=30s`, `MaxDeliver=5`, backoff `[5s,30s,2m,10m,30m]`, `DuplicateWindow=2m`.

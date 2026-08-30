@@ -10,6 +10,7 @@ REQUIRED_STREAMS = {
     "HUDHUD_HUB",
     "HUDHUD_LINEHAUL",
     "HUDHUD_DELIVERY",
+    "HUDHUD_FINANCE",
     "HUDHUD_WALLET",
     "HUDHUD_NOTIFICATION",
     "HUDHUD_AUDIT",
@@ -108,6 +109,36 @@ def test_bootstrap_script_exists_and_is_idempotent_by_design() -> None:
     assert "ensure_stream" in source
     assert "ensure_consumer" in source
     assert "NotFoundError" in source
+
+
+def test_jetstream_max_msg_size_coherent_with_envelope_hard_limit() -> None:
+    doc = load_topology_yaml("streams.yaml")
+    max_msg_size = int(doc["defaults"]["max_msg_size_bytes"])
+    provisional_envelope_hard_limit = 256 * 1024
+    assert max_msg_size >= provisional_envelope_hard_limit
+
+
+def test_subject_grammar_document_exists() -> None:
+    grammar = EVENTING_ROOT / "subject-grammar.md"
+    text = grammar.read_text(encoding="utf-8")
+    assert "hudhud.{producer}.{event_type}.v{event_version}" in text
+    assert "provisional" in text.lower()
+
+
+def test_finance_stream_exists_wallet_is_projection_only() -> None:
+    doc = load_topology_yaml("streams.yaml")
+    finance = next(item for item in doc["streams"] if item["name"] == "HUDHUD_FINANCE")
+    wallet = next(item for item in doc["streams"] if item["name"] == "HUDHUD_WALLET")
+    assert "finance" in finance["subjects"][0]
+    assert "projection" in wallet["description"].lower()
+    assert "not financial authority" in wallet["description"].lower()
+
+
+def test_no_delivery_to_wallet_authority_path() -> None:
+    doc = load_topology_yaml("consumers.yaml")
+    for entry in doc["consumers"]:
+        assert entry["stream"] != "HUDHUD_WALLET"
+        assert not entry["filter_subject"].startswith("hudhud.wallet.")
 
 
 def test_runbook_states_not_ha_and_not_audit_store() -> None:
