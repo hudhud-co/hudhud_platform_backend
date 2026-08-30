@@ -3,6 +3,36 @@ description: >
   Bounded context boundaries for HUDHUD platform. Distinguishes target domain semantics
   from transitional deployable groupings. Deployable count is NOT fixed here — it is
   determined separately by team size, infrastructure, migration risk, and operational cost.
+  Wave 1 ADR integration (2026-08-30): ADR-0001 Accepted (staged deployables, consumer-first);
+  ADR-0002 Accepted (eventing); ADR-0003 Accepted (shipment sole writer); ADR-0004 Proposed
+  (identity partial); ADR-0005 Proposed — Policy Blocked (finance); ADR-0006 Accepted (cutover).
+
+wave_1_extraction_direction:
+  adr: ADR-0001
+  status: accepted
+  principle: low_risk_consumer_first
+  provisional_initial_runtime_count: "3-5 (capacity/team dependent — not architectural fact)"
+  hub_linehaul_separate: true
+
+adr_index:
+  ADR-0001:
+    title: Transitional deployables and extraction order
+    status: Accepted
+  ADR-0002:
+    title: Event envelope, outbox/inbox, and JetStream
+    status: Accepted
+  ADR-0003:
+    title: Shipment lifecycle authority
+    status: Accepted
+  ADR-0004:
+    title: Identity, Gateway, and service trust
+    status: Proposed
+  ADR-0005:
+    title: COD, wallet, ledger, and settlement
+    status: Proposed — Policy Blocked
+  ADR-0006:
+    title: One-writer data cutover
+    status: Accepted
 
 bounded_contexts:
 
@@ -10,10 +40,12 @@ bounded_contexts:
     display_name: Auth and Identity
     legacy_owner: auth
     legacy_module_path: app/modules/auth
-    proposed_platform_owner: undecided
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
-    policy_prerequisites: []
+    proposed_platform_owner: auth_identity
+    adr_reference: ADR-0004
+    adr_status: Proposed
+    transitional_deployable_candidate: deferred_wave_5
+    extraction_status: pending_identity_adr
+    policy_prerequisites: [customer_identity_boundary_adr, organization_model_adr]
     data_ownership:
       strategy: undecided
       legacy_tables: [users, user_sessions, otp_requests, roles, permissions, legal_documents]
@@ -28,9 +60,11 @@ bounded_contexts:
     legacy_owner: auth
     legacy_module_path: partial — no standalone module; spread across auth, address_book, send_parcel, tracking, support
     proposed_platform_owner: undecided
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
-    policy_prerequisites: [customer_identity_boundary_adr]
+    adr_reference: ADR-0004
+    adr_status: Proposed
+    transitional_deployable_candidate: blocked_pending_adr_0004
+    extraction_status: policy_blocked
+    policy_prerequisites: [customer_identity_boundary_adr, organization_model_adr]
     data_ownership:
       strategy: undecided
       legacy_tables: partial — profile fields in auth tables
@@ -143,17 +177,19 @@ bounded_contexts:
     legacy_owner: shipment
     legacy_module_path: app/modules/shipment
     proposed_platform_owner: shipment
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
+    adr_reference: ADR-0003
+    adr_status: Accepted
+    transitional_deployable_candidate: deferred_wave_3
+    extraction_status: pending_cutover
     policy_prerequisites: [shipment_sole_lifecycle_writer]
     data_ownership:
       strategy: dedicated_database
       legacy_tables: [shipments, shipment_events, delivery_evidence_attachments]
-      notes: Platform invariant — sole canonical writer of shipment lifecycle state
+      notes: Platform invariant — sole canonical writer of shipment lifecycle state (ADR-0003)
     allowed_dependencies: []
     public_api_ownership: shipment
-    published_events: [shipment.lifecycle.changed]
-    consumed_events: [pickup.fact.accepted, hub.fact.inbound, linehaul.fact.dispatched, linehaul.fact.arrived, delivery.command.complete]
+    published_events: [shipment.fact.delivered, shipment.fact.lifecycle_changed]
+    consumed_events: [pickup.fact.accepted, hub.fact.inbound, linehaul.fact.dispatched, linehaul.fact.arrived, delivery.fact.task_completed]
 
   pickup:
     display_name: Pickup
@@ -211,16 +247,18 @@ bounded_contexts:
     legacy_owner: delivery_task
     legacy_module_path: app/modules/delivery, app/modules/delivery_task
     proposed_platform_owner: delivery
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
+    adr_reference: ADR-0003
+    adr_status: Accepted
+    transitional_deployable_candidate: deferred_wave_4
+    extraction_status: pending_cutover
     policy_prerequisites: [shipment_sole_lifecycle_writer, physical_delivery_irreversible]
     data_ownership:
       strategy: dedicated_database
       legacy_tables: [delivery_tasks, delivery_cod_collections, delivery_evidence]
-      notes: Physical delivery is irreversible operational fact
+      notes: Physical delivery irreversible; publishes DeliveryCompleted and CodCollected — no direct Wallet write
     allowed_dependencies: [shipment]
     public_api_ownership: delivery
-    published_events: [delivery.fact.completed, delivery.fact.failed, delivery.fact.cod_collected]
+    published_events: [delivery.fact.task_completed, delivery.fact.task_failed, delivery.fact.cod_collected]
     consumed_events: []
 
   tracking:
@@ -260,35 +298,39 @@ bounded_contexts:
     display_name: Wallet and COD
     legacy_owner: wallet
     legacy_module_path: app/modules/wallet
-    proposed_platform_owner: undecided
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
-    policy_prerequisites: [cod_wallet_separation]
+    proposed_platform_owner: wallet_cod
+    adr_reference: ADR-0005
+    adr_status: Proposed — Policy Blocked
+    transitional_deployable_candidate: deferred_wave_6
+    extraction_status: policy_blocked
+    policy_prerequisites: [cod_wallet_separation, double_entry_ledger_adr, settlement_policy_adr]
     data_ownership:
-      strategy: undecided
+      strategy: dedicated_database
       legacy_tables: [wallet_accounts, wallet_ledger_entries, payout_requests]
-      notes: COD collection in delivery_task is separate fact from wallet credit
-    allowed_dependencies: []
-    public_api_ownership: undecided
-    published_events: [wallet.fact.cod_credited]
-    consumed_events: [delivery.fact.cod_collected]
+      notes: Merchant payable projection from Finance — not written directly by Delivery (ADR-0005)
+    allowed_dependencies: [finance_settlement]
+    public_api_ownership: wallet_cod
+    published_events: []
+    consumed_events: [finance.fact.posting_completed]
 
   finance_settlement:
     display_name: Finance and Settlement
     legacy_owner: missing
     legacy_module_path: none
     proposed_platform_owner: finance
+    adr_reference: ADR-0005
+    adr_status: Proposed — Policy Blocked
     transitional_deployable_candidate: policy_blocked
     extraction_status: not_started
     policy_prerequisites: [double_entry_ledger_adr, settlement_policy_adr]
     data_ownership:
       strategy: dedicated_database
       legacy_tables: []
-      notes: policy-blocked in legacy Phase 1 — platform will use double-entry ledger
-    allowed_dependencies: [wallet_cod, delivery]
+      notes: Accounting authority; consumes CodCollected and ShipmentDelivered; policy-blocked
+    allowed_dependencies: [delivery]
     public_api_ownership: finance
-    published_events: []
-    consumed_events: [delivery.fact.cod_collected, wallet.fact.cod_credited]
+    published_events: [finance.fact.posting_completed, finance.fact.merchant_payable_recognized]
+    consumed_events: [delivery.fact.cod_collected, shipment.fact.delivered]
 
   notification:
     display_name: Notification
@@ -343,14 +385,16 @@ bounded_contexts:
     display_name: Audit
     legacy_owner: audit
     legacy_module_path: app/modules/audit
-    proposed_platform_owner: undecided
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
+    proposed_platform_owner: audit
+    adr_reference: ADR-0002
+    adr_status: Accepted
+    transitional_deployable_candidate: platform_edge_p1
+    extraction_status: pending_wave_1
     policy_prerequisites: []
     data_ownership:
-      strategy: undecided
+      strategy: dedicated_database
       legacy_tables: [audit_logs]
-      notes: Cross-cutting append-only — may remain shared or per-service outbox emission
+      notes: Long-term searchable audit retention owner — JetStream is transport only (ADR-0002)
     allowed_dependencies: []
     public_api_ownership: undecided
     published_events: []
@@ -361,8 +405,10 @@ bounded_contexts:
     legacy_owner: n/a
     legacy_module_path: n/a — new platform component
     proposed_platform_owner: gateway
-    transitional_deployable_candidate: gateway
-    extraction_status: not_started
+    adr_reference: ADR-0004
+    adr_status: Proposed
+    transitional_deployable_candidate: platform_edge_p1
+    extraction_status: pending_wave_0
     policy_prerequisites: [no_gateway_business_orchestration]
     data_ownership:
       strategy: none
@@ -386,6 +432,7 @@ shared_packages:
     - repositories
     - business_logic
     - alembic_migrations
+  adr_reference: ADR-0002
 
 legacy_reference:
   repository: hudhud-backend

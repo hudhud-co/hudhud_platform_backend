@@ -3,11 +3,23 @@ description: >
   Data and API ownership matrix. Maps bounded contexts to write/read responsibilities.
   "Writer" means canonical owner of mutable state; "Reader" means allowed read projection
   or query via API/events only.
+  Wave 1 ADR integration: shipment sole writer (ADR-0003); eventing (ADR-0002); one-writer
+  cutover (ADR-0006); finance policy-blocked (ADR-0005); identity partial (ADR-0004).
+
+adr_references:
+  shipment_sole_writer: ADR-0003
+  eventing: ADR-0002
+  data_cutover: ADR-0006
+  identity_trust: ADR-0004
+  finance_settlement: ADR-0005
+  deployables: ADR-0001
 
 ownership:
 
   auth_identity:
     canonical_writer: auth_identity
+    adr_reference: ADR-0004
+    adr_status: Proposed
     readers: [customer, merchant_store, pickup, delivery, gateway]
     api_owner: auth_identity
     event_publisher: auth_identity
@@ -15,6 +27,8 @@ ownership:
 
   customer:
     canonical_writer: undecided
+    adr_reference: ADR-0004
+    adr_status: Proposed
     readers: [send_parcel, tracking, support_claims]
     api_owner: undecided
     event_publisher: undecided
@@ -64,7 +78,9 @@ ownership:
 
   shipment:
     canonical_writer: shipment
-    readers: [tracking, control_tower, pickup, hub, linehaul, delivery, notification]
+    adr_reference: ADR-0003
+    adr_status: Accepted
+    readers: [tracking, control_tower, pickup, hub, linehaul, delivery, notification, finance_settlement]
     api_owner: shipment
     event_publisher: shipment
     database_owner: shipment
@@ -104,16 +120,21 @@ ownership:
 
   delivery:
     canonical_writer: delivery
-    readers: [shipment, wallet_cod, finance_settlement]
+    adr_reference: ADR-0003
+    adr_status: Accepted
+    readers: [shipment, finance_settlement]
     api_owner: delivery
     event_publisher: delivery
     database_owner: delivery
     writes_to_other_contexts:
       legacy_violation: shipment.status
-      platform_replacement: publish delivery.fact.* events and delivery.command.*
+      platform_replacement: publish delivery.fact.task_completed and delivery.fact.cod_collected
     separate_facts:
       - cod_collection_record
       - physical_delivery_completion
+    forbidden_writes:
+      - wallet_cod.direct_credit
+      - shipment.lifecycle_direct_mutation
 
   tracking:
     canonical_writer: none
@@ -133,20 +154,30 @@ ownership:
 
   wallet_cod:
     canonical_writer: wallet_cod
+    adr_reference: ADR-0005
+    adr_status: Proposed — Policy Blocked
     readers: [finance_settlement, merchant_store]
     api_owner: wallet_cod
     event_publisher: wallet_cod
     database_owner: wallet_cod
+    notes: Projection of Finance-authorized merchant payable — not written by Delivery
     separate_facts:
-      - cod_collection_vs_wallet_credit
+      - finance_authorized_projection_only
 
   finance_settlement:
     canonical_writer: finance_settlement
-    readers: [merchant_store]
+    adr_reference: ADR-0005
+    adr_status: Proposed — Policy Blocked
+    readers: [merchant_store, wallet_cod]
     api_owner: finance_settlement
     event_publisher: finance_settlement
     database_owner: finance_settlement
     status: policy_blocked
+    consumed_events:
+      - delivery.fact.cod_collected
+      - shipment.fact.delivered
+    publishes_to:
+      - wallet_cod.projection
 
   notification:
     canonical_writer: notification
@@ -189,11 +220,23 @@ ownership:
 cross_cutting_rules:
   - name: shipment_lifecycle
     rule: Only shipment context writes canonical shipment lifecycle state
+    adr: ADR-0003
   - name: physical_delivery
     rule: Delivery completion is irreversible; finance failures do not roll back
+    adr: ADR-0003
   - name: cod_accounting
-    rule: COD collection and wallet credit are separate accounting facts
+    rule: COD collection (Delivery) and merchant payable (Finance) are separate; Wallet is Finance projection
+    adr: ADR-0005
+  - name: eventing
+    rule: At-least-once JetStream with per-service durable consumers and idempotent inbox
+    adr: ADR-0002
+  - name: data_cutover
+    rule: One-writer cutover; no bidirectional dual-write; credential revocation mandatory
+    adr: ADR-0006
   - name: cross_service_fk
     rule: Forbidden — use IDs and events instead
   - name: legacy_dependency
     rule: hudhud-backend is never a runtime dependency
+  - name: extraction_order
+    rule: Low-risk consumer-first extraction; Hub and Linehaul remain separate
+    adr: ADR-0001

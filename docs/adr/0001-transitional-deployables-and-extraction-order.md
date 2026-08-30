@@ -1,8 +1,8 @@
 # ADR-0001: Transitional Deployables and Extraction Order
 
-- **Status:** proposed
+- **Status:** Accepted
 - **Date:** 2026-08-30
-- **Deciders:** (pending — platform architecture review)
+- **Deciders:** platform architecture review (Wave 1 integration)
 
 Statement classes used throughout: **evidence**, **proposal**, **decision**, **assumption**,
 **unresolved policy**. A suggested deployable count is **not** an architectural fact.
@@ -158,7 +158,7 @@ Ranked by dominance for this ADR:
 
 | Summary | Trade-offs |
 |---------|------------|
-| First wave: Audit, Notification, Tracking/Control Tower projections, Media/Proof consumers. Defer Shipment, Pickup, Hub, Linehaul, Delivery, Finance until messaging and identity exist. | **Pros:** Smallest write-ownership conflict; exercises NATS/outbox/inbox; read projections need not block on shipment DB cutover if fed by events (**proposal**). **Cons:** Projections still need event contracts (ADR-0003); Notification currently triggered in-process from shipment lifecycle in legacy. **Verdict:** **Proposed** as Wave 1 sequencing within Option C. |
+| First wave: Audit, Notification, Tracking/Control Tower projections, Media/Proof consumers. Defer Shipment, Pickup, Hub, Linehaul, Delivery, Finance until messaging and identity exist. | **Pros:** Smallest write-ownership conflict; exercises NATS/outbox/inbox; read projections need not block on shipment DB cutover if fed by events (**proposal**). **Cons:** Projections still need event contracts (ADR-0002); Notification currently triggered in-process from shipment lifecycle in legacy. **Verdict:** **Proposed** as Wave 1 sequencing within Option C. |
 
 ## Comparative decision matrix
 
@@ -220,14 +220,14 @@ co-ownership.
 | Inner contexts | Rationale | Exit criteria |
 |----------------|-----------|---------------|
 | `pickup`, `delivery` | High mobile/field coupling; legacy cross-calls | Split when driver apps/API SLAs differ or failure isolation required |
-| Depends on Shipment authority (ADR-0006) | Legacy direct status mutation must end before cutover | Pickup/Delivery publish facts only |
+| Depends on Shipment authority (ADR-0003) | Legacy direct status mutation must end before cutover | Pickup/Delivery publish facts only |
 
 ### Plateau P6 — Core Authority (deferred — not first wave)
 
 | Inner contexts | Why deferred |
 |----------------|--------------|
 | `shipment` | Central lifecycle authority; multi-writer legacy; highest reconciliation risk — **not chosen because “central” alone** |
-| `auth_identity` | Identity/trust model unresolved (ADR-0005); gateway dependency |
+| `auth_identity` | Identity/trust model unresolved (ADR-0004); gateway dependency |
 | `wallet_cod`, `finance_settlement` | Finance **policy-blocked**; COD/wallet same-transaction as delivery in legacy |
 
 **Proposal:** Target steady-state remains **one deployable per bounded context**; plateaus P1–P5
@@ -251,9 +251,9 @@ are capacity- and risk-driven shortcuts, not the architectural end state.
 | Legacy (today) | Single Postgres; multi-writer shipment | **Evidence:** `legacy-data-ownership-inventory.md` |
 | Wave 1 consumers | Own tables where applicable; consume events | Audit, Notification — no shipment status writes |
 | Wave 2+ commerce | One-writer per table cluster on cutover | Order, Address Book FKs become ID references across services |
-| Shipment cutover | **Only** `shipment` writes `shipments.status` | Pickup/Hub/Linehaul/Delivery publish facts (**requires ADR-0006**) |
+| Shipment cutover | **Only** `shipment` writes `shipments.status` | Pickup/Hub/Linehaul/Delivery publish facts (**requires ADR-0003** authority and **ADR-0006** cutover protocol) |
 | Delivery cutover | Irreversible physical delivery fact | Finance failure must not roll back (**invariant**) |
-| Finance | Blocked until ADR-0004 | No double-entry ledger in legacy |
+| Finance | Blocked until ADR-0005 | No double-entry ledger in legacy |
 
 Cross-service FKs forbidden post-extraction (`architecture/invariants.md`). Legacy FK graph
 (documented in audit) drives migration ordering: Merchant and Address Book before Order/Shipment
@@ -315,7 +315,7 @@ flowchart TD
   SHP --> HUB
   SHP --> LH
   SHP --> DEL
-  ADR0006[ADR-0006 Shipment authority] --> SHP
+  ADR0003[ADR-0003 Shipment authority] --> SHP
 
   AB --> ORD
   MER --> ORD
@@ -327,15 +327,15 @@ flowchart TD
   CT --> SHP
 
   DEL --> WAL
-  ADR0005[ADR-0005 Identity trust] --> AUTH
+  ADR0004[ADR-0004 Identity trust] --> AUTH
   AUTH --> GW
 
   WAL --> FIN
-  ADR0004[ADR-0004 Finance policy] --> FIN
+  ADR0005[ADR-0005 Finance policy] --> FIN
 
-  ADR0003[ADR-0003 Eventing] --> NATS
-  ADR0002[ADR-0002 Data cutover] --> SHP
-  ADR0002 --> wave2
+  ADR0002[ADR-0002 Eventing] --> NATS
+  ADR0006[ADR-0006 Data cutover] --> SHP
+  ADR0006 --> wave2
 ```
 
 Text equivalent: Infrastructure (NATS, Gateway shell, observability) precedes all extraction.
@@ -343,25 +343,29 @@ Low-risk consumers depend on event contracts only. Commerce contexts precede Shi
 cutover because legacy Send Parcel creates Order + Shipment together. Shipment authority
 precedes Pickup, Hub, Linehaul, and Delivery fact-only migration. Identity/Gateway full
 cutover precedes field-scale traffic switching. Finance follows Wallet/Delivery fact
-separation and ADR-0004.
+separation and ADR-0005.
+
+**Policy gaps block only affected extraction work**, not the entire migration program.
+Finance policy (ADR-0005) blocks Finance/Wallet settlement extraction only; Customer/Organization
+policy (ADR-0004) blocks Customer bootstrap only.
 
 ## Proposed migration waves
 
 | Wave | Contexts | Type | Primary risk | Prerequisites |
 |------|----------|------|--------------|---------------|
-| 0 | NATS, Gateway skeleton, observability | Infra | Greenfield ops | ADR-0003 (eventing topology) |
+| 0 | NATS, Gateway skeleton, observability | Infra | Greenfield ops | ADR-0002 (eventing topology) |
 | 1 | Audit, Notification, Tracking, Control Tower, Media/Proof | Low-risk consumers / projections | Event contract gaps | Wave 0; shipment events may initially bridge from legacy |
-| 2 | Address Book, Merchant, Order, Serviceability, Pricing, Send Parcel | Commerce transitional (P3) | FK severing; orchestration | ADR-0002 cutover patterns; partial Customer policy |
-| 3 | Shipment | Authoritative writer | Multi-writer reconciliation | ADR-0006; ADR-0002; Wave 2 stable IDs |
+| 2 | Address Book, Merchant, Order, Serviceability, Pricing, Send Parcel | Commerce transitional (P3) | FK severing; orchestration | ADR-0006 cutover patterns; partial Customer policy (ADR-0004) |
+| 3 | Shipment | Authoritative writer | Multi-writer reconciliation | ADR-0003; ADR-0006; Wave 2 stable IDs |
 | 4 | Pickup, Hub, Linehaul, Delivery | Field/network ops | Legacy status mutation removal | Wave 3; Hub ≠ Linehaul packages |
-| 5 | Auth/Identity, Gateway traffic | Identity | Session/JWT trust boundary | ADR-0005 |
+| 5 | Auth/Identity, Gateway traffic | Identity | Session/JWT trust boundary | ADR-0004 |
 | 6 | Wallet/COD | Financial facts (not settlement) | Same-transaction legacy coupling | Delivery fact separation |
-| 7 | Finance/Settlement | Policy-blocked | Accounting policy | ADR-0004; double-entry ADR |
+| 7 | Finance/Settlement | Policy-blocked | Accounting policy | ADR-0005; double-entry ADR |
 
 **Explicit non-actions (proposal):**
 
 - Do **not** extract Shipment in Wave 1 merely because it is central — wait until
-  fact-only boundaries and ADR-0006 are accepted.
+  fact-only boundaries (ADR-0003) and cutover protocol (ADR-0006) are accepted.
 - Do **not** extract Finance until policy ADRs resolve — manifest marks `policy_blocked`.
 - Do **not** merge Hub and Linehaul ownership — grouping allowed only with exit criteria.
 
@@ -378,19 +382,25 @@ separation and ADR-0004.
 
 ## Decision
 
-**Status remains `proposed`.** No deciders named; implementation of deployable grouping is
-**not** authorized.
+**Status: Accepted.** The accepted decision is staged transitional deployables and
+low-risk consumer-first extraction. The exact runtime count and grouping (3–5 initial
+runtimes) remains **provisional and capacity/team dependent** — not an architectural fact.
 
-**Proposed recommendation (not accepted):**
+**Accepted decision:**
 
 Adopt **Option C + Option D**: staged transitional deployables (plateaus P1–P5) with
 **Wave 0–7 sequencing**, preserving all target bounded contexts in
 `architecture/service-boundaries.yaml`, extracting **low-risk consumers first**, deferring
-**Shipment** until ADR-0006 and **Finance** until ADR-0004, and enforcing **Hub ≠ Linehaul**
-semantic boundaries even if temporarily co-deployed.
+**Shipment** until ADR-0003 and ADR-0006 are accepted, deferring **Finance** until ADR-0005
+policy resolves, and enforcing **Hub ≠ Linehaul** semantic boundaries even if temporarily
+co-deployed.
 
-Suggested initial deployable count for first production plateau: **3–5 runtimes** (**proposal** —
-exact number requires capacity testing and team sign-off).
+Suggested initial deployable count for first production plateau: **3–5 runtimes**
+(**provisional default** — exact number requires capacity testing and team sign-off).
+
+**Implementation gate:** Compose profiles, service bootstrap, and manifest
+`transitional_deployable_candidate` field updates require capacity evidence and named
+operational sign-off. Acceptance does not authorize immediate service implementation.
 
 ## Consequences
 
@@ -416,7 +426,7 @@ exact number requires capacity testing and team sign-off).
 ## Migration impact
 
 - **Schema:** Per-context Alembic when extracted; legacy 78-revision chain split by ownership
-  evidence in audits — exact split map deferred to ADR-0002 and per-context cutover plans.
+  evidence in audits — exact split map deferred to ADR-0006 and per-context cutover plans.
 - **Cutover:** One-writer per table cluster; credential revocation mandatory
   (`architecture/invariants.md`).
 - **Compatibility:** Event bridges during transition must be idempotent; no bidirectional
@@ -443,7 +453,7 @@ Required before Wave 1 production traffic (**proposal**):
 | Area | Impact |
 |------|--------|
 | Credentials | Per-service DB roles on cutover; no cross-service DB URLs (`AGENTS.md`) |
-| Service identity | Explicit service credentials / mTLS — ADR-0005; no trust of `X-User-Id` headers |
+| Service identity | Explicit service credentials / mTLS — ADR-0004; no trust of `X-User-Id` headers |
 | Gateway | Must not orchestrate business logic (`architecture/invariants.md`) |
 | Finance | Policy-blocked — no premature exposure of settlement APIs |
 | Media/Proof | MinIO bucket scoping per context; evidence ADR pending |
@@ -476,13 +486,13 @@ Credential revocation is a one-way gate — rollback requires explicit forward r
 
 ## Dependencies on other ADRs
 
-| ADR | Expected topic (parallel workstream) | This ADR depends because |
-|-----|--------------------------------------|--------------------------|
-| ADR-0002 | Data cutover / one-writer extraction mechanics (`w1-adr-data-cutover`) | Every wave after Wave 1 requires cutover stages, HWM, credential revocation |
-| ADR-0003 | Eventing / NATS JetStream topology (`w1-adr-eventing`) | Wave 0 and consumer-first sequencing require subject taxonomy, envelope, outbox/inbox |
-| ADR-0004 | Finance and settlement policy (`w1-adr-finance`) | Wave 7 blocked; Wallet/COD separation rules |
-| ADR-0005 | Identity and service-to-service trust (`w1-adr-identity-trust`) | Gateway + Auth extraction; no header-trust anti-pattern |
-| ADR-0006 | Shipment sole lifecycle writer authority (`w1-adr-shipment-authority`) | Wave 3; Pickup/Hub/Linehaul/Delivery fact migration |
+| ADR | Topic | This ADR depends because |
+|-----|-------|--------------------------|
+| ADR-0002 | Event envelope, outbox/inbox, JetStream (`w1-adr-eventing`) | Wave 0 and consumer-first sequencing require subject taxonomy, envelope, outbox/inbox |
+| ADR-0003 | Shipment sole lifecycle writer authority (`w1-adr-shipment-authority`) | Wave 3; Pickup/Hub/Linehaul/Delivery fact migration |
+| ADR-0004 | Identity and service-to-service trust (`w1-adr-identity-trust`) | Gateway + Auth extraction; no header-trust anti-pattern |
+| ADR-0005 | Finance and settlement policy (`w1-adr-finance`) | Wave 7 blocked; Wallet/COD separation rules |
+| ADR-0006 | One-writer data cutover (`w1-adr-data-cutover`) | Every wave after Wave 1 requires cutover stages, HWM, credential revocation |
 
 This ADR should be accepted **before** implementation scaffolding (`bootstrap-service`) but
 **after** reviewers confirm plateau exit criteria. Downstream ADRs may constrain wave ordering
@@ -494,7 +504,7 @@ within the bounds set here.
 - Service bootstrap and Dockerfiles (`services/` empty).
 - Event contract YAML in `contracts/`.
 - Updates to `architecture/service-boundaries.yaml` `transitional_deployable_candidate` fields
-  (requires **accepted** ADR).
+  (accepted ADR-0001 facts reflected in Wave 1 integration; per-context values remain provisional).
 - Finance, settlement, and double-entry ledger design.
 - Customer domain policy.
 - Production HA, multi-host, and backup automation.
@@ -523,15 +533,16 @@ within the bounds set here.
   @ `2e375057fdf9b9ce8416408a4436303be5301def`
 - Infrastructure principles: `infra/README.md`
 - Template: `docs/adr/0000-template.md`
-- Related ADRs (pending): ADR-0002 through ADR-0006
+- Related ADRs: ADR-0002 (eventing), ADR-0003 (shipment authority), ADR-0004 (identity/trust),
+  ADR-0005 (finance/settlement), ADR-0006 (data cutover)
 
 ---
 
 ```text
 ADR path: docs/adr/0001-transitional-deployables-and-extraction-order.md
-Status: proposed
-Deciders: (pending)
-Canonical docs updated: none
+Status: Accepted
+Deciders: platform architecture review (Wave 1 integration)
+Canonical docs updated: architecture/service-boundaries.yaml (Wave 1 integration)
 Unresolved questions: see section above
-Implementation allowed: no
+Implementation allowed: no — capacity and exit-criteria proof required per context
 ```

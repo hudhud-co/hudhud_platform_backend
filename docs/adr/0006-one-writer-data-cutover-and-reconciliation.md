@@ -1,10 +1,10 @@
 # ADR-0006: One-Writer Data Cutover, Reconciliation, and Credential Revocation
 
-- **Status:** proposed
+- **Status:** Accepted
 - **Date:** 2026-08-30
-- **Deciders:** (pending — platform architecture review)
+- **Deciders:** platform architecture review (Wave 1 integration)
 - **Workstream:** W1-F
-- **Implementation allowed:** no (pending acceptance and dependent ADRs)
+- **Implementation allowed:** no — accepted cutover protocol; replication tooling and per-context execution remain implementation gates
 
 Label key: **[evidence]** verified from repository or legacy audit; **[proposal]** recommended design not yet accepted; **[decision]** binding only after acceptance; **[assumption]** engineering default pending validation; **[unresolved policy]** requires named deciders.
 
@@ -38,7 +38,10 @@ Label key: **[evidence]** verified from repository or legacy audit; **[proposal]
 | ADR-0004 | Identity and service trust | Service credentials for cutover tooling; break-glass authorization |
 | ADR-0005 | Finance / settlement | COD/wallet table clusters; policy-blocked contexts excluded from first wave |
 
-**[assumption]** ADR-0001 through ADR-0005 may remain `proposed` when this ADR is accepted; cutover execution for a given context remains blocked until that context's writer, deployable boundary, and messaging contracts are accepted.
+**[assumption]** ADR-0001, ADR-0002, ADR-0003, and ADR-0006 are **Accepted** at Wave 1 integration.
+ADR-0004 and ADR-0005 remain **Proposed** / **Policy Blocked**. Cutover execution for a given
+context remains blocked until that context's writer, deployable boundary, and messaging contracts
+permit the target wave.
 
 ---
 
@@ -90,11 +93,19 @@ Label key: **[evidence]** verified from repository or legacy audit; **[proposal]
 
 ## Decision
 
-**[proposal] (not accepted):** Adopt **Option A — phased sixteen-stage state machine** as the mandatory cutover protocol for every datastore extraction from legacy to platform. Each extraction wave produces a **reusable evidence package** (template below) signed off before credential revocation.
+**[decision] Accepted:** Adopt **Option A — phased sixteen-stage state machine** as the mandatory
+cutover protocol for every datastore extraction from legacy to platform. Each extraction wave
+produces a **reusable evidence package** (template below) signed off before credential revocation.
 
-**One-writer rule:** At any instant, for any mutable row cluster, exactly one system holds **write authority**. Temporary compatibility MUST route writes as **commands to the current owner** (HTTP or message), never as direct dual writes to legacy and target databases.
+**One-writer rule:** At any instant, for any mutable row cluster, exactly one system holds **write
+authority**. Temporary compatibility MUST route writes as **commands to the current owner** (HTTP
+or message), never as direct dual writes to legacy and target databases.
 
 **Dual-write status:** bidirectional dual-write is **forbidden (confirmed)**.
+
+**Implementation gate:** Replication tooling, CDC infrastructure, and per-context cutover execution
+remain blocked until wave-specific prerequisites and capacity proof are satisfied. Acceptance does
+not authorize live cutover.
 
 ---
 
@@ -106,11 +117,11 @@ Each stage lists: **authoritative writer**, **evidence required**, **gate to pro
 |-------|------|---------------------|-----------------|-------------------|
 | 1 | Establish source and target ownership | Legacy DB (source); target schema owner TBD per service | Signed ownership matrix row; ADR acceptance for writer; table→service map | N/A — planning only |
 | 2 | Inventory tables, columns, keys, constraints, jobs, writers | Legacy | Inventory doc: PKs, FKs, indexes, triggers, workers, write paths (grep + migration refs); ambiguity register | Discard inventory — no data moved |
-| 3 | Define source high-water mark | Legacy | HWM record: mechanism (H1–H5), capture timestamp/LSN/cursor, scope per table; clock skew note | Re-capture HWM — no target writes yet |
+| 3 | Define source high-water mark **and begin post-HWM capture** | Legacy | HWM record: mechanism (H1–H5), capture timestamp/LSN/cursor, scope per table; **post-HWM capture started before or atomically with backfill snapshot**; clock skew note | Re-capture HWM — no target writes yet |
 | 4 | Create target schema under target ownership | Target (DDL only) | Alembic upgrade proof on disposable DB; **no legacy write credential** on target | Drop target schema — legacy unaffected |
-| 5 | Backfill deterministic snapshots | Legacy (read); target (load) | Row counts per table; PK set hash; snapshot checksum manifest; idempotent load keys | Truncate target — re-run backfill |
-| 6 | Capture changes after HWM | Legacy | Delta manifest: rows/events with `(updated_at > HWM)` or CDC offset; tombstone policy for deletes | Extend HWM window — re-backfill delta |
-| 7 | Apply forward replication idempotently | Legacy (source truth); target (apply) | Replication lag metric; idempotency key coverage; zero unapplied backlog at gate | Stop relay — target still read-only to consumers |
+| 5 | Backfill deterministic snapshots (while post-HWM capture buffers changes) | Legacy (read); target (load) | Row counts per table; PK set hash; snapshot checksum manifest; idempotent load keys; **no write after HWM lost** | Truncate target — re-run backfill |
+| 6 | Apply forward replication idempotently | Legacy (source truth); target (apply) | Delta manifest from post-HWM buffer; replication lag metric; idempotency key coverage; zero unapplied backlog at gate | Extend HWM window — re-backfill delta |
+| 7 | Verify post-HWM capture completeness | Legacy | Zero-gap proof: every write after HWM appears in buffer/CDC/outbox; tombstone policy for deletes validated | Extend capture — re-validate HWM |
 | 8 | Run shadow reads | Legacy (read authority for prod); target (shadow) | Shadow read diff rate below threshold; sample semantic compares | Disable shadow — no user impact |
 | 9 | Structural and semantic reconciliation | Legacy (prod read); target (compare) | Reconciliation matrix pass (see below); exception queue empty or waived with sign-off | Fix target — legacy still authoritative |
 | 10 | Transfer read ownership | Target (read prod); legacy (read deprecated) | Traffic switch evidence; error rate SLO; read credential scope reduced on legacy | Revert read routes to legacy |
@@ -138,14 +149,29 @@ Consumers:  [legacy reads][shadow][target reads][target writes via API/events on
 
 ## High-water mark strategy
 
+**[decision]** Capture-gap prevention: the protocol MUST establish the high-water mark and
+**begin/guarantee post-HWM capture before or atomically with** the backfill snapshot. Backfill may
+run while changes are buffered, but **no write after the HWM may be lost**.
+
 **[proposal]** Per table cluster, document in the evidence package:
+
+| Mechanism | When to use | Capture-gap safety |
+|-----------|-------------|-------------------|
+| H1. Transaction-scoped snapshot + WAL/CDC position | Hot mutable tables | Strong — capture starts at snapshot boundary |
+| H3. Logical sequence / LSN bookmark | High-change clusters | Strong with CDC tooling |
+| H4. Domain event cursor / monotonic application sequence | Event-sourced clusters (`shipment_events`) | Strong when all mutations emit events |
+| H2. Per-table `updated_at` ceiling | Reference data only | **Weak alone** — misses hard deletes, clock skew, non-touching updates; use only when completeness provable |
+| R2. Durable source outbox sequence | Legacy-side change emission | Strong when outbox covers all writers |
+| R3. Polling on `updated_at` | Low-rate tables | Acceptable only when completeness can be proven — not default |
+
+**[decision]** Do **not** present `updated_at` alone as a universally safe HWM.
 
 | Cluster type | Recommended HWM | Forward capture |
 |--------------|-----------------|-----------------|
-| Mutable entity (`TimestampMixin`) | H2 + H1 confirmation | R3 poll or R1 CDC |
+| Mutable entity (`TimestampMixin`) | H1 + H3 or R2 confirmation | R1 CDC or R2 outbox |
 | Append-only events (`shipment_events`) | H4 cursor on `(occurred_at, id)` | R4 fact replay or R1 |
 | Ledger / wallet entries | H4 + monotonic entry sequence | R1 CDC strongly preferred |
-| Reference data (hubs, merchants) | H1 snapshot | R3 infrequent poll |
+| Reference data (hubs, merchants) | H1 snapshot | R3 infrequent poll (with PK-set compare) |
 | Soft-delete absent | Tombstone strategy required | Deletes must appear in delta |
 
 **[evidence]** Legacy `shipment_events` provides `occurred_at` suitable for H4; `shipments` provides `updated_at` via mixin suitable for H2.
@@ -230,8 +256,8 @@ Row-count equality alone is **insufficient** because: equal counts can mask **wr
 |-------|-------|-------------------|-----------|-------------|
 | RB-1 | Before read cutover (≤ stage 9) | **Yes** | Drop target data; reset replication; legacy unchanged | Engineering time |
 | RB-2 | After read cutover, before write cutover (stage 10–11) | **Partial** | Revert read routes to legacy; target becomes shadow again | Target-served reads may have cached stale data — cache invalidation required |
-| RB-3 | After write cutover (stage 12) | **No simple DB rollback** | Forward-fix on target; replay missing events | Dual-written period if fence failed — **forbidden design** |
-| RB-4 | After credential revocation (stage 13+) | **Forward-fix only** | Restore credentials only via break-glass; re-sync from target to legacy **not** automatic | Credential revocation is operational fact |
+| RB-3 | After write cutover (stage 12) | **No simple flip back to legacy writer** | Forward-fix on target; replay missing events; rollback requires **proven reverse synchronization** or verified **no-new-writes** condition on target | Dual-written period if fence failed — **forbidden design** |
+| RB-4 | After credential revocation (stage 13+) | **Forward-fix only** | Restore credentials only via break-glass; re-sync from target to legacy **not** automatic; credential revocation remains mandatory extraction-completion gate | Irreversible physical facts cannot be undone by database rollback |
 | RB-5 | Physical delivery / COD committed | **Irreversible** | Compensating business process | Delivered parcels, collected COD, append-only audit |
 
 **[evidence]** Legacy `complete_delivery_task.py` combines delivery, COD, wallet, and shipment status in one transaction — cutover must **split writers** before write transfer (ADR-0003) to avoid RB-3 ambiguity.
@@ -455,6 +481,9 @@ Bidirectional dual-write: **forbidden**.
 
 ## Proposed recommendation summary
 
-**[proposal]** Accept the sixteen-stage one-writer cutover protocol with hybrid HWM, multi-layer reconciliation (L1–L10), mandatory credential revocation at stage 13, and forward-fix-only policy after write cutover. Select replication mechanism per table cluster after ADR-0002 and infrastructure decisions. Execute Shipment cluster only after ADR-0003 resolves legacy multi-writer paths. Do not begin implementation until this ADR and blocking dependencies are accepted by named deciders.
+**[decision] Accepted:** Sixteen-stage one-writer cutover protocol with hybrid HWM, zero-gap
+post-HWM capture, multi-layer reconciliation (L1–L10), mandatory credential revocation at stage 13,
+and forward-fix-only policy after write cutover. Select replication mechanism per table cluster
+after capacity proof. Execute Shipment cluster only after ADR-0003 resolves legacy multi-writer paths.
 
-**Implementation allowed:** no
+**Implementation allowed:** no — per-context cutover execution requires wave prerequisites and tooling.

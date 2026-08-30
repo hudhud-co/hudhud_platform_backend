@@ -57,12 +57,12 @@ only (`deploy/nginx/staging.example.conf`).
 
 | ADR | Expected topic | Dependency on this ADR |
 |-----|----------------|------------------------|
-| ADR-0001 (proposed) | Deployable grouping / transitional topology | Gateway placement and auth termination point |
-| ADR-0002 (proposed) | Eventing / NATS topology | Service identities for publish/subscribe; envelope actor context |
-| ADR-0006 (proposed) | Data cutover strategy | Identity DB extraction order; credential revocation gates |
+| ADR-0001 (Accepted) | Deployable grouping / transitional topology | Gateway placement and auth termination point |
+| ADR-0002 (Accepted) | Eventing / NATS topology | Service identities for publish/subscribe; envelope actor context |
+| ADR-0006 (Accepted) | Data cutover strategy | Identity DB extraction order; credential revocation gates |
 
-**Assumption:** ADR-0001, ADR-0002, and ADR-0006 remain `proposed` at time of writing;
-references describe expected coupling only.
+**Note:** ADR-0004 remains **Proposed**; Customer and Organization ownership unresolved.
+References describe expected coupling only.
 
 ---
 
@@ -179,12 +179,12 @@ extraction; final assignment remains unresolved until ADR acceptance.
 | Addresses | Address Book owns | Customer owns | Identity references user_id only | address_book | **B (address_book)** |
 | Merchant business profile | Merchant owns | Identity holds link only | — | merchant | **B** |
 | Stores / branches | Merchant owns | — | — | merchant | **B** |
-| Merchant membership (`merchant_users`) | Identity owns | Merchant owns | Identity auth + Merchant membership | auth table, merchant flows | **C** — see below |
+| Merchant membership (`merchant_users`) | Identity owns | **Merchant owns** | Identity auth + Merchant membership | auth table, merchant flows | **B — Merchant owns** |
 | Store team invitations | Merchant owns | Identity issues user if new | — | merchant | **B** |
-| Hub operator affiliation | Identity owns | Hub owns | Split | auth (`user_hub_access`) | **C** — Identity stores grant; Hub may own ops roster |
-| Driver profile | Identity owns | Pickup/Delivery owns | Split | auth | **C** — Identity links user; ops module owns driver facts |
-| Finance permissions | Identity catalog | Finance owns scoped grants | — | auth seed | **A catalog + Finance scoped grants** |
-| Support/claims permissions | Identity catalog | Support owns ticket scope | — | auth seed | **A catalog + Support scoped grants** |
+| Hub operator affiliation | Identity owns | **Hub owns** operational grants | Split | auth (`user_hub_access`) | **B — Hub owns** operational access; Identity may distribute signed context only |
+| Driver profile / affiliation | Identity owns | **Pickup/Delivery owns** operational profile | Split | auth | **B — Domain owns** operational affiliation; Identity links `user_id` only |
+| Finance permissions | Identity catalog | **Finance owns** authorization policy | — | auth seed | **Finance-owned** scoped grants |
+| Support/claims permissions | Identity catalog | **Support/Claims owns** authorization policy | — | auth seed | **Domain-owner** scoped grants |
 | Service clients | Identity owns | Per-service clients | Central registry | auth | **A** |
 | Legal document acceptance | Identity owns | — | — | auth | **A** |
 | MFA settings | Identity owns | — | — | auth | **A** |
@@ -207,13 +207,13 @@ own commercial/operational profiles and reference `user_id` by ID only (no cross
 | Option | Summary | Trade-offs |
 |--------|---------|------------|
 | **A — Identity owns all membership** | `merchant_users`, hub access, driver links in Identity DB | Simple authorization queries; Identity becomes god-context; merchant module loses autonomy |
-| **B — Merchant owns membership** | Merchant service owns `merchant_users`; Identity only authenticates | Clear domain boundary; every merchant-scoped call needs Identity token + Merchant membership fetch |
-| **C — Split (recommended proposal)** | Identity owns authentication grants that are security-boundary (hub access, admin roles); Merchant owns commercial membership (`merchant_users`, store team); Gateway/Identity token carries `user_id`; domain services enforce membership via own store | Matches legacy data location today; requires contract for membership queries/events; no automatic "everything in Identity" |
+| **B — Merchant owns membership (recommended proposal)** | Merchant service owns `merchant_users`; Identity only authenticates | Clear domain boundary; domain services enforce membership locally |
+| **C — Split security vs commercial** | Identity owns security-boundary grants only; domains own operational membership | Matches least-privilege; requires event/projection sync for some checks |
 
-**Proposal:** Option **C**. Identity retains `user_roles`, hub access grants, driver profile
-link, and service clients. Merchant service owns `merchants`, store locations, and
-`merchant_users` / store team (extracted from auth + merchant modules). Authorization at
-Merchant API validates bearer token `sub` + local membership rows.
+**Proposal:** Option **B** for merchant membership. Identity authenticates `user_id`; Merchant
+service owns `merchant_users` and store team. Hub operational access/grants are **Hub-owned**, not
+automatically Identity-owned. Driver operational affiliation/profile is **Pickup/Delivery-owned**,
+not automatically Identity-owned.
 
 ---
 
@@ -230,10 +230,13 @@ Merchant API validates bearer token `sub` + local membership rows.
 | Sessions | Refresh token lifecycle, session revocation |
 | Token issuance | Access JWT (or reference token) with `sub`, `sid`, minimal claims |
 | Global RBAC | Roles, permissions, `user_roles`, permission catalog seed |
-| Security grants | Hub access (`user_hub_access`), driver profile link |
+| Coarse platform roles | Where justified for cross-cutting admin (not domain business rules) |
 | Service clients | Registration, rotation, revocation, permission binding |
 | MFA / invitations / password reset | Full lifecycle |
 | Legal acceptance | Terms/privacy acceptance records tied to `user_id` |
+
+Identity may distribute **signed identity context** and coarse claims. It must **not** become
+the universal source of all domain permissions.
 
 ### Identity service does NOT own
 
@@ -241,11 +244,15 @@ Merchant API validates bearer token `sub` + local membership rows.
 |----------|-----------------|
 | Merchant legal/display profile | Merchant |
 | Store locations, categories, products | Merchant |
-| Merchant membership rows | Merchant (proposal) |
+| **Merchant membership rows** | **Merchant** |
+| **Hub operational access/grants** | **Hub** (not automatically Identity) |
+| **Driver operational affiliation/profile** | **Pickup/Delivery** (not automatically Identity) |
+| **Finance authorization policy** | **Finance** |
+| **Support/Claims authorization policy** | **Support/Claims** |
 | Customer addresses | Address Book |
 | Notification preferences | Notification |
 | Shipment/order/wallet facts | Respective domain services |
-| Domain-specific permission enforcement | Each domain service (uses Identity token + local rules) |
+| Domain-specific permission enforcement | Each domain service (uses signed identity context + local rules) |
 
 ### Identity public API (proposal)
 
@@ -364,8 +371,10 @@ token** (short-lived, audience-scoped) may wrap validated user context for upstr
 | `roles` | Optional hint only — **not authoritative** for authorization (legacy reloads from DB) |
 
 **Proposal:** Downstream services treat `sub` and `sid` as authenticated identity proof after
-JWKS validation. Role/permission checks query Identity (cached) or enforce locally synced
-projection — not JWT claim alone.
+JWKS validation. Role/permission checks use **short-lived signed identity context** combined with
+**domain-owned membership/policy checks or locally synced projections** — synchronous Identity
+permission introspection on every request is **not** the only authorized strategy and must not
+be required when a verified local projection suffices.
 
 #### Gateway internal transit token (optional proposal)
 
@@ -444,7 +453,8 @@ Legacy has no organization layer; `merchant_id` scopes merchant context.
 - `merchant_id` — when request is merchant-scoped (set by Merchant middleware, not client header)
 - `hub_id` — when hub-scoped
 
-Gateway does not invent merchant scope; upstream Merchant or Identity membership APIs enforce.
+Gateway does not invent merchant scope; Merchant service enforces membership. Gateway must not
+resolve business membership or make domain authorization decisions.
 
 ### Revocation and incident response (proposal)
 
@@ -596,23 +606,24 @@ requires restore from backup, not dual-write.
 
 ## Decision
 
-**Status: proposed — no binding decision.**
+**Status: Proposed — no binding decision.** Customer and Organization ownership remain unresolved.
 
 **Proposed recommendation (requires named deciders to accept):**
 
 1. **Identity** is canonical writer for authentication identity, sessions, global RBAC,
-   service clients, hub access grants, driver profile links, and legal acceptance.
-2. **Merchant** owns merchants, stores, and merchant membership (extracted from legacy
-   `merchant_users` + store team).
-3. **Address Book** owns addresses; **Notification** owns notification preferences.
-4. **Customer** boundary remains **unresolved** — profile extension service vs Identity-held
-   fields must be decided before Customer bootstrap.
-5. **Gateway** validates tokens, routes legacy paths, applies rate limits and tracing; does
-   not own business tables or domain authorization logic.
-6. **Service trust** uses asymmetric JWT with JWKS, short TTLs, NATS credentials for
+   service clients, and legal acceptance.
+2. **Merchant** owns merchants, stores, and **merchant membership** (`merchant_users`, store team).
+3. **Hub** owns hub operational access/grants — not automatically Identity-owned.
+4. **Pickup/Delivery** own driver operational affiliation/profile facts — Identity links `user_id` only.
+5. **Finance** owns finance authorization policy; **Support/Claims** own their authorization policy.
+6. **Address Book** owns addresses; **Notification** owns notification preferences.
+7. **Customer** and **Organization** boundaries remain **unresolved** — blocks Customer bootstrap.
+8. **Gateway** validates tokens, routes legacy paths, applies rate limits and tracing; does
+   not own business tables, resolve membership, or make domain authorization decisions.
+9. **Service trust** uses asymmetric JWT with JWKS, short TTLs, NATS credentials for
    subject ACLs; legacy API keys transitional only; no production trusted identity headers.
-7. **Authorization** — services verify `sub` cryptographically; permission checks use Identity
-   API or synced projection, not client-supplied roles.
+10. **Authorization** — services verify cryptographically signed identity context; domain
+    services enforce business membership and policy locally or via projections.
 
 ---
 
@@ -711,9 +722,9 @@ Identity DB restore from backup is last resort after cutover.
 
 ### Related ADRs
 
-- ADR-0001 (proposed) — deployable grouping and transitional topology
-- ADR-0002 (proposed) — eventing, NATS JetStream, event envelope
-- ADR-0006 (proposed) — database extraction and one-writer cutover
+- ADR-0001 (Accepted) — deployable grouping and transitional topology
+- ADR-0002 (Accepted) — eventing, NATS JetStream, event envelope
+- ADR-0006 (Accepted) — database extraction and one-writer cutover
 
 ### Legacy evidence
 
@@ -794,9 +805,9 @@ flowchart TB
 |-----------------|-------------------|
 | `users`, sessions, OTP, MFA | Identity |
 | `roles`, `permissions`, `user_roles` | Identity |
-| `merchant_users` | Merchant (proposal) |
-| `user_hub_access` | Identity (proposal) |
-| `driver_profiles` | Identity link; ops facts in Pickup/Delivery (unresolved) |
+| `merchant_users` | Merchant |
+| `user_hub_access` | Hub (operational grants — migration from auth table) |
+| `driver_profiles` | Pickup/Delivery operational facts; Identity links `user_id` only |
 | `merchants`, stores, store team | Merchant |
 | `pickup_addresses`, `receiver_contacts` | Address Book |
 | `notification_preferences` | Notification |

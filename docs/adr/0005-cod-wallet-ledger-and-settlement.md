@@ -219,12 +219,17 @@ flowchart LR
     W[Wallet merchant payable balance]
     R[Reconciliation work queue]
   end
-  DT -->|delivery.fact.cod_collected| J
+  DT -->|delivery.fact.cod_collected (CodCollected)| J
+  DT -->|shipment.fact.delivered (ShipmentDelivered) via Shipment| J
   HB -->|hub.fact.cash_received - TBD| J
   J --> W
   J --> R
   EX --> R
 ```
+
+**[decision]** Finance consumes **`CodCollected`** and **`ShipmentDelivered`** separately, correlating
+by `shipment_id`. Either may arrive first. Wallet is updated only from Finance-authorized postings —
+never directly from Delivery.
 
 | Fact layer | Canonical writer | Must survive finance failure? |
 |------------|------------------|-------------------------------|
@@ -325,17 +330,23 @@ flowchart LR
 
 | Event | Publisher | Consumer(s) | Journal action | Idempotency key |
 |-------|-----------|-------------|----------------|-----------------|
-| `ShipmentDelivered` / `delivery.fact.completed` | delivery | shipment, notification | None (operational) | `shipment_id` + aggregate version |
-| `CodCollected` / `delivery.fact.cod_collected` | delivery | finance, tracking | Driver cash + COD receivable (illustrative) | `cod_collection_id` |
-| `CashHandedToHub` / `hub.fact.cash_received` | hub | finance | Hub/driver cash transfer | `handover_id` |
-| `MerchantPayableRecognized` | finance | wallet | Payable + commission split | `post:merchant_payable:{shipment_id}:{pricing_version}` |
-| `FinancePostingCompleted` | finance | wallet, audit | Confirm projection applied | `posting_id` |
-| `FinancePostingFailed` | finance | control_tower, reconciliation | Create exception/suspense | `posting_id` |
-| `SettlementApproved` | finance | wallet, notification | Move payable to clearing | `settlement_id` |
-| `PayoutCompleted` | finance | wallet, notification | Close payout clearing | `payout_id` |
-| `FinancePostingReversed` / adjustment | finance | wallet | Reversal pair | `reversal:{original_posting_id}` |
+| `delivery.fact.task_completed` (`DeliveryCompleted`) | delivery | shipment, notification | None (operational) | `delivery_task_id` + outcome |
+| `delivery.fact.cod_collected` (`CodCollected`) | delivery | finance, tracking | Driver cash + COD receivable (illustrative) | `cod_collection_id` |
+| `shipment.fact.delivered` (`ShipmentDelivered`) | shipment | finance, notification, tracking | Merchant payable recognition trigger | `shipment_id` + aggregate version |
+| `hub.fact.cash_received` (`CashHandedToHub`) | hub | finance | Hub/driver cash transfer | `handover_id` |
+| `finance.fact.merchant_payable_recognized` | finance | wallet | Payable + commission split | `post:merchant_payable:{shipment_id}:{pricing_version}` |
+| `finance.fact.posting_completed` | finance | wallet, audit | Confirm projection applied | `posting_id` |
+| `finance.fact.posting_failed` | finance | control_tower, reconciliation | Create exception/suspense | `posting_id` |
+| `finance.fact.settlement_approved` | finance | wallet, notification | Move payable to clearing | `settlement_id` |
+| `finance.fact.payout_completed` | finance | wallet, notification | Close payout clearing | `payout_id` |
+| `finance.fact.posting_reversed` | finance | wallet | Reversal pair | `reversal:{original_posting_id}` |
 
-**[proposal]** Physical delivery and COD collection events are **facts** (immutable). Finance posting is a **derived accounting act** (retryable). Wallet updates occur only after `FinancePostingCompleted` or approved reversal.
+**[decision]** Physical delivery and COD collection events are **facts** (immutable). Finance posting
+is a **derived accounting act** (retryable). Wallet updates occur only after finance posting
+completion or approved reversal — **not** via direct Delivery→Wallet authority.
+
+**[evidence]** Legacy `cod_collected:{shipment_id}` wallet idempotency key documents migration
+evidence but is **not** the final cross-service financial posting model.
 
 ---
 
@@ -347,7 +358,10 @@ flowchart LR
 |-------|------------|-------|
 | Operational COD | `cod_collection:{shipment_id}` | delivery DB |
 | Finance posting | `post:{posting_type}:{source_id}[:{pricing_version}]` | finance inbox |
-| Wallet projection | `proj:{posting_id}` or legacy `cod_collected:{shipment_id}` during migration | wallet inbox |
+| Wallet projection | `proj:{posting_id}` | wallet inbox |
+
+**[evidence]** Legacy `cod_collected:{shipment_id}` may guide migration replay mapping to finance
+posting keys but must not be treated as the authoritative cross-service model.
 | Payout hold | `payout_hold:{payout_request_id}` | wallet (retain legacy pattern) |
 
 **[proposal]** Concurrency rules:
@@ -437,7 +451,7 @@ flowchart LR
 
 | Control | Requirement |
 |---------|-------------|
-| Service identity | Finance consumers accept signed internal tokens (ADR-0006); no trust of `X-User-Id` alone |
+| Service identity | Finance consumers accept signed internal tokens (ADR-0004); no trust of `X-User-Id` alone |
 | Least privilege | Finance DB credentials scoped to finance service only |
 | Merchant wallet API | Store Owner + `ACCESS_STORE_WALLET` (legacy pattern retained) |
 | Finance admin | Separate role for settlement approval, reversals, suspense resolution |
@@ -524,22 +538,23 @@ flowchart LR
 
 ## Dependencies
 
-| ADR | Relationship | Status at platform HEAD `4528e140` |
-|-----|--------------|--------------------------------------|
-| **ADR-0002** — Event envelope, outbox/inbox, JetStream | Finance and wallet consume `delivery.fact.cod_collected` at-least-once with idempotent inbox | Draft in parallel workstream W1-B (`w1-adr-eventing`); **proposed**, not merged |
-| **ADR-0003** — Shipment lifecycle authority | Delivery publishes facts; Shipment sole writer; decouples status mutation from delivery completion | Parallel workstream W1-D (`w1-adr-shipment-authority`); **not yet in repo** |
-| **ADR-0006** — Identity and service trust | Signed service credentials for finance posting consumers; merchant auth for wallet APIs | Parallel workstream W1-F (`w1-adr-identity-trust`); **not yet in repo** |
+| ADR | Relationship | Status (Wave 1 integration) |
+|-----|--------------|-------------------------------|
+| **ADR-0002** — Event envelope, outbox/inbox, JetStream | Finance consumes `CodCollected` and `ShipmentDelivered` at-least-once with idempotent inbox | **Accepted** |
+| **ADR-0003** — Shipment lifecycle authority | Delivery publishes facts; Shipment sole writer; decouples status from finance | **Accepted** |
+| **ADR-0004** — Identity and service trust | Signed service credentials for finance consumers; merchant auth for wallet APIs | **Proposed** |
 
-**[proposal]** ADR-0005 acceptance is gated on at least **proposed** alignment with ADR-0002 delivery semantics and ADR-0003 shipment fact boundaries. ADR-0006 is required before production finance endpoints.
+**[proposal]** ADR-0005 acceptance is gated on policy register P-01–P-17. ADR-0002 and ADR-0003
+are accepted; ADR-0004 must be accepted before production finance endpoints.
 
 ---
 
 ## Implementation blockers
 
 1. **[unresolved policy]** Policy register P-01 through P-17.
-2. **[evidence]** ADR-0002 not accepted — no inbox/outbox contract for finance consumers.
-3. **[evidence]** ADR-0003 not present — shipment lifecycle fact boundary unsettled.
-4. **[evidence]** ADR-0006 not present — service-to-service auth for finance unsettled.
+2. **[decision]** ADR-0002 **Accepted** — inbox/outbox contract defined; finance consumer implementation blocked on policy.
+3. **[decision]** ADR-0003 **Accepted** — shipment lifecycle fact boundary defined.
+4. **[evidence]** ADR-0004 **Proposed** — service-to-service auth for finance unsettled.
 5. **[proposal]** Chart of accounts and commission engine not approved.
 6. **[proposal]** No finance service bootstrap (explicit non-action for this workstream).
 
@@ -593,5 +608,5 @@ flowchart LR
 - Platform audit: `docs/audit/legacy-data-ownership-inventory.md`, `docs/audit/legacy-domain-inventory.md`
 - Legacy evidence SHA: `2e375057fdf9b9ce8416408a4436303be5301def`
 - Legacy docs: `docs/production_v1/store_wallet_phase_1b.md`, `docs/api/wallet_api.md`, `docs/audits/phase15_1_merchant_cod_balance_integrity.md`
-- Related ADRs: ADR-0002 (eventing), ADR-0003 (shipment authority), ADR-0006 (identity trust)
+- Related ADRs: ADR-0002 (eventing, Accepted), ADR-0003 (shipment authority, Accepted), ADR-0004 (identity trust, Proposed)
 - Template: `docs/adr/0000-template.md`

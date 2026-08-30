@@ -1,10 +1,10 @@
 # ADR-0002: Event Envelope, Transactional Outbox/Inbox, and NATS JetStream Topology
 
-- **Status:** proposed
+- **Status:** Accepted
 - **Date:** 2026-08-30
-- **Deciders:** (pending — platform architecture review)
+- **Deciders:** platform architecture review (Wave 1 integration)
 - **Workstream:** W1-B
-- **Implementation allowed:** no (pending acceptance and dependent ADRs)
+- **Implementation allowed:** no — accepted architectural decision; numeric defaults and capacity proof remain implementation gates
 
 Label key: **[evidence]** verified from repository or legacy audit; **[proposal]** recommended design not yet accepted; **[decision]** binding only after acceptance; **[assumption]** engineering default pending validation; **[unresolved policy]** requires named deciders.
 
@@ -111,17 +111,23 @@ Ranked constraints dominating this design:
 
 ## Decision
 
-**[proposal]** Pending acceptance, the platform SHOULD adopt:
+**[decision]** The platform adopts:
 
-1. **Envelope:** Versioned JSON (UTF-8) CloudEvents-inspired structure with required fields listed below; max practical payload 256 KiB; large media by reference URI only.
+1. **Envelope:** Versioned JSON (UTF-8) CloudEvents-inspired structure with required fields listed below; initial provisional default max payload 256 KiB (capacity proof required before freezing); large media by reference URI only.
 2. **Delivery semantics:** At-least-once end-to-end. Producers MUST NOT claim exactly-once. Consumers MUST be idempotent via durable inbox deduplication on `(consumer_name, event_id)`.
 3. **Outbox:** Per-service `integration_outbox` table written in the same DB transaction as domain mutation; relay publishes to JetStream and marks `published_at` only after broker ACK.
 4. **Inbox:** Per-service `integration_inbox` table; insert-before-handler with unique `(consumer_name, event_id)`; handler runs only on first insert.
-5. **JetStream topology:** Hybrid — one stream per publishing bounded context (operational), plus optional `HUDHUD_AUDIT` stream for long-retention compliance events.
-6. **Ordering:** Per-aggregate FIFO via subject shard `...{aggregate_id}` and single active consumer per `(consumer, aggregate_type, aggregate_id)` partition; no global ordering.
-7. **Poison messages:** `MaxDeliver` + exponential backoff → quarantine subject/stream; manual replay tooling required before re-drive.
+5. **JetStream topology:** Hybrid — one stream per publishing bounded context (operational), plus optional `HUDHUD_AUDIT` stream for transport of audit-class events within a bounded retention window.
+6. **Durable consumers:** One durable identity per **consuming service and logical subscription/projection** — not one global durable for an entire stream when multiple independent services must each receive messages. Replicas of the same consumer group share one durable; different services or projections use different durables. A durable is **not** created per individual event instance. Subject filters limit each durable's subscription scope.
+7. **Ordering:** Per-aggregate FIFO via subject shard `...{aggregate_id}` and single active consumer per `(consumer, aggregate_type, aggregate_id)` partition; no global ordering.
+8. **Poison messages:** `MaxDeliver` + exponential backoff → quarantine subject/stream; manual replay tooling required before re-drive.
 
-**Status remains `proposed`.** No implementation until named deciders accept and dependent ADRs resolve blockers.
+**Status: Accepted.** Numeric retention, retry, AckWait, and message-size values in this ADR are
+**initial provisional defaults** — not accepted production facts. Capacity tests and operational
+evidence are required before freezing them.
+
+**Implementation gate:** Schemas, NATS configuration, relay workers, and Compose placement remain
+blocked until capacity proof and dependent context ADRs permit the target wave.
 
 ---
 
@@ -152,9 +158,9 @@ Ranked constraints dominating this design:
 | `occurred_at` | RFC 3339 datetime | **yes** | When the business fact happened (may differ from `published_at`) |
 | `published_at` | RFC 3339 datetime | no | Set by outbox relay at JetStream publish time |
 | `producer` | string (max 64) | **yes** | Publishing service identity |
-| `aggregate_type` | string (max 64) | **yes** | e.g. `shipment`, `pickup_task`, `delivery_task` |
-| `aggregate_id` | UUID string | **yes** | Aggregate instance id for ordering and routing |
-| `aggregate_version` | integer ≥ 0 | **yes** | Monotonic per aggregate; `0` for snapshots/commands without prior version |
+| `aggregate_type` | string (max 64) | conditional | **Required** for aggregate-scoped commands and events; explicitly nullable or absent only for documented non-aggregate platform messages (e.g. platform health, global config broadcasts) |
+| `aggregate_id` | UUID string | conditional | **Required** when `aggregate_type` is present |
+| `aggregate_version` | integer ≥ 0 | conditional | **Mandatory** whenever ordering or optimistic concurrency applies; required with `aggregate_type` for lifecycle commands/events; may be absent only for documented non-aggregate messages |
 | `correlation_id` | UUID string | **yes** | End-to-end business flow id (propagate from HTTP `X-Request-ID` or generate) |
 | `causation_id` | UUID string | no | `event_id` of the message that directly caused this one |
 | `traceparent` | string (W3C) | no | `00-{trace-id}-{parent-id}-{flags}` per W3C Trace Context |
@@ -261,10 +267,11 @@ Ranked constraints dominating this design:
 
 ### Proposed stream layout
 
-**[proposal]** Initial streams (single-node JetStream; file storage):
+**[proposal]** Initial streams (single-node JetStream; file storage). Retention ages, message
+size, and replica counts are **provisional defaults** pending capacity tests:
 
-| Stream name | Subjects | Publishers | Retention | Max age | Storage | Replicas |
-|-------------|----------|------------|-----------|---------|---------|----------|
+| Stream name | Subjects | Publishers | Retention | Max age (provisional) | Storage | Replicas |
+|-------------|----------|------------|-----------|----------------------|---------|----------|
 | `HUDHUD_SHIPMENT` | `hudhud.shipment.>` | shipment | Limits | 7d | File | 1 |
 | `HUDHUD_PICKUP` | `hudhud.pickup.>` | pickup | Limits | 7d | File | 1 |
 | `HUDHUD_HUB` | `hudhud.hub.>` | hub | Limits | 7d | File | 1 |
@@ -272,8 +279,17 @@ Ranked constraints dominating this design:
 | `HUDHUD_DELIVERY` | `hudhud.delivery.>` | delivery | Limits | 7d | File | 1 |
 | `HUDHUD_WALLET` | `hudhud.wallet.>` | wallet_cod | Limits | 30d | File | 1 |
 | `HUDHUD_NOTIFICATION` | `hudhud.notification.>` | notification | Limits | 3d | File | 1 |
-| `HUDHUD_AUDIT` | `hudhud.audit.>` | any (audit emitters) | Limits | 365d | File | 1 |
-| `HUDHUD_DLQ` | `hudhud.dlq.>` | relay/consumers | Limits | 30d | File | 1 |
+| `HUDHUD_AUDIT` | `hudhud.audit.>` | any (audit emitters) | Limits | 365d (provisional transport window) | File | 1 |
+| `HUDHUD_DLQ` | `hudhud.dlq.>` | relay/consumers | Limits | 30d (provisional) | File | 1 |
+
+**[decision]** JetStream is **not** the permanent legal or accounting audit store. The **Audit**
+bounded-context service owns long-term searchable audit retention. JetStream supports transport
+and bounded-window replay only. The `HUDHUD_AUDIT` stream max age (365d provisional) is an
+operational default — not a compliance guarantee.
+
+**[decision]** Single-node JetStream with `replicas: 1` provides durability on one host but
+**not** HA or quorum. Loss of the host loses availability until recovery; disk-backed messages
+survive process restart on the same host only.
 
 **[assumption]** Additional streams (order, merchant, auth) added when those contexts gain publish contracts.
 
@@ -289,20 +305,30 @@ Ranked constraints dominating this design:
 
 **Durable consumer naming:**
 
-| Alt | Pattern | Example |
-|-----|---------|---------|
-| D1 | `{consumer_service}_{event_type}_v{ver}` | `shipment_pickup_fact_accepted_v1` |
-| D2 | `{consumer_service}_{aggregate}_v{ver}` | `shipment_shipment_v1` |
-| D3 | `{consumer_service}_inbox_v1` | `shipment_inbox_v1` — **[proposal]** single durable per upstream stream |
+| Alt | Pattern | Example | Verdict |
+|-----|---------|---------|---------|
+| D1 | `{consumer_service}_{event_type}_v{ver}` | `shipment_pickup_fact_accepted_v1` | Per-event-type — many durables |
+| D2 | `{consumer_service}_{aggregate}_v{ver}` | `shipment_shipment_v1` | Per aggregate type |
+| D3 | `{consumer_service}_inbox_v1` | `shipment_inbox_v1` | **Rejected** when multiple independent services share one stream — implies one global consumer |
+| D4 | `{consumer_service}_{projection}_v{ver}` | `finance_cod_collected_v1`, `tracking_lifecycle_v1` | **[decision] Recommended** — one durable per consuming service and logical subscription/projection |
 
-**[proposal]** Use **S2** subjects and **D3** durables with filter subjects per consumer interest (e.g. `hudhud.pickup.pickup.fact.>`).
+**[decision]** Durable consumer semantics:
+
+- **One durable identity** per consuming service and logical subscription/projection (D4).
+- **Replicas** of the same consumer group (horizontal scale of one handler) share **one** durable.
+- **Different services** or **different projections** within a service use **different** durables.
+- **Inbox deduplication** remains per `(consumer_name, event_id)` where `consumer_name` matches the durable identity.
+- **Subject filters** (`FilterSubject`) limit each durable's subscription — a durable is **not** created per individual event instance.
+- **Rejected:** one global/shared durable consumer for an entire stream when multiple independent services must each receive the messages.
+
+**[proposal]** Use **S2** subjects and **D4** durables with filter subjects per consumer interest (e.g. `hudhud.pickup.pickup.fact.>` for Shipment's pickup-fact durable; `hudhud.delivery.delivery.fact.cod_collected.v1` for Finance's COD durable).
 
 ### JetStream consumer configuration
 
-**[proposal]** Pull consumers for inbox workers:
+**[proposal]** Pull consumers for inbox workers. Values below are **provisional defaults**:
 
-| Setting | Value | Rationale |
-|---------|-------|-----------|
+| Setting | Provisional default | Rationale |
+|---------|---------------------|-----------|
 | `AckPolicy` | `explicit` | Process-after-inbox-insert |
 | `AckWait` | 30s initial (tune per handler) | Must exceed p99 handler + DB commit |
 | `MaxDeliver` | 5 | After 5 attempts → poison path |
@@ -574,7 +600,7 @@ Logs MUST include `event_id`, `correlation_id`, `traceparent`, `aggregate_id`, `
 1. **Phase 0:** Stand up single-node JetStream in Compose (no production traffic).
 2. **Phase 1:** Shipment service publishes `shipment.fact.lifecycle_changed` from existing `shipment_events` semantics; tracking consumes as projection.
 3. **Phase 2:** Pickup/hub/linehaul publish facts; shipment stops accepting direct status writes from extracted services.
-4. **Phase 3:** Delivery COD facts → wallet consumer with `cod_collected:{shipment_id}` idempotency preserved.
+4. **Phase 3:** Delivery publishes `delivery.fact.cod_collected`; Finance consumes (not direct Delivery→Wallet); Shipment consumes delivery completion facts per ADR-0003.
 5. **Phase 4:** Decommission in-process `emit_shipment_notifications` equivalents in favor of notification consumer.
 
 **[evidence]** One-writer cutover per database; no bidirectional dual-write. During transition, feature flags gate publish vs direct-call fallback per service extraction ADR.
@@ -649,11 +675,11 @@ Logs MUST include `event_id`, `correlation_id`, `traceparent`, `aggregate_id`, `
 
 | ADR | Dependency |
 |-----|------------|
-| Shipment sole lifecycle writer | Must be accepted before shipment consumer enforces facts |
-| Identity and service trust | NATS credential model and command auth |
-| Deployable grouping / Compose topology | JetStream service placement and resource limits |
-| Data cutover / one-writer | Per-service outbox DB ownership timing |
-| Finance settlement | Wallet event contracts and idempotency keys |
+| ADR-0001 | Deployable grouping / Compose topology — JetStream service placement and resource limits |
+| ADR-0003 | Shipment sole lifecycle writer — shipment consumer enforces facts before lifecycle cutover |
+| ADR-0004 | Identity and service trust — NATS credential model and command auth |
+| ADR-0005 | Finance settlement — finance/wallet event contracts and posting idempotency |
+| ADR-0006 | Data cutover / one-writer — per-service outbox DB ownership timing |
 
 ---
 
@@ -661,8 +687,8 @@ Logs MUST include `event_id`, `correlation_id`, `traceparent`, `aggregate_id`, `
 
 - Implementing event packages, JSON schemas, NATS configuration, or migrations
 - Claiming exactly-once delivery
-- Marking this ADR as **accepted**
-- Modifying `architecture/service-boundaries.yaml` or `ownership-matrix.yaml`
+- Treating JetStream as the legal or accounting audit store
+- Modifying `architecture/service-boundaries.yaml` or `ownership-matrix.yaml` (updated in Wave 1 integration)
 - Clustered NATS HA in initial Compose deployment
 - PGMQ or Redis Streams as primary transport
 - Gateway publishing business events
@@ -677,6 +703,7 @@ Logs MUST include `event_id`, `correlation_id`, `traceparent`, `aggregate_id`, `
 | Exactly-once Kafka semantics marketing | Dishonest; JetStream is at-least-once; use idempotent consumers |
 | Single platform-wide stream | Poison message and retention policy coupling too coarse |
 | Shared relay service (R3) | Violates per-service ownership invariant |
+| One global durable per stream for all consumers | Independent services miss messages or share handler state incorrectly |
 | Protobuf v1 | Higher friction for ADR/bootstrap phase; JSON proposed first |
 | Redis Pub/Sub | No durable replay or ack model |
 | Direct HTTP only (no events) | Fails operational decoupling and projection scaling |
@@ -686,7 +713,12 @@ Logs MUST include `event_id`, `correlation_id`, `traceparent`, `aggregate_id`, `
 
 ## Proposed recommendation
 
-**[proposal]** Accept (after review) the hybrid per-context stream topology, JSON envelope with fields specified above, per-service transactional outbox with lease-based relay, durable pull consumers with inbox deduplication on `(consumer_name, event_id)`, explicit poison quarantine to `HUDHUD_DLQ`, and aggregate-scoped ordering via `aggregate_id` + `aggregate_version`. Treat single-node JetStream as a deliberate Phase 0 constraint with a documented — not implicit — path to 3-node HA.
+**[decision]** Accepted: hybrid per-context stream topology, JSON envelope with fields specified
+above, per-service transactional outbox with lease-based relay, durable pull consumers (one per
+service/projection) with inbox deduplication on `(consumer_name, event_id)`, explicit poison
+quarantine to `HUDHUD_DLQ`, and aggregate-scoped ordering via `aggregate_id` + `aggregate_version`.
+Single-node JetStream is a deliberate Phase 0 constraint with a documented path to 3-node HA.
+Numeric retention/retry/size defaults require capacity proof before production freeze.
 
 ---
 
@@ -712,9 +744,9 @@ Logs MUST include `event_id`, `correlation_id`, `traceparent`, `aggregate_id`, `
 
 ```text
 ADR path: docs/adr/0002-event-envelope-outbox-inbox-and-jetstream.md
-Status: proposed
-Deciders: (pending)
-Canonical docs updated: none
+Status: Accepted
+Deciders: platform architecture review (Wave 1 integration)
+Canonical docs updated: architecture/service-boundaries.yaml (Wave 1 integration)
 Unresolved questions: 8 (see section above)
-Implementation allowed: no
+Implementation allowed: no — capacity proof and schema bootstrap required
 ```

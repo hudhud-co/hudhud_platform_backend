@@ -1,8 +1,8 @@
 # ADR-0003: Shipment Lifecycle Authority and Irreversible Delivery Facts
 
-- **Status:** proposed
+- **Status:** Accepted
 - **Date:** 2026-08-30
-- **Deciders:** (pending — platform architecture owners)
+- **Deciders:** platform architecture review (Wave 1 integration)
 
 Label key: **evidence** = verified from legacy audit; **proposal** = recommended platform design;
 **assumption** = engineering default pending policy; **unresolved policy** = business rule not decided.
@@ -35,8 +35,8 @@ and does **not** accept unresolved business policies.
 | ADR | Topic | Relevance |
 |-----|-------|-----------|
 | ADR-0002 | Eventing / messaging topology | Command and fact envelopes, outbox/inbox, at-least-once delivery |
+| ADR-0004 | Identity and service trust | Service-to-service auth for commands; operator override authorization |
 | ADR-0005 | Finance / settlement | Cash custody, receipt posting, merchant payable recognition |
-| ADR-0006 | Identity and trust | Service-to-service auth for commands; operator override authorization |
 
 ## Options
 
@@ -57,7 +57,7 @@ and does **not** accept unresolved business policies.
 
 ## Decision
 
-**Proposal (not accepted):** Adopt Option A.
+**Accepted decision:** Adopt Option A.
 
 After cutover, **only the Shipment service** mutates canonical lifecycle tables (`shipments` lifecycle
 columns, `shipment_events`). Pickup, Hub, Linehaul, and Delivery:
@@ -68,22 +68,34 @@ columns, `shipment_events`). Pickup, Hub, Linehaul, and Delivery:
 - Never hold write credentials for Shipment lifecycle tables post-cutover.
 
 **Physical delivery** is recorded as an operational fact in Delivery first; Shipment transitions to
-`DELIVERED` from that fact or an authorized command. Wallet/finance projection failures do not erase
-the operational fact or roll back canonical delivery once physically committed.
+`DELIVERED` from that fact or an authorized command. Finance or Wallet projection failures do not
+erase the operational fact or roll back canonical delivery once physically committed.
 
-Implementation of the state machine, schemas, and NATS subjects is **blocked** until this ADR is
-accepted and listed unresolved policies are resolved or explicitly deferred with named owners.
+**Manual/operations delivery actions** (legacy `MarkShipmentDeliveredUseCase` and related ops paths)
+must become **authorized commands handled by Shipment** with audit evidence — not direct lifecycle
+writes by another bounded context.
+
+**Implementation gate:** State machine, schemas, and NATS subject implementation remain blocked until
+listed unresolved operational policies are resolved or explicitly deferred with named owners.
+Acceptance does not authorize immediate Shipment service bootstrap.
 
 ## Verified legacy writer matrix
 
 Audit source: `hudhud-backend` @ `2e375057fdf9b9ce8416408a4436303be5301def`.
 Inventory method: grep `current_status =`, read use cases, routes, models, and tests.
 
-**Summary:** **13 verified legacy writers** mutate `shipments.current_status` (12 symbols if
-`ConfirmSendParcelUseCase` is counted only as orchestrator). **5 modules** violate sole-writer
-ownership: `pickup`, `hub`, `linehaul`, `delivery_task`, plus `shipment` ops paths that duplicate
-driver paths. `send_parcel` orchestrates creation via `CreateShipmentUseCase` without direct status
-mutation.
+**Summary:** **13 verified legacy code paths** mutate `shipments.current_status`. Classified:
+
+| Category | Count | Modules / symbols | Platform treatment |
+|----------|-------|-------------------|-------------------|
+| **Canonical Shipment writers** | 5 | `CreateShipmentUseCase`; `MarkShipmentOutForDelivery/Delivered/Failed/Cancel` in `delivery_completion.py` | Legitimate — remain Shipment-owned; ops paths become Gateway→Shipment **commands** post-cutover |
+| **Orchestration-only** | 1 | `ConfirmSendParcelUseCase` (delegates to `CreateShipmentUseCase`) | OK at creation boundary — no direct status mutation |
+| **Boundary violations** | 7 | pickup acceptance; hub inbound; linehaul dispatch/arrive; delivery start/complete/fail | Must publish facts; revoke direct Shipment DB writes |
+| **Timeline-only writers** | many | pickup/hub/linehaul/delivery task events without status change | Operational evidence — publish facts; no canonical status mutation |
+
+**Evidence:** Five **modules** contain boundary-violating status writers: `pickup`, `hub`, `linehaul`,
+`delivery_task`. Shipment module ops paths (#10–13) are **not** violations — they are canonical
+writer paths that must be preserved as Shipment-authorized commands after extraction.
 
 ### Status transition writers
 
@@ -98,10 +110,10 @@ mutation.
 | 7 | `delivery_task/application/start_delivery_task.py` :: `StartDeliveryTaskUseCase.execute` | Delivery driver | `AT_DESTINATION_HUB` → `OUT_FOR_DELIVERY` | Task `ACCEPTED`; `assert_can_mark_out_for_delivery` | Single request session | Task `OUT_FOR_DELIVERY`; custody `DELIVERY_DRIVER`; OFD events; audit; notification (failure fails request) | Replay if task+shipment already OFD | `tests/unit/modules/delivery_task/test_delivery_task_use_cases.py` | **Violates** — Delivery mutates Shipment |
 | 8 | `delivery_task/application/complete_delivery_task.py` :: `CompleteDeliveryTaskUseCase.execute` | Delivery driver | `OUT_FOR_DELIVERY` → `DELIVERED` | OFD task+shipment; OTP consumed; evidence; `assert_can_mark_delivered`; COD resolution | Single request session | Evidence; optional COD row + **sync wallet credit**; task `COMPLETED`; `SHIPMENT_DELIVERED` + task events; audit; notification | Replay if task `COMPLETED` and shipment `DELIVERED` | `tests/unit/modules/delivery_task/test_complete_delivery_cod_wallet.py`, `tests/integration/modules/delivery_task/test_cod_wallet_credit_api.py` | **Violates** — Delivery mutates Shipment; **couples** COD/wallet in same transaction |
 | 9 | `delivery_task/application/fail_delivery_task.py` :: `FailDeliveryTaskUseCase.execute` | Delivery driver | `OUT_FOR_DELIVERY` → `DELIVERY_FAILED` | OFD task+shipment; parsed reason; optional evidence | Single request session | Failure evidence; task `FAILED`; events; audit; notification | Replay if task `FAILED` and shipment `DELIVERY_FAILED` | `tests/unit/modules/delivery_task/test_delivery_task_use_cases.py` | **Violates** — Delivery mutates Shipment |
-| 10 | `shipment/application/delivery_completion.py` :: `MarkShipmentOutForDeliveryUseCase.execute` | Operations | `AT_DESTINATION_HUB` → `OUT_FOR_DELIVERY` | `assert_can_mark_out_for_delivery`; no active pre-start task | Shared `_DeliveryCompletionService.apply` | Ops evidence optional; event; audit; notification | Conflict on illegal transition | `tests/unit/modules/shipment/test_delivery_completion_use_cases.py` | Canonical writer — OK (Shipment module) |
-| 11 | `shipment/application/delivery_completion.py` :: `MarkShipmentDeliveredUseCase.execute` | Operations | `OUT_FOR_DELIVERY` → `DELIVERED` | `assert_can_mark_delivered`; ops override if active OFD task | `_DeliveryCompletionService.apply` | Ops evidence; may terminalize active task; **no COD/wallet** (Phase 15.1) | Terminal status conflicts | `tests/unit/modules/shipment/test_delivery_completion_use_cases.py` | Canonical writer — OK; diverges from driver COD path |
-| 12 | `shipment/application/delivery_completion.py` :: `MarkShipmentDeliveryFailedUseCase.execute` | Operations | `OUT_FOR_DELIVERY` → `DELIVERY_FAILED` | `assert_can_mark_delivery_failed`; ops override | `_DeliveryCompletionService.apply` | Failure evidence; terminalize task | Terminal status conflicts | `tests/unit/modules/shipment/test_delivery_completion_use_cases.py` | Canonical writer — OK |
-| 13 | `shipment/application/delivery_completion.py` :: `CancelShipmentDeliveryUseCase.execute` | Operations | `AT_DESTINATION_HUB` or `OUT_FOR_DELIVERY` → `DELIVERY_CANCELLED` | `assert_can_cancel_delivery` | `_DeliveryCompletionService.apply` | Cancellation evidence; terminalize task | Terminal status conflicts | `tests/unit/modules/shipment/test_delivery_completion_use_cases.py` | Canonical writer — OK |
+| 10 | `shipment/application/delivery_completion.py` :: `MarkShipmentOutForDeliveryUseCase.execute` | Operations | `AT_DESTINATION_HUB` → `OUT_FOR_DELIVERY` | `assert_can_mark_out_for_delivery`; no active pre-start task | Shared `_DeliveryCompletionService.apply` | Ops evidence optional; event; audit; notification | Conflict on illegal transition | `tests/unit/modules/shipment/test_delivery_completion_use_cases.py` | Canonical Shipment writer — post-cutover via authorized command |
+| 11 | `shipment/application/delivery_completion.py` :: `MarkShipmentDeliveredUseCase.execute` | Operations | `OUT_FOR_DELIVERY` → `DELIVERED` | `assert_can_mark_delivered`; ops override if active OFD task | `_DeliveryCompletionService.apply` | Ops evidence; may terminalize active task; **no COD/wallet** (Phase 15.1) | Terminal status conflicts | `tests/unit/modules/shipment/test_delivery_completion_use_cases.py` | Canonical Shipment writer — post-cutover via authorized command |
+| 12 | `shipment/application/delivery_completion.py` :: `MarkShipmentDeliveryFailedUseCase.execute` | Operations | `OUT_FOR_DELIVERY` → `DELIVERY_FAILED` | `assert_can_mark_delivery_failed`; ops override | `_DeliveryCompletionService.apply` | Failure evidence; terminalize task | Terminal status conflicts | `tests/unit/modules/shipment/test_delivery_completion_use_cases.py` | Canonical Shipment writer — post-cutover via authorized command |
+| 13 | `shipment/application/delivery_completion.py` :: `CancelShipmentDeliveryUseCase.execute` | Operations | `AT_DESTINATION_HUB` or `OUT_FOR_DELIVERY` → `DELIVERY_CANCELLED` | `assert_can_cancel_delivery` | `_DeliveryCompletionService.apply` | Cancellation evidence; terminalize task | Terminal status conflicts | `tests/unit/modules/shipment/test_delivery_completion_use_cases.py` | Canonical Shipment writer — post-cutover via authorized command |
 
 ### Timeline event writers (no status change)
 
@@ -230,11 +242,12 @@ CREATED → IN_CUSTODY → AT_ORIGIN_HUB → IN_LINEHAUL → AT_DESTINATION_HUB
 | Linehaul dispatch | `linehaul.fact.trip_dispatched` | → `IN_LINEHAUL` | `AT_ORIGIN_HUB` |
 | Linehaul arrive | `linehaul.fact.trip_arrived` | → `AT_DESTINATION_HUB` | `IN_LINEHAUL` |
 | Delivery task start | `delivery.fact.task_started` | → `OUT_FOR_DELIVERY` | `AT_DESTINATION_HUB` |
-| Delivery task complete | `delivery.fact.task_completed` | → `DELIVERED` | `OUT_FOR_DELIVERY` |
+| Delivery task complete | `delivery.fact.task_completed` (`DeliveryCompleted`) | → `DELIVERED` | `OUT_FOR_DELIVERY` |
 | Delivery task fail | `delivery.fact.task_failed` | → `DELIVERY_FAILED` | `OUT_FOR_DELIVERY` |
 | Ops mark OFD / delivered / failed / cancel | `shipment.command.*` (Gateway → Shipment) | respective terminal / OFD | Same guards as legacy ops use cases |
-| COD collected (driver) | `delivery.fact.cod_collected` | (none — not a lifecycle transition) | Shipment may be `DELIVERED` or in reconciliation |
-| Wallet credit | `wallet.fact.cod_credited` (Finance) | (none) | ADR-0005 |
+| COD collected (driver) | `delivery.fact.cod_collected` (`CodCollected`) | (none — not a lifecycle transition) | Shipment may be `DELIVERED` or in reconciliation |
+| Shipment delivered (canonical) | `shipment.fact.delivered` (`ShipmentDelivered`) | (canonical fact) | Finance consumes for merchant payable recognition |
+| Wallet credit | Finance-authorized projection only | (none) | ADR-0005 — **not** direct Delivery→Wallet |
 
 ## Transition authority table
 
@@ -252,7 +265,7 @@ CREATED → IN_CUSTODY → AT_ORIGIN_HUB → IN_LINEHAUL → AT_DESTINATION_HUB
 
 ## Sequence diagrams
 
-### Normal delivery path (proposal)
+### Normal delivery path (accepted target flow)
 
 ```mermaid
 sequenceDiagram
@@ -260,20 +273,29 @@ sequenceDiagram
     participant Delivery
     participant NATS
     participant Shipment
+    participant Finance
     participant Wallet
     participant Tracking
 
     Driver->>Delivery: Complete task (OTP + evidence + COD flag)
-    Delivery->>Delivery: Persist task COMPLETED, operational evidence, COD row
-    Delivery->>NATS: delivery.fact.task_completed
-    Delivery->>NATS: delivery.fact.cod_collected (if COD)
-    NATS->>Shipment: Consume task_completed (inbox)
-    Shipment->>Shipment: Apply DELIVERED + shipment_events
-    Shipment->>NATS: shipment.fact.delivered
+    Delivery->>Delivery: Persist task COMPLETED, operational evidence
+    Delivery->>NATS: delivery.fact.task_completed (DeliveryCompleted)
+    alt COD physically collected
+        Delivery->>NATS: delivery.fact.cod_collected (CodCollected)
+    end
+    NATS->>Shipment: Consume DeliveryCompleted (inbox)
+    Shipment->>Shipment: Validate and apply DELIVERED + shipment_events
+    Shipment->>NATS: shipment.fact.delivered (ShipmentDelivered)
     NATS->>Tracking: Project timeline
-    NATS->>Wallet: Consume cod_collected (inbox)
-    Wallet->>Wallet: Idempotent ledger credit
-    Note over Shipment,Wallet: Wallet failure does not roll back Delivery fact or Shipment DELIVERED
+    par Finance correlation by shipment_id
+        NATS->>Finance: Consume CodCollected (if published)
+        NATS->>Finance: Consume ShipmentDelivered
+    end
+    Note over Finance: Either event may arrive first; correlate by shipment_id
+    Finance->>Finance: Record cash custody / recognize merchant payable
+    Finance->>NATS: finance.fact.posting_completed
+    NATS->>Wallet: Project merchant payable (Finance-authorized)
+    Note over Delivery,Wallet: Finance or Wallet failure never rolls back physical delivery or COD collection
 ```
 
 ### Delivery failure path (proposal)
@@ -314,30 +336,44 @@ transitions from terminal states.
 
 3. **Manual correction** — Admin adjustments append compensating **events** and reconciliation
    records; **no silent rewrite** of `shipment_events` history. Unresolved: which roles may authorize
-   (ADR-0006).
+   (ADR-0004).
 
 4. **Ops override** — Legacy requires `override_reason` when ops marks outcome while driver task is
-   OFD (`_assert_ops_override_if_ofd_task`). **Proposal:** retain override audit trail on Shipment.
+   OFD (`_assert_ops_override_if_ofd_task`). Retain override audit trail on Shipment via authorized
+   Shipment commands (not direct writes from another context).
+
+5. **Invalid Shipment transition** — Creates reconciliation work while preserving Delivery evidence;
+   operational facts are never erased.
 
 ## COD separation
 
-**Evidence — legacy coupling:**
+**Evidence — legacy coupling** documented in `complete_delivery_task.py` and Phase 15.1 audit.
 
-| Step | Legacy behavior | Platform correction (proposal) |
-|------|-----------------|--------------------------------|
-| 1 Physical delivery | Driver OTP + photo + task completion | Delivery operational fact only |
-| 2 Physical COD collection | `delivery_cod_collections` row in same request as delivery | Delivery fact `cod_collected` — durable in Delivery DB |
-| 3 Canonical `DELIVERED` | Same request after COD/wallet in driver path | Shipment applies from `task_completed` independently |
-| 4 Cash custody / accounting receipt | Wallet credit sync in driver path; wallet failure can block completion | Finance service (ADR-0005) consumes `cod_collected` asynchronously |
-| 5 Merchant payable recognition | `CreditCodCollectedToMerchantWalletUseCase` — ledger CREDIT, not settlement | Wallet/Finance projection; idempotent `cod_collected:{shipment_id}` |
-| 6 Projection completion | Tracking/notifications after status update | Consumers of `shipment.fact.delivered` / `wallet.fact.*` |
+**Accepted target flow** (12 steps):
+
+1. Delivery persists immutable operational evidence (task completion, OTP, photos).
+2. Delivery publishes `delivery.fact.task_completed` (`DeliveryCompleted`).
+3. Delivery publishes `delivery.fact.cod_collected` (`CodCollected`) **separately** when cash was physically received.
+4. Shipment consumes `DeliveryCompleted`.
+5. Shipment validates and applies the canonical transition to `DELIVERED`.
+6. Shipment publishes `shipment.fact.delivered` (`ShipmentDelivered`).
+7. Finance consumes `CodCollected` to record cash custody/receipt.
+8. Finance consumes `ShipmentDelivered` to recognize merchant payable.
+9. Finance correlates both facts by `shipment_id`; either may arrive first.
+10. Wallet is a **projection** of Finance-authorized merchant payable — **not** an authority written directly by Delivery.
+11. Finance or Wallet failure **never** rolls back physical delivery or COD collection.
+12. Invalid Shipment transition creates reconciliation work while preserving Delivery evidence.
+
+**Evidence:** Legacy `cod_collected:{shipment_id}` wallet idempotency key may be documented as
+migration evidence but must **not** be presented as the final cross-service financial posting model
+(ADR-0005).
 
 **Evidence:** `MarkShipmentDeliveredUseCase` explicitly does not create COD or wallet credit — ops
 `DELIVERED` without collection row remains `PENDING` in customer COD view
 (`customer_cod_collection_view.py`).
 
-**Proposal:** Six layers remain decoupled after cutover. ADR-0005 owns receipt posting and settlement
-semantics; this ADR only binds lifecycle authority and irreversibility.
+ADR-0005 owns receipt posting and settlement semantics; this ADR binds lifecycle authority and
+irreversibility only.
 
 ## Idempotency and concurrency
 
@@ -346,7 +382,7 @@ semantics; this ADR only binds lifecycle authority and irreversibility.
 | Driver complete/fail | Replay returns success if task terminal + matching shipment status | Delivery fact idempotency key per `task_id` + outcome; Shipment inbox dedupe on `event_id` |
 | Driver start OFD | Replay if task and shipment already OFD | Same pattern |
 | Send parcel | Idempotency key + fingerprint | Retain on Send Parcel / Order boundary |
-| Wallet COD credit | `cod_collected:{shipment_id}` ledger idempotency | Retain in Wallet/Finance |
+| Wallet COD credit | `cod_collected:{shipment_id}` ledger idempotency (legacy evidence) | Finance posting keys per ADR-0005; not Delivery→Wallet direct |
 | Concurrent ops + driver | `get_by_id_for_update` on complete/fail | Shipment row lock + version check |
 | Linehaul batch | Sequential per shipment in one trip dispatch | Shipment applies per-shipment facts; partial batch failure → per-shipment reconciliation |
 
@@ -358,8 +394,8 @@ semantics; this ADR only binds lifecycle authority and irreversibility.
 |------|-----------|---------------------|
 | Physical delivered, Shipment not `DELIVERED` | `delivery.fact.task_completed` processed after terminal conflict | Forward apply or ops case |
 | Shipment `DELIVERED`, no delivery fact | Ops override or missing inbox | Investigate; append audit event |
-| COD collected, no wallet credit | Finance inbox lag / failure | Retry wallet; Shipment stays `DELIVERED` |
-| Wallet credited, no COD row | Data inconsistency | Finance reconciliation (ADR-0005) |
+| COD collected, no finance posting | Finance inbox lag / failure | Retry finance; Shipment stays `DELIVERED` |
+| Finance posted, no COD row | Data inconsistency | Finance reconciliation (ADR-0005) |
 | Duplicate proof / double complete | Duplicate idempotency keys | Second request returns prior outcome |
 | Out-of-order hub/linehaul facts | Predecessor state missing | Reconciliation queue; no status delete |
 
@@ -383,7 +419,7 @@ ops delivery override).
 
 **Proposal:**
 
-- Gateway authenticates humans; forwards explicit service identity for internal commands (ADR-0006).
+- Gateway authenticates humans; forwards explicit service identity for internal commands (ADR-0004).
 - Do **not** trust `X-User-Id` / `X-Role` headers without verified token exchange.
 - Shipment inbox accepts facts only from registered producer service identities.
 - Ops override commands require elevated permission equivalent to legacy override + audit reason.
@@ -440,10 +476,11 @@ delivery facts and `DELIVERED` transitions are **not** rolled back; forward reco
 
 ## Proposed recommendation
 
-**Proposal:** Accept Option A after ADR-0002, ADR-0005, and ADR-0006 reach sufficient maturity and
- unresolved policy items above are owned or explicitly deferred.
+**Accepted:** Option A — Shipment sole canonical lifecycle writer with fact/command separation,
+irreversible delivery facts, Finance-mediated COD/wallet flow (ADR-0005), and reconciliation for
+at-least-once messaging. Operational policies in unresolved questions remain implementation gates.
 
-Until acceptance:
+Until implementation gates clear:
 
 - Do not implement Shipment transition engine in platform services.
 - Do not grant non-Shipment services write access to lifecycle tables.
@@ -476,4 +513,5 @@ Until acceptance:
 - Service boundaries: `architecture/service-boundaries.yaml`
 - Legacy audits: `docs/audit/legacy-data-ownership-inventory.md`, `docs/audit/legacy-domain-inventory.md`
 - Legacy baseline SHA: `2e375057fdf9b9ce8416408a4436303be5301def`
-- Related ADRs: ADR-0002 (eventing), ADR-0005 (finance), ADR-0006 (identity/trust) — **proposed, not yet in repo**
+- Related ADRs: ADR-0002 (eventing, **Accepted**), ADR-0004 (identity/trust, **Proposed**),
+  ADR-0005 (finance, **Proposed — Policy Blocked**)
