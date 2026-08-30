@@ -1,0 +1,510 @@
+# HUDHUD runtime port registry — host-port governance baseline (W2-E).
+#
+# Purpose: machine-readable collision detection and verified bindings.
+# This file is NOT a service catalog. Entries describe port roles and evidence.
+#
+# Statement classes: evidence | reservation | configurable | unresolved
+#
+# Rules:
+# - internal container ports may repeat across isolated networks
+# - active host bindings must not collide within the same environment + protocol
+# - env-var bindings are represented without pretending they are fixed
+# - public exposure must be explicit
+# - unknown values stay unresolved — never guessed
+
+version: 1
+registry_purpose: host_port_governance
+last_verified_against:
+  platform_head: fe7ac08fadcbc842db8ccad6606f812eb599cdd8
+  legacy_head: 2e375057fdf9b9ce8416408a4436303be5301def
+  legacy_dirty_file_preserved: scripts/dev_pickup_driver_simulator.py
+
+binding_kinds:
+  internal_container: listens inside a compose network; host may be unpublished
+  host_published: fixed or ranged host bind verified or reserved for an environment
+  developer_local_default: verified legacy local-dev publish pattern
+  staging_reservation: named block reserved; exact host bind unresolved until compose exists
+  production_exposure: verified or planned production host exposure
+  environment_configurable: bound via named env var; collision check skips fixed host value
+  legacy_known: verified binding from hudhud-backend compose (read-only evidence)
+  unresolved: role identified; numeric allocation pending capacity proof
+
+protocols: [tcp, udp]
+
+environments:
+  legacy_dev_local:
+    description: hudhud-backend deploy/docker-compose.local.yml and .dev.yml
+    collision_scope: host_active_bindings
+  legacy_staging:
+    description: hudhud-backend deploy/docker-compose.staging.yml
+    collision_scope: host_active_bindings
+  legacy_production:
+    description: hudhud-backend deploy/docker-compose.prod.yml
+    collision_scope: host_active_bindings
+  platform_local_dev:
+    description: future platform infra/compose local profile (F0 — not scaffolded)
+    collision_scope: host_active_bindings
+  platform_staging:
+    description: future platform staging deploy profile (unresolved)
+    collision_scope: host_active_bindings
+  platform_production:
+    description: future platform production deploy profile (unresolved)
+    collision_scope: host_active_bindings
+
+allocations:
+  - id: legacy-monolith-http
+    role: legacy_fastapi_http
+    binding_kind: legacy_known
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - hudhud-backend/deploy/docker-compose.local.yml
+      - hudhud-backend/deploy/docker-compose.prod.yml
+      - docs/audit/legacy-runtime-inventory.md
+    bindings:
+      - environment: legacy_dev_local
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          port: 8001
+        container:
+          port: 8001
+        notes: published to all interfaces in local/dev compose
+      - environment: legacy_staging
+        active: true
+        public_exposure: false
+        host:
+          type: loopback
+          port: 8001
+        container:
+          port: 8001
+        notes: 127.0.0.1 bind; nginx upstream per deploy/nginx/staging.example.conf
+      - environment: legacy_production
+        active: true
+        public_exposure: false
+        host:
+          type: loopback
+          port: 8001
+        container:
+          port: 8001
+        notes: loopback only; public TLS termination external to compose
+
+  - id: legacy-postgres
+    role: legacy_primary_database
+    binding_kind: legacy_known
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - hudhud-backend/deploy/docker-compose.local.yml
+    bindings:
+      - environment: legacy_dev_local
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          port: 5433
+        container:
+          port: 5432
+        network_scope: legacy_default
+        notes: host offset avoids local Postgres on 5432
+      - environment: legacy_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 5432
+        network_scope: legacy_default
+      - environment: legacy_production
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 5432
+        network_scope: legacy_default
+
+  - id: legacy-redis
+    role: legacy_redis_cache
+    binding_kind: legacy_known
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - hudhud-backend/deploy/docker-compose.local.yml
+      - docs/audit/legacy-runtime-inventory.md
+    bindings:
+      - environment: legacy_dev_local
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          port: 6380
+        container:
+          port: 6379
+        network_scope: legacy_default
+      - environment: legacy_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 6379
+        network_scope: legacy_default
+      - environment: legacy_production
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 6379
+        network_scope: legacy_default
+
+  - id: legacy-minio-api
+    role: legacy_object_storage_api
+    binding_kind: legacy_known
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - hudhud-backend/deploy/docker-compose.local.yml
+      - hudhud-backend/deploy/docker-compose.prod.yml
+    bindings:
+      - environment: legacy_dev_local
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          port: 9000
+        container:
+          port: 9000
+        network_scope: legacy_default
+      - environment: legacy_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 9000
+        network_scope: legacy_default
+      - environment: legacy_production
+        active: true
+        public_exposure: false
+        host:
+          type: loopback
+          port: 9010
+        container:
+          port: 9000
+        network_scope: legacy_default
+        notes: prod compose maps 127.0.0.1:9010→9000
+
+  - id: legacy-minio-console
+    role: legacy_object_storage_console
+    binding_kind: legacy_known
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - hudhud-backend/deploy/docker-compose.local.yml
+    bindings:
+      - environment: legacy_dev_local
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          port: 9001
+        container:
+          port: 9001
+        network_scope: legacy_default
+      - environment: legacy_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 9001
+        network_scope: legacy_default
+      - environment: legacy_production
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 9001
+        network_scope: legacy_default
+        notes: console listens on container :9001; prod does not publish console port
+
+  - id: platform-postgres-internal
+    role: per_service_postgres_listener
+    binding_kind: internal_container
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - architecture/invariants.md
+      - docs/adr/0001-transitional-deployables-and-extraction-order.md
+    bindings:
+      - environment: platform_local_dev
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 5432
+        network_scope: per_service_isolated
+        notes: internal port repeatable per isolated compose network
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 5432
+        network_scope: per_service_isolated
+      - environment: platform_production
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 5432
+        network_scope: per_service_isolated
+
+  - id: platform-redis-internal
+    role: shared_or_per_context_redis_listener
+    binding_kind: internal_container
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - docs/audit/legacy-runtime-inventory.md
+    bindings:
+      - environment: platform_local_dev
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 6379
+        network_scope: platform_shared_infra
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 6379
+        network_scope: platform_shared_infra
+      - environment: platform_production
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 6379
+        network_scope: platform_shared_infra
+
+  - id: platform-minio-internal
+    role: object_storage_api
+    binding_kind: internal_container
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - docs/audit/legacy-runtime-inventory.md
+      - docs/adr/0001-transitional-deployables-and-extraction-order.md
+    bindings:
+      - environment: platform_local_dev
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 9000
+        network_scope: platform_shared_infra
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 9000
+        network_scope: platform_shared_infra
+      - environment: platform_production
+        active: false
+        public_exposure: false
+        host:
+          type: unpublished
+        container:
+          port: 9000
+        network_scope: platform_shared_infra
+
+  - id: platform-nats-client
+    role: nats_client_websocket_disabled
+    binding_kind: staging_reservation
+    protocol: tcp
+    statement: reservation
+    evidence:
+      - docs/adr/0002-event-envelope-outbox-inbox-and-jetstream.md
+      - NATS default client port 4222 (verify image pin at implementation)
+    bindings:
+      - environment: platform_local_dev
+        active: false
+        public_exposure: false
+        host:
+          type: fixed
+          port: 4222
+        container:
+          port: 4222
+        network_scope: platform_shared_infra
+        notes: reserved; compose not scaffolded (infra/README.md F0)
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 4222
+        network_scope: platform_shared_infra
+      - environment: platform_production
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 4222
+        network_scope: platform_shared_infra
+
+  - id: platform-nats-monitoring
+    role: nats_http_monitoring
+    binding_kind: staging_reservation
+    protocol: tcp
+    statement: reservation
+    evidence:
+      - docs/adr/0002-event-envelope-outbox-inbox-and-jetstream.md
+    bindings:
+      - environment: platform_local_dev
+        active: false
+        public_exposure: false
+        host:
+          type: fixed
+          port: 8222
+        container:
+          port: 8222
+        network_scope: platform_shared_infra
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8222
+        network_scope: platform_shared_infra
+      - environment: platform_production
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8222
+        network_scope: platform_shared_infra
+
+  - id: platform-gateway-http
+    role: gateway_http_listener
+    binding_kind: environment_configurable
+    protocol: tcp
+    statement: configurable
+    evidence:
+      - docs/adr/0004-identity-gateway-and-service-trust.md
+      - legacy deploy/env.prod.example PORT name
+    bindings:
+      - environment: platform_local_dev
+        active: false
+        public_exposure: false
+        host:
+          type: env_var
+          name: GATEWAY_HTTP_PORT
+          default_unverified: null
+        container:
+          port: 8080
+          type: env_var
+          name: GATEWAY_HTTP_PORT
+        network_scope: platform_edge
+        notes: host bind chosen at compose authoring time; not frozen
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          type: unresolved
+        network_scope: platform_edge
+      - environment: platform_production
+        active: false
+        public_exposure: true
+        host:
+          type: unresolved
+        container:
+          type: unresolved
+        network_scope: platform_edge
+        notes: public exposure via edge TLS terminator; exact host port unresolved
+
+  - id: platform-transitional-http-range
+    role: transitional_deployable_http_block
+    binding_kind: staging_reservation
+    protocol: tcp
+    statement: reservation
+    evidence:
+      - docs/adr/0001-transitional-deployables-and-extraction-order.md
+    bindings:
+      - environment: platform_local_dev
+        active: false
+        public_exposure: false
+        host:
+          type: range
+          start: 8100
+          end: 8149
+        container:
+          type: range
+          start: 8000
+          end: 8049
+        network_scope: per_deployable_isolated
+        notes: provisional block for up to 3–5 transitional runtimes; not assigned per context
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          type: unresolved
+        network_scope: per_deployable_isolated
+      - environment: platform_production
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          type: unresolved
+        network_scope: per_deployable_isolated
+
+  - id: platform-observability-unresolved
+    role: metrics_logs_traces_ingress
+    binding_kind: unresolved
+    protocol: tcp
+    statement: unresolved
+    evidence:
+      - docs/adr/0001-transitional-deployables-and-extraction-order.md
+      - infra/README.md
+    bindings:
+      - environment: platform_local_dev
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          type: unresolved
+        notes: Prometheus/Grafana/Loki ports not scaffolded in F0
+
+collision_policy:
+  check_active_host_bindings_only: true
+  skip_host_types: [unpublished, env_var, unresolved]
+  treat_loopback_and_all_interfaces_as_distinct: false
+  loopback_collides_with_wildcard: true
+  internal_container_reuse_allowed_when:
+    - host.type is unpublished
+    - network_scope differs OR binding_kind is internal_container
