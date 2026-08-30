@@ -1,0 +1,42 @@
+---
+description: HUDHUD ADR and architecture documentation standards — evidence vs decision, required ADR sections, no invented policy.
+globs: "docs/**, architecture/**, contracts/**"
+alwaysApply: false
+---
+
+# ADR and documentation
+
+## Statement classes
+
+Label each claim as one of: **evidence**, **proposal**, **decision**,
+**assumption**, **unresolved policy**. Do not convert a suggestion into a fact.
+
+Do not invent business policy. Do not treat a suggested deployable count as an
+architectural fact. Deployable grouping is decided by ADR, not by folder layout.
+
+## ADRs
+
+Use [docs/adr/0000-template.md](../../docs/adr/0000-template.md). Every ADR must
+include:
+
+- Context
+- Options considered
+- Decision drivers
+- Decision (or explicit `proposed` / unresolved outcome)
+- Consequences
+- Migration impact
+- Observability
+- Security
+- Rollback
+- Unresolved questions
+
+Status `accepted` is required before implementation that depends on the decision.
+`prepare-adr` must not silently mark unresolved policy as accepted.
+
+## Canonical docs
+
+Update [architecture/invariants.md](../../architecture/invariants.md),
+[architecture/service-boundaries.yaml](../../architecture/service-boundaries.yaml),
+and [architecture/ownership-matrix.yaml](../../architecture/ownership-matrix.yaml)
+instead of adding a conflicting parallel statement. Link ADRs from
+[docs/adr/README.md](../../docs/adr/README.md).

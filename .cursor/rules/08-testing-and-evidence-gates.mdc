@@ -1,0 +1,35 @@
+---
+description: HUDHUD evidence gates — acceptance criteria, tests, architecture checks, and integrity statements.
+alwaysApply: true
+---
+
+# Testing and evidence gates
+
+## Before implementation
+
+Write acceptance criteria. If policy is unresolved, stop or produce a
+`prepare-adr` draft — do not code around a missing decision.
+
+## Required proof (as applicable)
+
+- Focused tests for the change plus required regression tests
+- Architecture: `uv run python scripts/quality/verify_boundaries.py`
+- Governance (when editing `.cursor/**` or `AGENTS.md`):
+  `uv run python scripts/quality/verify_agent_governance.py`
+- `uv run pytest tests/architecture tests/governance` when those trees apply
+- Migration: disposable upgrade proof and single-head check
+- Contract: compatibility tests for the event/API version
+- Compose: skill `verify-compose-topology` when compose files change
+
+Report **exact** commands and results.
+
+## Claims
+
+- Do not call the system production-ready without the evidence above.
+- List deferred scope and explicit non-actions.
+- Do not weaken or delete existing architecture tests.
+
+## Integrity
+
+Close with: files changed, HEAD SHA, tests run, deferred decisions, confirmation
+that legacy was not modified, and that nothing was pushed unless authorized.

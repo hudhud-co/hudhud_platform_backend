@@ -1,0 +1,43 @@
+---
+description: Git and worktree safety for HUDHUD — preflight, no destructive operations, commit/push policy, evidence.
+alwaysApply: true
+---
+
+# Git and worktree safety
+
+## Preflight (before any edit)
+
+Capture and keep: repository path, branch, `git rev-parse HEAD`,
+`git status --porcelain`, `git worktree list`, remotes.
+
+The task worktree must match the instructed branch/HEAD unless the current
+human instruction says otherwise. If it does not, **stop without mutation**.
+
+## Isolation
+
+- One bounded task per branch/worktree.
+- No unrelated edits.
+- User changes are never discarded or overwritten.
+- Parallel windows use disjoint path ownership from the worktree matrix.
+
+## Forbidden unless the current human instruction explicitly authorizes it
+
+- Destructive Git: `reset --hard`, `clean -fd`, force checkout, history rewrite
+- Merge, rebase, cherry-pick (integration tasks must name this skill/scope)
+- Push, pull request creation
+- Worktree add/remove outside an invoked `parallel-worktree-wave` /
+  `integration-gate` procedure
+
+Stash, restore, or checkout that would drop user work is forbidden.
+
+## Commit and push
+
+- Local commit only when the current human instruction requests it.
+- No push and no PR unless that instruction explicitly authorizes it.
+- Do not skip hooks.
+
+## Close-out
+
+- Verify the task-owned tree is clean (unrelated pre-existing user files may
+  remain only if they were recorded at preflight and were not touched).
+- Report exact HEAD SHA and `git diff` / `git show` evidence for the commit.

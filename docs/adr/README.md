@@ -5,9 +5,12 @@ This directory holds Architecture Decision Records (ADRs) for the HUDHUD platfor
 ## Process
 
 1. Copy `0000-template.md` to `NNNN-short-title.md` with the next sequential number.
-2. Fill in context, decision, and consequences.
+2. Fill every required section in the template (context, options, decision drivers,
+   decision, consequences, migration impact, observability, security, rollback,
+   unresolved questions). Keep status `proposed` until named deciders accept it.
 3. Link related ADRs and update `architecture/service-boundaries.yaml` when a decision
-   affects bounded context ownership or deployable boundaries.
+   affects bounded context ownership or deployable boundaries. Do not invent policy
+   or treat a suggested deployable count as an architectural fact.
 
 ## Status Values
 

@@ -1,0 +1,42 @@
+---
+description: Read-only policy for the hudhud-backend legacy evidence repository, including the pre-existing dirty simulator file.
+alwaysApply: true
+---
+
+# Legacy read-only
+
+Absolute path (the only allowed legacy evidence source):
+
+`/Users/mohammadakbari/Development/Projects/Python/hudhud-backend`
+
+Role: read-only reference. Runtime dependency: forbidden.
+See `legacy_reference` in [architecture/service-boundaries.yaml](../../architecture/service-boundaries.yaml).
+
+## Allowed
+
+- Read files, git history, tests, routes, migrations, and inventories under `docs/audit/`.
+- Inspect configuration **names** (env keys, setting fields). Do not print secret **values**.
+
+## Forbidden mutations
+
+Never, including "just formatting" or "authorized tests":
+
+- Edit, format, stage, stash, restore, reset, commit, or push in the legacy worktree
+- Create generated files, worktrees, submodules, or symlinks there
+- Add a path/git/Docker dependency on `hudhud-backend` or `hudhud_backend`
+- Blind-copy modules into this platform repository
+
+Intentional behavioral ports require a provenance record in
+[docs/audit/legacy-provenance.yaml](../../docs/audit/legacy-provenance.yaml).
+
+## User dirty file (preserve)
+
+The legacy worktree has a pre-existing unstaged user modification:
+
+`scripts/dev_pickup_driver_simulator.py`
+
+Do not edit, format, stage, stash, restore, reset, copy, or revert it.
+Do not treat that dirty file as a HUDHUD platform change.
+
+Copied or adapted files in **this** repository still follow [AGENTS.md](../../AGENTS.md)
+and architecture invariants; legacy Cursor rules do not apply here.

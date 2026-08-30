@@ -19,6 +19,8 @@ The monorepo is a **development boundary**, not a runtime boundary. Multiple ser
 ## Directory Layout
 
 ```text
+AGENTS.md              # Root agent instructions (authority hierarchy)
+.cursor/               # Version-controlled Cursor Rules and Skills
 architecture/          # Boundaries, ownership matrix, invariants
 contracts/             # API and event contracts (future)
 docs/
@@ -28,10 +30,11 @@ infra/
   compose/             # Docker Compose profiles (future)
 packages/              # Narrow technical primitives only
 scripts/
-  quality/             # Architecture verification
+  quality/             # Architecture and governance verification
 services/              # Independently deployable FastAPI services
 tests/
   architecture/        # Executable architecture fitness tests
+  governance/          # Cursor Rules/Skills governance tests
 ```
 
 ## Adding a Future Service
@@ -198,10 +201,18 @@ uv run pytest tests/architecture
 
 # Architecture verifier (direct)
 uv run python scripts/quality/verify_boundaries.py
+
+# Agent governance verifier
+uv run python scripts/quality/verify_agent_governance.py
+
+# Architecture + governance tests
+uv run pytest tests/architecture tests/governance
 ```
 
 ## Architecture Documents
 
+- `AGENTS.md` — root agent instructions
+- `.cursor/README.md` — Rules vs Skills and invocation
 - `architecture/invariants.md` — binding platform rules
 - `architecture/service-boundaries.yaml` — bounded context manifest
 - `architecture/ownership-matrix.yaml` — data and API ownership

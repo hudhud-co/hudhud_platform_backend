@@ -1,0 +1,40 @@
+---
+description: HUDHUD service ownership, isolation, Gateway limits, and allowlisted shared packages.
+alwaysApply: true
+---
+
+# Architecture boundaries
+
+Binding detail lives in [architecture/invariants.md](../../architecture/invariants.md)
+and [architecture/service-boundaries.yaml](../../architecture/service-boundaries.yaml).
+Executable checks: `scripts/quality/verify_boundaries.py`.
+
+## Each service owns
+
+Runtime composition root, dependencies and lockfile, Docker build context,
+migrations, database credentials, API/event contracts, outbox/inbox, tests,
+deployment, observability, and backup/restore.
+
+## Forbidden
+
+- Cross-service Python imports (`services.*` or another service's package)
+- Shared ORM models, shared domain entities, or shared repositories
+- Cross-domain / cross-service foreign keys
+- Direct database reads or writes against another service's datastore
+- Gateway owning business tables or performing business orchestration
+- Path or runtime dependency on the legacy repository
+
+## Transitional deployables
+
+A deployable grouping is an operational choice. It does **not** erase
+bounded-context ownership or writer identity in
+[architecture/ownership-matrix.yaml](../../architecture/ownership-matrix.yaml).
+Do not treat a suggested service count as an architectural fact.
+
+## Shared packages
+
+`packages/` is allowlist-only (`shared_packages.allowed_categories` in the
+boundaries manifest). Forbidden categories include domain models, ORM models,
+repositories, business logic, and Alembic migrations.
+
+**Shipment** remains the sole canonical writer of shipment lifecycle state.

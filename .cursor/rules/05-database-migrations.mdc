@@ -1,0 +1,31 @@
+---
+description: Service-owned Alembic migrations, single-head, expand/contract, and no cross-service foreign keys.
+globs: "**/alembic/**, **/alembic.ini, **/migrations/**, services/**/persistence/**, services/**/db/**, **/*models*.py, **/*orm*.py"
+alwaysApply: false
+---
+
+# Database migrations
+
+Canonical rules: [architecture/invariants.md](../../architecture/invariants.md)
+(Database Extraction, Service Independence).
+
+## Ownership
+
+- Exactly one service owns a given migration history and the tables it creates.
+- Independent Alembic history per owning service. **Single head** required.
+- No root-level shared Alembic (`alembic/versions` at repo root is forbidden).
+- No cross-service foreign keys. Store the other context's ID as an opaque value.
+
+## Compatibility
+
+- Prefer expand/contract. Additive schema first; remove only after consumers move.
+- No destructive migration without explicit human approval **and** a written
+  recovery plan (backup/restore or forward repair).
+- Prove upgrade on a disposable database. Record the exact command and result.
+- Document rollback versus forward-recovery. If `downgrade` is unsafe, say so
+  and prove the forward path.
+
+## Cutover
+
+One-writer cutover. Bidirectional dual-write is forbidden.
+Use skill `create-service-migration` for the full proof procedure.

@@ -1,0 +1,38 @@
+---
+description: HUDHUD at-least-once messaging, outbox/inbox, envelope fields, versioning, and consumer isolation.
+globs: "contracts/**, **/outbox/**, **/inbox/**, **/nats/**, **/messaging/**, **/events/**, **/producers/**, **/consumers/**, **/*outbox*.py, **/*inbox*.py, **/*consumer*.py, **/*producer*.py"
+alwaysApply: false
+---
+
+# Events and messaging
+
+Canonical envelope and transport: [architecture/invariants.md](../../architecture/invariants.md)
+(Messaging) and [contracts/README.md](../../contracts/README.md).
+
+## Delivery
+
+- At-least-once via NATS JetStream. **Do not claim exactly-once.**
+- Producers write a **transactional outbox** in the same transaction as domain state.
+- Consumers persist a **durable idempotent inbox** before side effects.
+- No business-critical ephemeral (non-durable) messages.
+
+## Ordering and identity
+
+- Aggregate ordering uses `aggregate_version` (plus `aggregate_type` / `aggregate_id`).
+- Propagate `correlation_id`, `causation_id`, and `traceparent`.
+- Envelope must support the fields listed in invariants (including tenant context
+  when applicable).
+
+## Compatibility
+
+- Version schemas. Additive changes stay in-major; breaks need a new `event_version`.
+- Producers remain backward compatible within a major; consumers tolerate unknown
+  additive fields (forward compatible within policy).
+- Define poison-message handling, retry, and parking. Do not retry forever.
+
+## Isolation
+
+A consumer may mutate **only** data its service owns. It must not write another
+context's database or canonical Shipment lifecycle state.
+
+Use skill `define-event-contract` when adding or evolving a contract.

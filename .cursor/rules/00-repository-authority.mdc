@@ -1,0 +1,45 @@
+---
+description: HUDHUD repository identity, authority hierarchy, evidence requirements, scope discipline, and stop conditions.
+alwaysApply: true
+---
+
+# Repository authority
+
+Repository: `hudhud_platform_backend`. Purpose: independently deployable FastAPI
+services. The monorepo is a development boundary, not a runtime boundary.
+
+## Authority order
+
+A Skill may define workflow steps but must never override architectural or safety
+rules. Highest rank wins:
+
+1. Explicit human instruction in the current task
+2. [AGENTS.md](../../AGENTS.md)
+3. Approved ADRs in `docs/adr/`
+4. [architecture/invariants.md](../../architecture/invariants.md)
+5. [architecture/service-boundaries.yaml](../../architecture/service-boundaries.yaml)
+6. Scoped Cursor Rules
+7. Invoked Cursor Skill workflow
+8. Existing implementation conventions
+
+Cite those documents. Do not copy them into this rule.
+
+## Evidence
+
+- Acceptance criteria before implementation.
+- Exact commands and results. No unsupported "production-ready" claims.
+- Distinguish evidence, proposal, decision, assumption, and unresolved policy.
+- Legacy dirty files are not platform changes.
+
+## Scope
+
+- One bounded task per branch/worktree.
+- Edit only assigned ownership paths.
+- User changes are never discarded or overwritten.
+
+## Stop
+
+Stop when HEAD/branch mismatches the task, unexpected dirty files would be
+overwritten, ownership/policy is unresolved but required, legacy mutation is
+requested, file scopes overlap, an invariant would be violated, or push /
+destructive Git is requested without explicit authorization.

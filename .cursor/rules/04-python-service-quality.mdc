@@ -1,0 +1,31 @@
+---
+description: Python 3.12, uv, per-service dependencies, hexagonal style, Ruff and pytest quality for HUDHUD services.
+globs: "**/*.py, **/pyproject.toml, **/uv.lock, services/**, packages/**, tests/**"
+alwaysApply: false
+---
+
+# Python service quality
+
+- Language: Python 3.12. Package manager: `uv`.
+- Each service owns `pyproject.toml` and `uv.lock`. Do not share the root lock
+  as a service runtime lock. Root tooling is repository quality only.
+
+## Shape
+
+- Domain code is independent of FastAPI, SQLAlchemy, Redis, NATS, and transport.
+- HTTP/API adapters contain no business rules.
+- Depend on injected ports; adapters live at the composition root.
+- Be type-aware and explicit (names, errors, return types).
+- Do not invent a generic framework, repository kit, or "common domain" package
+  without demonstrated repeated need **and** an allowlist update in
+  [architecture/service-boundaries.yaml](../../architecture/service-boundaries.yaml).
+
+## Quality
+
+- `uv run ruff check` must pass on touched Python.
+- Tests: `pytest`, deterministic, no real customer data, no wall-clock races,
+  no live network unless the test is explicitly marked integration and scoped.
+- Prefer fakes/in-memory adapters over hitting another service's database.
+
+See [services/README.md](../../services/README.md) and
+[packages/README.md](../../packages/README.md).
