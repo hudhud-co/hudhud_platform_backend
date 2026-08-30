@@ -1,0 +1,199 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  path-impact:
+    name: Path impact
+    runs-on: ubuntu-latest
+    outputs:
+      full_validation: ${{ steps.impact.outputs.full_validation }}
+      fail_safe: ${{ steps.impact.outputs.fail_safe }}
+      docs_only: ${{ steps.impact.outputs.docs_only }}
+      run_service_scoped: ${{ steps.impact.outputs.run_service_scoped }}
+      affected_services: ${{ steps.impact.outputs.affected_services }}
+      affected_packages: ${{ steps.impact.outputs.affected_packages }}
+      impact_json: ${{ steps.impact.outputs.impact_json }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364cbd1ab9 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Resolve comparison range
+        id: range
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+            if [[ -z "${BASE_SHA}" || "${BASE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
+              BASE_SHA=""
+            fi
+          fi
+          echo "base_sha=${BASE_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "head_sha=${HEAD_SHA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f8f196f639a1823279a2d2ccdbe9a6591a1a47 # v6.2.0
+        with:
+          enable-cache: true
+
+      - name: Sync repository tooling
+        run: uv sync --dev
+
+      - name: Calculate path impact
+        id: impact
+        env:
+          CI_BASE_SHA: ${{ steps.range.outputs.base_sha }}
+          CI_HEAD_SHA: ${{ steps.range.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          uv run python scripts/ci/calculate_path_impact.py --format github
+          if [[ -f "${RUNNER_TEMP}/path-impact.txt" ]]; then
+            cat "${RUNNER_TEMP}/path-impact.txt"
+          fi
+
+  quality-gates:
+    name: Quality gates
+    needs: path-impact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364cbd1ab9 # v4.2.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f8f196f639a1823279a2d2ccdbe9a6591a1a47 # v6.2.0
+        with:
+          enable-cache: true
+
+      - name: Sync repository tooling
+        run: uv sync --dev
+
+      - name: Lockfile check
+        run: uv lock --check
+
+      - name: Ruff
+        run: uv run ruff check .
+
+      - name: Architecture boundaries
+        run: uv run python scripts/quality/verify_boundaries.py
+
+      - name: Agent governance
+        run: uv run python scripts/quality/verify_agent_governance.py
+
+      - name: Architecture and governance tests
+        run: uv run pytest tests/architecture tests/governance tests/ci
+
+  path-filter-tests:
+    name: Path filter regression
+    needs: path-impact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364cbd1ab9 # v4.2.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f8f196f639a1823279a2d2ccdbe9a6591a1a47 # v6.2.0
+        with:
+          enable-cache: true
+
+      - name: Sync repository tooling
+        run: uv sync --dev
+
+      - name: Show calculated impact
+        run: |
+          echo '${{ needs.path-impact.outputs.impact_json }}' | python -m json.tool
+
+      - name: Path impact tests
+        run: uv run pytest tests/ci -v
+
+  service-scoped:
+    name: Service scoped (${{ matrix.service }})
+    needs: path-impact
+    if: needs.path-impact.outputs.run_service_scoped == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.path-impact.outputs.affected_services) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364cbd1ab9 # v4.2.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f8f196f639a1823279a2d2ccdbe9a6591a1a47 # v6.2.2
+        with:
+          enable-cache: true
+
+      - name: Run service checks when present
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE_DIR="services/${{ matrix.service }}"
+          if [[ ! -d "${SERVICE_DIR}" ]]; then
+            echo "No service directory for ${{ matrix.service }} — skipping (F0 foundation)."
+            exit 0
+          fi
+          if [[ -f "${SERVICE_DIR}/pyproject.toml" ]]; then
+            cd "${SERVICE_DIR}"
+            uv lock --check
+            uv sync --dev
+            uv run ruff check .
+          fi
+          if [[ -d "${SERVICE_DIR}/tests" ]]; then
+            cd "${SERVICE_DIR}"
+            uv run pytest tests -v
+          fi
+          echo "Service checks completed for ${{ matrix.service }}."
+
+  full-validation:
+    name: Full validation
+    needs: path-impact
+    if: needs.path-impact.outputs.full_validation == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364cbd1ab9 # v4.2.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f8f196f639a1823279a2d2ccdbe9a6591a1a47 # v6.2.0
+        with:
+          enable-cache: true
+
+      - name: Sync repository tooling
+        run: uv sync --dev
+
+      - name: Discover and validate all services
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for service_dir in services/*/; do
+            [[ -d "${service_dir}" ]] || continue
+            service_name="$(basename "${service_dir}")"
+            if [[ "${service_name}" == "README.md" ]]; then
+              continue
+            fi
+            if [[ -f "${service_dir}/pyproject.toml" ]]; then
+              echo "Validating ${service_name}"
+              (cd "${service_dir}" && uv lock --check && uv sync --dev && uv run ruff check .)
+            fi
+            if [[ -d "${service_dir}/tests" ]]; then
+              (cd "${service_dir}" && uv run pytest tests -v)
+            fi
+          done
+          echo "Full validation service sweep complete."
