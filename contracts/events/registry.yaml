@@ -1,0 +1,35 @@
+# Event contract registry (foundation)
+
+Machine-readable index of registered integration event contracts under
+`contracts/events/`. Envelope wire shape remains in `envelope/`.
+
+contracts:
+  - event_type: legacy_bridge.observation.shipment_timeline_entry
+    event_version: 1
+    producer: legacy_bridge
+    message_kind: integration
+    aggregate_scope: non_aggregate
+    subject: hudhud.shipment.legacy_bridge.observation.shipment_timeline_entry.v1
+    stream: HUDHUD_SHIPMENT
+    schema_uri: https://hudhud.platform/contracts/events/legacy_bridge.observation.shipment_timeline_entry/v1.schema.json
+    schema_path: legacy_bridge.observation.shipment_timeline_entry/v1.schema.json
+    payload_schema_path: legacy_bridge.observation.shipment_timeline_entry/v1.payload.schema.json
+    event_id_namespace: 5c4b4b77-2b6b-5d2c-bcfd-efea8ce399c3
+    source_table_allowlist:
+      - shipment_events
+    adr: ADR-0009-A1
+
+  - event_type: legacy_bridge.observation.audit_entry
+    event_version: 1
+    producer: legacy_bridge
+    message_kind: integration
+    aggregate_scope: non_aggregate
+    subject: hudhud.audit.legacy_bridge.observation.audit_entry.v1
+    stream: HUDHUD_AUDIT
+    schema_uri: https://hudhud.platform/contracts/events/legacy_bridge.observation.audit_entry/v1.schema.json
+    schema_path: legacy_bridge.observation.audit_entry/v1.schema.json
+    payload_schema_path: legacy_bridge.observation.audit_entry/v1.payload.schema.json
+    event_id_namespace: 697097cc-6afb-556b-9f9b-4be135ca6282
+    source_table_allowlist:
+      - audit_logs
+    adr: ADR-0009-A2

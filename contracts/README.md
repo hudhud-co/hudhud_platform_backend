@@ -28,3 +28,7 @@ Cross-service events must support:
 
 Foundation F0 — `event_envelope` package and `contracts/events/envelope/` schema are available.
 See `packages/event_envelope/` and `contracts/events/envelope/README.md`.
+
+Wave 4 observation contracts (ADR-0009 A1/A2) are registered under
+`contracts/events/legacy_bridge.observation.*/` with index
+`contracts/events/registry.yaml`.

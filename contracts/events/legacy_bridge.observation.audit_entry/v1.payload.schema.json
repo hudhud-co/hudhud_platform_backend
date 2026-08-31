@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/legacy_bridge.observation.audit_entry/v1.payload.schema.json",
+  "title": "legacy_bridge.observation.audit_entry v1 payload",
+  "description": "Normalized observation of one append-only legacy audit_logs row. Not audit.fact.entry_recorded.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "source_table",
+    "source_pk",
+    "source_position",
+    "source_module",
+    "audit_entry_id",
+    "action",
+    "entity_type",
+    "entity_id",
+    "actor_type",
+    "source",
+    "occurred_at",
+    "bridge_mapper_version"
+  ],
+  "properties": {
+    "source_table": {
+      "type": "string",
+      "const": "audit_logs",
+      "description": "Allowlisted legacy source table (append-only)."
+    },
+    "source_pk": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Legacy audit_logs.id."
+    },
+    "source_position": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "Capture provenance (LSN or created_at|source_pk). Distinct from event_id."
+    },
+    "source_module": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Legacy module that appended the row."
+    },
+    "audit_entry_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Same value as source_pk for append-only audit_logs rows."
+    },
+    "action": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "entity_type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "entity_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "actor_type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "actor_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "description": "Legacy audit_logs.source column."
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Legacy audit_logs.created_at (RFC 3339 UTC)."
+    },
+    "metadata": {
+      "$ref": "#/$defs/sanitized_metadata_object"
+    },
+    "bridge_mapper_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Bridge mapper semantic version."
+    }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["lsn"] },
+      { "required": ["xid"] },
+      { "required": ["txid"] },
+      { "required": ["source_op"] },
+      { "required": ["before"] },
+      { "required": ["after"] },
+      { "required": ["row_data"] },
+      { "required": ["raw_row"] },
+      { "required": ["change_data"] },
+      { "required": ["op"] },
+      { "required": ["cdc_payload"] }
+    ]
+  },
+  "$defs": {
+    "sanitized_metadata_object": {
+      "type": "object",
+      "description": "Sanitized subset of legacy metadata_jsonb. No secrets, tokens, or inline media.",
+      "maxProperties": 32,
+      "propertyNames": {
+        "not": {
+          "pattern": "^(password|token|jwt|api_key|otp|push_token|secret|authorization|national_id|card_number)$"
+        }
+      },
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string", "maxLength": 2048 },
+          { "type": "number" },
+          { "type": "integer" },
+          { "type": "boolean" },
+          { "type": "null" },
+          {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "oneOf": [
+                { "type": "string", "maxLength": 512 },
+                { "type": "number" },
+                { "type": "boolean" },
+                { "type": "null" }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

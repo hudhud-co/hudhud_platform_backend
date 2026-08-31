@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/legacy_bridge.observation.audit_entry/v1.schema.json",
+  "title": "legacy_bridge.observation.audit_entry v1",
+  "description": "ADR-0009 A2 — transitional Legacy Event Bridge observation of one append-only audit_logs row.",
+  "allOf": [
+    { "$ref": "../envelope/v1.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "legacy_bridge.observation.audit_entry"
+        },
+        "event_version": {
+          "const": 1
+        },
+        "producer": {
+          "const": "legacy_bridge"
+        },
+        "message_kind": {
+          "const": "integration"
+        },
+        "aggregate_scope": {
+          "const": "non_aggregate"
+        },
+        "aggregate_type": {
+          "type": "null"
+        },
+        "aggregate_id": {
+          "type": "null"
+        },
+        "aggregate_version": {
+          "type": "null"
+        },
+        "schema_uri": {
+          "type": "string",
+          "const": "https://hudhud.platform/contracts/events/legacy_bridge.observation.audit_entry/v1.schema.json"
+        },
+        "payload": {
+          "$ref": "v1.payload.schema.json"
+        }
+      },
+      "required": [
+        "event_type",
+        "event_version",
+        "producer",
+        "message_kind",
+        "aggregate_scope",
+        "payload"
+      ]
+    }
+  ]
+}

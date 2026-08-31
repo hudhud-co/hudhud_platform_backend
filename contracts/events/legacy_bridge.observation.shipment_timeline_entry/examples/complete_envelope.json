@@ -1,0 +1,43 @@
+{
+  "envelope_version": 1,
+  "event_id": "24b4c3ce-b1e6-5e0b-be80-76918289d929",
+  "event_type": "legacy_bridge.observation.shipment_timeline_entry",
+  "event_version": 1,
+  "occurred_at": "2026-08-30T11:15:42.456Z",
+  "producer": "legacy_bridge",
+  "message_kind": "integration",
+  "aggregate_scope": "non_aggregate",
+  "correlation_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "data_classification": "internal",
+  "pii_present": false,
+  "schema_uri": "https://hudhud.platform/contracts/events/legacy_bridge.observation.shipment_timeline_entry/v1.schema.json",
+  "payload": {
+    "source_table": "shipment_events",
+    "source_pk": "2f9b2c8e-1a3d-4e5f-9b8c-7d6e5f4a3b2c",
+    "source_position": "0/16B3A8C0",
+    "source_module": "delivery_task",
+    "legacy_event_type": "SHIPMENT_DELIVERED",
+    "occurred_at": "2026-08-30T11:15:42.456Z",
+    "old_status": "OUT_FOR_DELIVERY",
+    "new_status": "DELIVERED",
+    "shipment_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "actor_type": "driver",
+    "actor_id": "c0ffee00-0000-4000-8000-000000000001",
+    "metadata": {
+      "delivery_task_id": "8e7d6c5b-4a39-4120-9f8e-1a2b3c4d5e6f",
+      "hub_id": "8d2e1f0a-9b8c-7d6e-5f4a-3b2c1d0e9f8a"
+    },
+    "bridge_mapper_version": "1.0.0"
+  },
+  "metadata": {
+    "replay": false
+  },
+  "media_refs": [
+    {
+      "ref_type": "s3",
+      "bucket": "hudhud-evidence",
+      "key": "delivery-evidence/a1b2c3d4-e5f6-7890-abcd-ef1234567890/proof.jpg",
+      "content_type": "image/jpeg"
+    }
+  ]
+}

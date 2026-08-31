@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/legacy_bridge.observation.shipment_timeline_entry/v1.payload.schema.json",
+  "title": "legacy_bridge.observation.shipment_timeline_entry v1 payload",
+  "description": "Normalized observation of one append-only legacy shipment_events row. Not a raw CDC tuple.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "source_table",
+    "source_pk",
+    "source_position",
+    "source_module",
+    "legacy_event_type",
+    "occurred_at",
+    "shipment_id",
+    "bridge_mapper_version"
+  ],
+  "properties": {
+    "source_table": {
+      "type": "string",
+      "const": "shipment_events",
+      "description": "Allowlisted legacy source table (append-only)."
+    },
+    "source_pk": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Legacy shipment_events.id."
+    },
+    "source_position": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "Capture provenance (LSN or occurred_at|source_pk). Distinct from event_id."
+    },
+    "source_module": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Legacy module that appended the row."
+    },
+    "legacy_event_type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Legacy ShipmentEventType string (e.g. SHIPMENT_DELIVERED)."
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Business timestamp from the legacy row (RFC 3339 UTC)."
+    },
+    "old_status": {
+      "type": ["string", "null"],
+      "maxLength": 32
+    },
+    "new_status": {
+      "type": ["string", "null"],
+      "maxLength": 32
+    },
+    "shipment_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Correlation reference only; envelope remains non_aggregate."
+    },
+    "actor_type": {
+      "type": "string",
+      "maxLength": 32
+    },
+    "actor_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "metadata": {
+      "$ref": "#/$defs/sanitized_metadata_object"
+    },
+    "bridge_mapper_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Bridge mapper semantic version."
+    }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["lsn"] },
+      { "required": ["xid"] },
+      { "required": ["txid"] },
+      { "required": ["source_op"] },
+      { "required": ["before"] },
+      { "required": ["after"] },
+      { "required": ["row_data"] },
+      { "required": ["raw_row"] },
+      { "required": ["change_data"] },
+      { "required": ["op"] },
+      { "required": ["cdc_payload"] }
+    ]
+  },
+  "$defs": {
+    "sanitized_metadata_object": {
+      "type": "object",
+      "description": "Sanitized subset of legacy metadata_jsonb. No secrets, tokens, or inline media.",
+      "maxProperties": 32,
+      "propertyNames": {
+        "not": {
+          "pattern": "^(password|token|jwt|api_key|otp|push_token|secret|authorization|national_id|card_number)$"
+        }
+      },
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string", "maxLength": 2048 },
+          { "type": "number" },
+          { "type": "integer" },
+          { "type": "boolean" },
+          { "type": "null" },
+          {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "oneOf": [
+                { "type": "string", "maxLength": 512 },
+                { "type": "number" },
+                { "type": "boolean" },
+                { "type": "null" }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

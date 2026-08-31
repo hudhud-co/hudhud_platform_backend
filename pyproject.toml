@@ -10,6 +10,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.23",
     "nats-py>=2.9",
     "pytest>=8.0",
     "ruff>=0.8",
@@ -45,6 +46,7 @@ indent-style = "space"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests/contracts"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v"
