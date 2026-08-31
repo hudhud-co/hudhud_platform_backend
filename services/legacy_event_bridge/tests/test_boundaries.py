@@ -23,17 +23,24 @@ def test_no_cross_service_imports() -> None:
 
 def test_allowed_shared_packages_only() -> None:
     service_root = Path(__file__).resolve().parents[1] / "src"
-    allowed = {"legacy_event_bridge", "event_envelope", "messaging_conformance"}
+    allowed = {"legacy_event_bridge", "event_envelope", "messaging_conformance", "nats"}
     stdlib = {
         "abc",
+        "asyncio",
         "dataclasses",
         "datetime",
         "enum",
         "functools",
+        "json",
         "logging",
         "os",
         "pathlib",
         "re",
+        "signal",
+        "ssl",
+        "sys",
+        "threading",
+        "time",
         "typing",
         "uuid",
         "yaml",

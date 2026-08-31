@@ -7,6 +7,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from legacy_event_bridge.domain.errors import SourceTableNotAllowedError
+from legacy_event_bridge.domain.publish import PublishResult
 from legacy_event_bridge.domain.types import (
     CdcChange,
     CheckpointRecord,
@@ -384,9 +385,9 @@ class MemoryBridgeStore:
         subject: str,
         payload_json: dict,
         transport_msg_id: str,
-    ) -> bool:
+    ) -> PublishResult:
         self.publish_log.append((subject, transport_msg_id, payload_json.get("event_id", "")))
-        return self.publish_should_ack
+        return PublishResult(ack_received=self.publish_should_ack)
 
     # ReplicationFeedbackPort
     def send_feedback(self, *, capture_source: str, position: str) -> bool:

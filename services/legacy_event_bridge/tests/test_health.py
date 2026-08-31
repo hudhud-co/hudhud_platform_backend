@@ -12,4 +12,7 @@ def test_health_and_ready() -> None:
     app = create_app(load_settings(environment=RuntimeEnvironment.TEST))
     client = TestClient(app)
     assert client.get("/health").json()["status"] == "ok"
-    assert client.get("/ready").json()["status"] == "ready"
+    ready = client.get("/ready").json()
+    assert ready["status"] == "ready"
+    assert ready["checks"]["cdc_adapter_deferred"]
+    assert "live_cdc_adapter" in ready["blockers"]

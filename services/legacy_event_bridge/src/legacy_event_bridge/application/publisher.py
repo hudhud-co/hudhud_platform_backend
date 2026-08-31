@@ -63,18 +63,22 @@ class OutboxPublisher:
 
         for row in claimed:
             snapshot = _to_snapshot(row)
-            ack = self._publisher.publish(
+            result = self._publisher.publish(
                 subject=row.subject,
                 payload_json=row.payload_json,
                 transport_msg_id=transport_msg_id_for_outbox(snapshot),
             )
-            classification = None if ack else RetryClassification.TRANSIENT
-            if not ack and row.last_error_code:
-                classification = classify_retry_error(row.last_error_code)
+            classification = None
+            if not result.ack_received:
+                classification = (
+                    classify_retry_error(result.error_code)
+                    if result.error_code
+                    else RetryClassification.TRANSIENT
+                )
 
             decision = decide_outbox_publish_result(
                 snapshot,
-                broker_ack_received=ack,
+                broker_ack_received=result.ack_received,
                 classification=classification,
             )
             published_at = now if decision.target_status is OutboxStatus.PUBLISHED else None
@@ -87,6 +91,13 @@ class OutboxPublisher:
             if decision.target_status is OutboxStatus.QUARANTINED:
                 quarantined += 1
 
+            error_code = None if result.ack_received else (result.error_code or "NATS_TIMEOUT")
+            error_message = None
+            if not result.ack_received:
+                error_message = sanitize_error_message(
+                    result.error_message or decision.reason,
+                )
+
             self._outbox.apply_publish_decision(
                 outbox_id=row.id,
                 status=decision.target_status.value,
@@ -94,12 +105,10 @@ class OutboxPublisher:
                 clear_lease=decision.clear_lease,
                 published_at=published_at,
                 next_attempt_at=next_attempt or now,
-                last_error_code=None if ack else "NATS_TIMEOUT",
-                last_error_message=None
-                if ack
-                else sanitize_error_message(decision.reason),
+                last_error_code=error_code,
+                last_error_message=error_message,
             )
-            if ack:
+            if result.ack_received:
                 published += 1
 
         return PublishBatchOutcome(

@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from legacy_event_bridge.domain.publish import PublishResult
 from legacy_event_bridge.domain.types import (
     CdcChange,
     CheckpointRecord,
@@ -151,8 +152,8 @@ class PublisherPort(Protocol):
         subject: str,
         payload_json: dict,
         transport_msg_id: str,
-    ) -> bool:
-        """Return True when broker ACK received."""
+    ) -> PublishResult:
+        """Return publish outcome with broker ACK status."""
 
 
 class ReplicationFeedbackPort(Protocol):
