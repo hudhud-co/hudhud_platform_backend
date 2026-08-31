@@ -1,0 +1,128 @@
+"""Outbox publisher using messaging_conformance decisions."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+
+from messaging_conformance import (
+    OutboxRecordSnapshot,
+    OutboxStatus,
+    RetryClassification,
+    decide_outbox_publish_result,
+    transport_msg_id_for_outbox,
+)
+from messaging_conformance.retry import classify_retry_error
+
+from legacy_event_bridge.domain.sanitize import sanitize_error_message
+from legacy_event_bridge.domain.types import OutboxRecord
+from legacy_event_bridge.ports import OutboxStorePort, PublisherPort
+
+_BACKOFF_SECONDS = (5, 30, 120, 600, 1800)
+
+
+@dataclass(frozen=True, slots=True)
+class PublishBatchOutcome:
+    published_count: int
+    retry_count: int
+    quarantined_count: int
+
+
+class OutboxPublisher:
+    """Claims and publishes outbox rows — landing state is never rolled back."""
+
+    def __init__(
+        self,
+        *,
+        outbox_store: OutboxStorePort,
+        publisher: PublisherPort,
+        owner_id: str,
+        batch_size: int,
+        lease_seconds: int,
+    ) -> None:
+        self._outbox = outbox_store
+        self._publisher = publisher
+        self._owner_id = owner_id
+        self._batch_size = batch_size
+        self._lease_seconds = lease_seconds
+
+    def publish_pending(self) -> PublishBatchOutcome:
+        now = datetime.now(tz=UTC)
+        self._outbox.recover_stale_processing(now=now)
+        lease_until = now + timedelta(seconds=self._lease_seconds)
+        claimed = self._outbox.claim_batch(
+            owner=self._owner_id,
+            batch_size=self._batch_size,
+            lease_until=lease_until,
+            now=now,
+        )
+
+        published = 0
+        retries = 0
+        quarantined = 0
+
+        for row in claimed:
+            snapshot = _to_snapshot(row)
+            ack = self._publisher.publish(
+                subject=row.subject,
+                payload_json=row.payload_json,
+                transport_msg_id=transport_msg_id_for_outbox(snapshot),
+            )
+            classification = None if ack else RetryClassification.TRANSIENT
+            if not ack and row.last_error_code:
+                classification = classify_retry_error(row.last_error_code)
+
+            decision = decide_outbox_publish_result(
+                snapshot,
+                broker_ack_received=ack,
+                classification=classification,
+            )
+            published_at = now if decision.target_status is OutboxStatus.PUBLISHED else None
+            next_attempt = None
+            if decision.schedule_retry:
+                next_attempt = now + timedelta(
+                    seconds=_backoff_seconds(min(row.attempt_count, len(_BACKOFF_SECONDS) - 1))
+                )
+                retries += 1
+            if decision.target_status is OutboxStatus.QUARANTINED:
+                quarantined += 1
+
+            self._outbox.apply_publish_decision(
+                outbox_id=row.id,
+                status=decision.target_status.value,
+                clear_owner=decision.clear_owner,
+                clear_lease=decision.clear_lease,
+                published_at=published_at,
+                next_attempt_at=next_attempt or now,
+                last_error_code=None if ack else "NATS_TIMEOUT",
+                last_error_message=None
+                if ack
+                else sanitize_error_message(decision.reason),
+            )
+            if ack:
+                published += 1
+
+        return PublishBatchOutcome(
+            published_count=published,
+            retry_count=retries,
+            quarantined_count=quarantined,
+        )
+
+
+def recover_stale_rows(outbox_store: OutboxStorePort, *, now: datetime) -> int:
+    return outbox_store.recover_stale_processing(now=now)
+
+
+def _to_snapshot(row: OutboxRecord) -> OutboxRecordSnapshot:
+    return OutboxRecordSnapshot(
+        event_id=row.event_id,
+        status=OutboxStatus(row.status),
+        attempt_count=row.attempt_count,
+        max_attempts=row.max_attempts,
+        processing_owner=row.processing_owner,
+        processing_until=row.processing_until,
+    )
+
+
+def _backoff_seconds(index: int) -> int:
+    return _BACKOFF_SECONDS[index]
