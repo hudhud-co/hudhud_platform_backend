@@ -147,8 +147,13 @@ def test_legacy_event_bridge_is_not_an_ownership_bounded_context(
     assert bridge["retires_per_context"] is True
 
 
-def test_messaging_conformance_is_not_represented_as_implemented(boundaries: dict) -> None:
+def test_messaging_conformance_is_allowlisted_and_technical(boundaries: dict) -> None:
     allowed = boundaries["shared_packages"]["allowed_categories"]
-    assert "messaging_conformance" not in allowed
+    assert "messaging_conformance" in allowed
     package_dir = REPO_ROOT / "packages" / "messaging_conformance"
-    assert not package_dir.exists()
+    assert package_dir.is_dir()
+    pyproject = package_dir / "pyproject.toml"
+    assert pyproject.exists()
+    content = pyproject.read_text(encoding="utf-8")
+    assert "sqlalchemy" not in content.lower()
+    assert "alembic" not in content.lower()

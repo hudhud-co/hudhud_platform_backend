@@ -1,0 +1,126 @@
+"""HUDHUD outbox/inbox conformance primitives — public API."""
+
+from messaging_conformance.conformance import (
+    CONFORMANCE_VECTORS,
+    ConformanceVector,
+    ConformanceVectorId,
+    assert_handler_rerun,
+    assert_inbox_terminal,
+    assert_jetstream_action,
+    assert_no_handler_rerun,
+    assert_outbox_terminal,
+    assert_publish_ack_transition,
+    assert_sanitized_error_message,
+    get_vector,
+    run_pure_decision_vector,
+    vectors_requiring_postgresql,
+    vectors_with_pure_decision_coverage,
+)
+from messaging_conformance.enums import (
+    InboxStatus,
+    JetStreamConsumerAction,
+    OutboxStatus,
+    QuarantineRedeliveryPolicy,
+    RetryClassification,
+    TransportDedupeAuthority,
+)
+from messaging_conformance.inbox_decisions import (
+    InboxDuplicateDecision,
+    InboxInsertDecision,
+    decide_handler_rollback_action,
+    decide_inbox_duplicate_delivery,
+    decide_post_commit_jetstream_action,
+)
+from messaging_conformance.lease import is_lease_active, is_lease_expired
+from messaging_conformance.observation import (
+    FORBIDDEN_OBSERVATION_IDENTITY_FIELDS,
+    ForbiddenObservationIdentityInputError,
+    append_only_observation_event_id,
+    build_append_only_observation_name,
+    default_observation_namespace_seed,
+    reject_forbidden_observation_identity_fields,
+)
+from messaging_conformance.outbox_decisions import (
+    OutboxPublishDecision,
+    OutboxRecoveryDecision,
+    decide_outbox_publish_result,
+    decide_stale_outbox_recovery,
+    is_outbox_claimable,
+    transport_msg_id_for_outbox,
+)
+from messaging_conformance.protocols import (
+    InboxHandlerPort,
+    InboxStorePort,
+    OutboxRelayPort,
+    OutboxStorePort,
+)
+from messaging_conformance.retry import (
+    PERMANENT_ERROR_CODES,
+    POISON_ERROR_CODES,
+    TRANSIENT_ERROR_CODES,
+    classify_retry_error,
+    should_quarantine,
+)
+from messaging_conformance.values import (
+    InboxRecordSnapshot,
+    InboxUniqueKey,
+    OutboxRecordSnapshot,
+    TransportDedupeBoundary,
+)
+
+__all__ = [
+    "CONFORMANCE_VECTORS",
+    "FORBIDDEN_OBSERVATION_IDENTITY_FIELDS",
+    "PERMANENT_ERROR_CODES",
+    "POISON_ERROR_CODES",
+    "TRANSIENT_ERROR_CODES",
+    "ConformanceVector",
+    "ConformanceVectorId",
+    "ForbiddenObservationIdentityInputError",
+    "InboxDuplicateDecision",
+    "InboxHandlerPort",
+    "InboxInsertDecision",
+    "InboxRecordSnapshot",
+    "InboxStatus",
+    "InboxStorePort",
+    "InboxUniqueKey",
+    "JetStreamConsumerAction",
+    "OutboxPublishDecision",
+    "OutboxRecordSnapshot",
+    "OutboxRecoveryDecision",
+    "OutboxRelayPort",
+    "OutboxStatus",
+    "OutboxStorePort",
+    "QuarantineRedeliveryPolicy",
+    "RetryClassification",
+    "TransportDedupeAuthority",
+    "TransportDedupeBoundary",
+    "append_only_observation_event_id",
+    "assert_handler_rerun",
+    "assert_inbox_terminal",
+    "assert_jetstream_action",
+    "assert_no_handler_rerun",
+    "assert_outbox_terminal",
+    "assert_publish_ack_transition",
+    "assert_sanitized_error_message",
+    "build_append_only_observation_name",
+    "classify_retry_error",
+    "decide_handler_rollback_action",
+    "decide_inbox_duplicate_delivery",
+    "decide_outbox_publish_result",
+    "decide_post_commit_jetstream_action",
+    "decide_stale_outbox_recovery",
+    "default_observation_namespace_seed",
+    "get_vector",
+    "is_lease_active",
+    "is_lease_expired",
+    "is_outbox_claimable",
+    "reject_forbidden_observation_identity_fields",
+    "run_pure_decision_vector",
+    "should_quarantine",
+    "transport_msg_id_for_outbox",
+    "vectors_requiring_postgresql",
+    "vectors_with_pure_decision_coverage",
+]
+
+__version__ = "0.1.0"

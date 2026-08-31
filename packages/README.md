@@ -36,3 +36,6 @@ packages/
 ## Current Stage
 
 `event_envelope` — see `packages/event_envelope/` and `contracts/events/envelope/`.
+
+`messaging_conformance` — see `packages/messaging_conformance/` (ADR-0008 ports, decisions,
+conformance vectors; no shared ORM or NATS runtime).

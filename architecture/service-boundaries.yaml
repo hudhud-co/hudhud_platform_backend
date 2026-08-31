@@ -480,6 +480,7 @@ bounded_contexts:
 shared_packages:
   allowed_categories:
     - event_envelope
+    - messaging_conformance
     - tracing
     - idempotency
     - http_client_primitives
