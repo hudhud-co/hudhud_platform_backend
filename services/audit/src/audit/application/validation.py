@@ -18,6 +18,7 @@ from audit.domain.contract import (
     A2_EVENT_TYPE,
     A2_EVENT_VERSION,
     A2_PRODUCER,
+    A2_SCHEMA_URI,
     A2_SOURCE_SYSTEM,
     A2_SOURCE_TABLE,
     A2_STREAM,
@@ -52,6 +53,8 @@ def validate_a2_delivery(*, envelope: EventEnvelope, delivery: Delivery) -> Vali
         raise ContractRejection("SCHEMA_MISMATCH", "event_version is not 1")
     if envelope.producer != A2_PRODUCER:
         raise ContractRejection("SCHEMA_MISMATCH", "producer is not legacy_bridge")
+    if envelope.schema_uri is not None and envelope.schema_uri != A2_SCHEMA_URI:
+        raise ContractRejection("SCHEMA_MISMATCH", "schema_uri does not match A2 registry")
     if envelope.message_kind is not MessageKind.INTEGRATION:
         raise ContractRejection("SCHEMA_MISMATCH", "message_kind is not integration")
     if envelope.aggregate_scope is not AggregateScope.NON_AGGREGATE:

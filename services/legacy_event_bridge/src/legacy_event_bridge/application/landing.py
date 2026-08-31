@@ -66,6 +66,13 @@ class LandingCoordinator:
 
                 if not created:
                     duplicates += 1
+                    positions.append(change.source_position)
+                    self._checkpoint.update_durable_landed(
+                        tx,
+                        capture_source=change.capture_slot,
+                        position=change.source_position,
+                        at=now,
+                    )
                     continue
 
                 landed += 1

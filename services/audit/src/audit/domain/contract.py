@@ -1,24 +1,23 @@
-"""A2 contract identity — ADR-0009 / contracts registry."""
+"""Registry-backed A2 contract identity."""
 
 from __future__ import annotations
 
-from uuid import UUID
+from audit.infrastructure.contracts.registry import load_a2_registry
 
-A2_EVENT_TYPE = "legacy_bridge.observation.audit_entry"
-A2_EVENT_VERSION = 1
-A2_SUBJECT = "hudhud.audit.legacy_bridge.observation.audit_entry.v1"
-A2_STREAM = "HUDHUD_AUDIT"
-A2_DURABLE_CONSUMER = "audit_bridge_entry_v1"
-A2_PRODUCER = "legacy_bridge"
-A2_MESSAGE_KIND = "integration"
-A2_AGGREGATE_SCOPE = "non_aggregate"
-A2_SOURCE_TABLE = "audit_logs"
+_REGISTRY = load_a2_registry().contract
+
+A2_EVENT_TYPE = _REGISTRY.event_type
+A2_EVENT_VERSION = _REGISTRY.event_version
+A2_SUBJECT = _REGISTRY.subject
+A2_STREAM = _REGISTRY.stream
+A2_DURABLE_CONSUMER = _REGISTRY.durable_consumer
+A2_PRODUCER = _REGISTRY.producer
+A2_MESSAGE_KIND = _REGISTRY.message_kind
+A2_AGGREGATE_SCOPE = _REGISTRY.aggregate_scope
+A2_SOURCE_TABLE = _REGISTRY.source_table
 A2_SOURCE_SYSTEM = "legacy"
-A2_SCHEMA_URI = (
-    "https://hudhud.platform/contracts/events/"
-    "legacy_bridge.observation.audit_entry/v1.schema.json"
-)
-A2_EVENT_ID_NAMESPACE = UUID("697097cc-6afb-556b-9f9b-4be135ca6282")
+A2_SCHEMA_URI = _REGISTRY.schema_uri
+A2_EVENT_ID_NAMESPACE = _REGISTRY.event_id_namespace
 
 FORBIDDEN_CDC_PAYLOAD_KEYS: frozenset[str] = frozenset(
     {

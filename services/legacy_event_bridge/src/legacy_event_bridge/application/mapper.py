@@ -9,28 +9,31 @@ from uuid import UUID, uuid4
 from event_envelope.enums import AggregateScope, DataClassification, MessageKind
 from event_envelope.envelope import EventEnvelope
 from event_envelope.serde import envelope_to_json_dict
-from messaging_conformance.observation import append_only_observation_event_id
+from messaging_conformance.observation import (
+    append_only_observation_event_id,
+    reject_forbidden_observation_identity_fields,
+)
 
 from legacy_event_bridge.domain.errors import MappingError, SourceTableNotAllowedError
 from legacy_event_bridge.domain.sanitize import sanitize_error_message
 from legacy_event_bridge.domain.types import (
-    ALLOWLISTED_SOURCE_TABLES,
-    CONTRACT_BY_TABLE,
     CdcChange,
     LandingRecord,
     ObservationContract,
+    allowlisted_source_tables,
+    contract_by_table,
 )
 
 
 def assert_source_table_allowed(source_table: str) -> None:
-    if source_table not in ALLOWLISTED_SOURCE_TABLES:
+    if source_table not in allowlisted_source_tables():
         msg = f"Source table not allowlisted: {source_table}"
         raise SourceTableNotAllowedError(msg)
 
 
 def contract_for_table(source_table: str) -> ObservationContract:
     assert_source_table_allowed(source_table)
-    return CONTRACT_BY_TABLE[source_table]
+    return contract_by_table()[source_table]
 
 
 def build_observation_payload(
@@ -47,6 +50,7 @@ def build_observation_payload(
         if isinstance(change, CdcChange)
         else change.normalized_fields
     )
+    reject_forbidden_observation_identity_fields(dict(fields))
     source_table = (
         change.source_table if isinstance(change, CdcChange) else change.identity.source_table
     )

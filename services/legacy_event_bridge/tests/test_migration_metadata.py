@@ -12,10 +12,13 @@ from legacy_event_bridge.infrastructure.persistence.models import (
 )
 
 
-def test_single_head_migration_exists() -> None:
+def test_single_head_migration_chain() -> None:
     versions = Path(__file__).resolve().parents[1] / "alembic" / "versions"
-    migration_files = [path for path in versions.glob("*.py") if path.name != "__init__.py"]
-    assert len(migration_files) == 1
+    migration_files = sorted(
+        path for path in versions.glob("*.py") if path.name != "__init__.py"
+    )
+    assert len(migration_files) == 2
+    assert "w5a" in "".join(path.name for path in migration_files)
 
 
 def test_metadata_tables_owned_by_service() -> None:

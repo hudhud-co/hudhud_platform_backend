@@ -48,6 +48,8 @@ class LandingStorePort(Protocol):
         source_pk: UUID,
     ) -> LandingRecord | None: ...
 
+    def get_by_id(self, *, landing_id: UUID) -> LandingRecord | None: ...
+
     def list_pending_mapping(self, *, limit: int) -> list[LandingRecord]: ...
 
     def mark_mapped(
@@ -66,6 +68,7 @@ class LandingStorePort(Protocol):
         error_code: str,
         error_message: str,
         quarantine: bool,
+        attempt_count: int,
         at: datetime,
     ) -> None: ...
 

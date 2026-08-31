@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from hashlib import sha256
+from uuid import NAMESPACE_OID, UUID, uuid5
 
 from event_envelope.errors import EnvelopeValidationError, UnsupportedEnvelopeVersionError
 from event_envelope.serde import CONSUMER_SERDE_POLICY, deserialize_envelope
@@ -23,6 +24,7 @@ from messaging_conformance.inbox_decisions import (
 from messaging_conformance.retry import classify_retry_error, should_quarantine
 
 from audit.application.validation import project_observation, validate_a2_delivery
+from audit.domain.contract import A2_EVENT_TYPE, A2_EVENT_VERSION
 from audit.domain.errors import ContractRejection, PoisonHandlerError, RetryableHandlerError
 from audit.domain.sanitize import sanitize_error_message
 from audit.domain.types import Delivery, InboxRow, ValidatedA2Message
@@ -71,13 +73,7 @@ class ObservationConsumerCoordinator:
         now = self._clock()
         envelope = self._deserialize(delivery)
         if envelope is None:
-            self._transport.ack(delivery)
-            return HandleOutcome(
-                jetstream_action=JetStreamConsumerAction.ACK,
-                inbox_status=None,
-                observation_written=False,
-                reason="deserialize_poison_ack",
-            )
+            return self._quarantine_deserialize_poison(delivery, now)
 
         try:
             validated = validate_a2_delivery(envelope=envelope, delivery=delivery)
@@ -114,6 +110,19 @@ class ObservationConsumerCoordinator:
                 },
             )
             return None
+
+    def _quarantine_deserialize_poison(self, delivery: Delivery, now: datetime) -> HandleOutcome:
+        event_id = _poison_delivery_event_id(delivery)
+        return self._quarantine_permanent(
+            delivery,
+            event_id=event_id,
+            event_type=A2_EVENT_TYPE,
+            event_version=A2_EVENT_VERSION,
+            correlation_id=None,
+            now=now,
+            error_code="DESERIALIZE_FAILURE",
+            error_message="envelope could not be deserialized",
+        )
 
     def _process_validated(
         self,
@@ -344,3 +353,22 @@ class ObservationConsumerCoordinator:
 
     def _log_safe(self, message: str, *, extra: dict[str, str]) -> None:
         logger.info(message, extra=extra)
+
+
+def _poison_delivery_event_id(delivery: Delivery) -> UUID:
+    if delivery.nats_msg_id:
+        try:
+            return UUID(delivery.nats_msg_id)
+        except ValueError:
+            pass
+    digest = sha256(
+        b"|".join(
+            [
+                delivery.consumer_name.encode(),
+                delivery.subject.encode(),
+                str(delivery.jetstream_seq or "").encode(),
+                delivery.body[:256],
+            ]
+        )
+    ).hexdigest()
+    return uuid5(NAMESPACE_OID, f"audit-poison:{digest}")

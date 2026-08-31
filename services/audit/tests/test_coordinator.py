@@ -467,7 +467,7 @@ def test_safe_error_storage_redacts_jwt(store: MemoryAuditStore, now: object) ->
     assert "eyJ" not in row.last_error_message
 
 
-def test_deserialize_poison_acks_without_inbox(
+def test_deserialize_poison_quarantines_with_evidence(
     coordinator: ObservationConsumerCoordinator,
     store: MemoryAuditStore,
 ) -> None:
@@ -476,6 +476,7 @@ def test_deserialize_poison_acks_without_inbox(
         subject="hudhud.audit.legacy_bridge.observation.audit_entry.v1",
         stream="HUDHUD_AUDIT",
         consumer_name=A2_DURABLE_CONSUMER,
+        jetstream_seq=99,
     )
     outcome = coordinator.handle(delivery)
     assert_jetstream_action(
@@ -484,4 +485,11 @@ def test_deserialize_poison_acks_without_inbox(
         context="poison json",
     )
     assert store.observation_count() == 0
-    assert outcome.inbox_status is None
+    assert outcome.inbox_status is InboxStatus.QUARANTINED
+    rows = [
+        row
+        for row in store._inbox.values()
+        if row.consumer_name == A2_DURABLE_CONSUMER
+    ]
+    assert len(rows) == 1
+    assert rows[0].last_error_code == "DESERIALIZE_FAILURE"

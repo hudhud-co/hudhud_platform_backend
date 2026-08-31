@@ -44,6 +44,20 @@ def _cli_env(*, github_output: str | None = None) -> dict[str, str]:
     return env
 
 
+def test_legacy_event_bridge_service_change() -> None:
+    result = _impact("M\tservices/legacy_event_bridge/src/legacy_event_bridge/main.py")
+    assert result.affected_services == ["legacy_event_bridge"]
+    assert result.full_validation is False
+    assert result.run_service_scoped is True
+
+
+def test_audit_service_change() -> None:
+    result = _impact("M\tservices/audit/src/audit/main.py")
+    assert result.affected_services == ["audit"]
+    assert result.full_validation is False
+    assert result.run_service_scoped is True
+
+
 def test_one_service_change() -> None:
     result = _impact("M\tservices/shipment/src/shipment/main.py")
     assert result.affected_services == ["shipment"]

@@ -8,8 +8,10 @@ dependencies = [
     "event-envelope",
     "fastapi>=0.115",
     "messaging-conformance",
+    "psycopg[binary]>=3.2",
     "pydantic>=2.10",
     "pydantic-settings>=2.6",
+    "pyyaml>=6.0",
     "sqlalchemy>=2.0",
     "uvicorn>=0.32",
 ]

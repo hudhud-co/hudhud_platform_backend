@@ -43,6 +43,7 @@ class BridgeLandingRow(Base):
     normalized_fields: Mapped[dict] = mapped_column(JSONB, nullable=False)
     received_at: Mapped[object] = mapped_column(DateTime(timezone=True), nullable=False)
     mapping_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    mapping_attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     mapped_at: Mapped[object | None] = mapped_column(DateTime(timezone=True))
     quarantined_at: Mapped[object | None] = mapped_column(DateTime(timezone=True))
     last_error_code: Mapped[str | None] = mapped_column(String(64))

@@ -58,7 +58,7 @@ legacy_event_bridge:
   adr_reference: ADR-0007
   adr_status: Accepted
   transitional_deployable_candidate: platform_edge_p1
-  extraction_status: pending_implementation_gates
+  extraction_status: bootstrap_integrated
   retires_per_context: true
   retirement: ADR-0006 stage 13 per bridged context
   policy_prerequisites: [cdc_wal_level_proof, export_snapshot_drill, bridge_durable_landing]
@@ -446,7 +446,7 @@ bounded_contexts:
     adr_reference: ADR-0002
     adr_status: Accepted
     transitional_deployable_candidate: platform_edge_p1
-    extraction_status: pending_wave_1
+    extraction_status: bootstrap_integrated
     policy_prerequisites: []
     data_ownership:
       strategy: dedicated_database

@@ -31,6 +31,7 @@ class MappingService:
         mapper_version: str,
         source_system: str,
         max_attempts: int,
+        mapping_max_attempts: int = 5,
     ) -> None:
         self._landing = landing_store
         self._outbox = outbox_store
@@ -38,6 +39,7 @@ class MappingService:
         self._mapper_version = mapper_version
         self._source_system = source_system
         self._max_attempts = max_attempts
+        self._mapping_max_attempts = mapping_max_attempts
 
     def map_pending(self, *, limit: int = 100) -> MappingOutcome:
         pending = self._landing.list_pending_mapping(limit=limit)
@@ -69,33 +71,37 @@ class MappingService:
                 outbox_rows.append(row)
             except MappingError as exc:
                 tx.rollback()
-                fail_tx = self._uow.begin()
-                self._landing.mark_mapping_failed(
-                    fail_tx,
-                    landing_id=landing.id,
-                    error_code="MAPPING_FAILED",
-                    error_message=sanitize_error_message(str(exc)),
-                    quarantine=False,
-                    at=now,
-                )
-                fail_tx.commit()
                 failures += 1
+                self._record_mapping_failure(landing_id=landing.id, exc=exc, now=now)
             except Exception as exc:
                 tx.rollback()
-                fail_tx = self._uow.begin()
-                self._landing.mark_mapping_failed(
-                    fail_tx,
-                    landing_id=landing.id,
-                    error_code="MAPPING_FAILED",
-                    error_message=sanitize_error_message(str(exc)),
-                    quarantine=False,
-                    at=now,
-                )
-                fail_tx.commit()
                 failures += 1
+                self._record_mapping_failure(landing_id=landing.id, exc=exc, now=now)
 
         return MappingOutcome(
             mapped_count=mapped,
             failure_count=failures,
             outbox_rows=tuple(outbox_rows),
         )
+
+    def _record_mapping_failure(
+        self,
+        *,
+        landing_id: object,
+        exc: Exception,
+        now: datetime,
+    ) -> None:
+        existing = self._landing.get_by_id(landing_id=landing_id)  # type: ignore[arg-type]
+        next_attempts = (existing.mapping_attempt_count if existing else 0) + 1
+        quarantine = next_attempts >= self._mapping_max_attempts
+        fail_tx = self._uow.begin()
+        self._landing.mark_mapping_failed(
+            fail_tx,
+            landing_id=landing_id,  # type: ignore[arg-type]
+            error_code="MAPPING_FAILED",
+            error_message=sanitize_error_message(str(exc)),
+            quarantine=quarantine,
+            attempt_count=next_attempts,
+            at=now,
+        )
+        fail_tx.commit()

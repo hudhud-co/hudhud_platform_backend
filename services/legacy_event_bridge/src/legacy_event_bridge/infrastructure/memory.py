@@ -8,13 +8,13 @@ from uuid import UUID, uuid4
 
 from legacy_event_bridge.domain.errors import SourceTableNotAllowedError
 from legacy_event_bridge.domain.types import (
-    ALLOWLISTED_SOURCE_TABLES,
     CdcChange,
     CheckpointRecord,
     LandingRecord,
     MappingState,
     OutboxRecord,
     SourceRowIdentity,
+    allowlisted_source_tables,
 )
 from legacy_event_bridge.ports import TransactionPort
 
@@ -76,7 +76,7 @@ class MemoryBridgeStore:
         change: CdcChange,
         mapper_version: str,
     ) -> tuple[LandingRecord | None, bool]:
-        if change.source_table not in ALLOWLISTED_SOURCE_TABLES:
+        if change.source_table not in allowlisted_source_tables():
             raise SourceTableNotAllowedError(change.source_table)
 
         identity = SourceRowIdentity(
@@ -96,6 +96,7 @@ class MemoryBridgeStore:
             normalized_fields=dict(change.normalized_fields),
             received_at=change.received_at,
             mapping_state=MappingState.PENDING,
+            mapping_attempt_count=0,
         )
         self.landings[record.id] = record
         self.landing_dedupe[key] = record.id
@@ -111,6 +112,9 @@ class MemoryBridgeStore:
         landing_id = self.landing_dedupe.get((source_system, source_table, str(source_pk)))
         if landing_id is None:
             return None
+        return self.landings.get(landing_id)
+
+    def get_by_id(self, *, landing_id: UUID) -> LandingRecord | None:
         return self.landings.get(landing_id)
 
     def list_pending_mapping(self, *, limit: int) -> list[LandingRecord]:
@@ -137,6 +141,7 @@ class MemoryBridgeStore:
             normalized_fields=row.normalized_fields,
             received_at=row.received_at,
             mapping_state=MappingState.MAPPED,
+            mapping_attempt_count=row.mapping_attempt_count,
             mapped_at=mapped_at,
             quarantined_at=row.quarantined_at,
             last_error_code=row.last_error_code,
@@ -151,6 +156,7 @@ class MemoryBridgeStore:
         error_code: str,
         error_message: str,
         quarantine: bool,
+        attempt_count: int,
         at: datetime,
     ) -> None:
         row = self.landings[landing_id]
@@ -163,6 +169,7 @@ class MemoryBridgeStore:
             normalized_fields=row.normalized_fields,
             received_at=row.received_at,
             mapping_state=state,
+            mapping_attempt_count=attempt_count,
             mapped_at=row.mapped_at,
             quarantined_at=at if quarantine else row.quarantined_at,
             last_error_code=error_code,

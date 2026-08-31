@@ -240,7 +240,7 @@ ownership:
     readers: [control_tower]
     api_owner: audit
     event_publisher: audit
-    database_owner: undecided
+    database_owner: audit
     consumed_events:
       - legacy_bridge.observation.audit_entry
     notes: Native audit.fact.entry_recorded deferred until Audit cutover

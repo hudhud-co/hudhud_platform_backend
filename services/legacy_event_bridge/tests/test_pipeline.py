@@ -69,6 +69,32 @@ def test_landing_deduplication_on_replay(store: MemoryBridgeStore) -> None:
     assert len(store.landings) == 1
 
 
+def test_duplicate_replay_with_new_lsn_advances_checkpoint_for_feedback(
+    store: MemoryBridgeStore,
+) -> None:
+    coordinator = LandingCoordinator(
+        landing_store=store,
+        checkpoint_store=store,
+        unit_of_work=store,
+        mapper_version=MAPPER_VERSION,
+    )
+    feedback = ReplicationFeedbackCoordinator(checkpoint_store=store, feedback_port=store)
+    first_change = shipment_change(source_position="0/AAAAAA")
+    replay_change = shipment_change(source_position="0/BBBBBB")
+    coordinator.land_batch([first_change])
+    outcome = coordinator.land_batch([replay_change])
+    assert outcome.duplicate_count == 1
+    assert outcome.durable_positions == ["0/BBBBBB"]
+    acked = feedback.send_post_commit_feedback(
+        capture_source=CAPTURE_SOURCE,
+        positions=outcome.durable_positions,
+    )
+    assert acked == ["0/BBBBBB"]
+    checkpoint = store.get(capture_source=CAPTURE_SOURCE)
+    assert checkpoint is not None
+    assert checkpoint.last_durably_landed_position == "0/BBBBBB"
+
+
 def test_checkpoint_updated_atomically_with_landing(store: MemoryBridgeStore) -> None:
     coordinator = LandingCoordinator(
         landing_store=store,

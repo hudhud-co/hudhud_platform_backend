@@ -20,6 +20,7 @@ class SourceTable(StrEnum):
     AUDIT_LOGS = "audit_logs"
 
 
+# Registry-backed allowlist — use allowlisted_source_tables() at runtime.
 ALLOWLISTED_SOURCE_TABLES: frozenset[str] = frozenset(
     {SourceTable.SHIPMENT_EVENTS, SourceTable.AUDIT_LOGS}
 )
@@ -57,6 +58,7 @@ class LandingRecord:
     normalized_fields: dict[str, Any]
     received_at: datetime
     mapping_state: MappingState
+    mapping_attempt_count: int = 0
     mapped_at: datetime | None = None
     quarantined_at: datetime | None = None
     last_error_code: str | None = None
@@ -100,33 +102,23 @@ class ObservationContract:
     schema_uri: str
 
 
-A1_SHIPMENT_TIMELINE = ObservationContract(
-    event_type="legacy_bridge.observation.shipment_timeline_entry",
-    event_version=1,
-    subject="hudhud.shipment.legacy_bridge.observation.shipment_timeline_entry.v1",
-    namespace=UUID("5c4b4b77-2b6b-5d2c-bcfd-efea8ce399c3"),
-    schema_uri=(
-        "https://hudhud.platform/contracts/events/"
-        "legacy_bridge.observation.shipment_timeline_entry/v1.schema.json"
-    ),
-)
+def _load_registry_contracts() -> tuple[dict[str, ObservationContract], frozenset[str]]:
+    from legacy_event_bridge.infrastructure.contracts.registry import (  # noqa: PLC0415
+        load_bridge_registry,
+    )
 
-A2_AUDIT_ENTRY = ObservationContract(
-    event_type="legacy_bridge.observation.audit_entry",
-    event_version=1,
-    subject="hudhud.audit.legacy_bridge.observation.audit_entry.v1",
-    namespace=UUID("697097cc-6afb-556b-9f9b-4be135ca6282"),
-    schema_uri=(
-        "https://hudhud.platform/contracts/events/"
-        "legacy_bridge.observation.audit_entry/v1.schema.json"
-    ),
-)
+    loaded = load_bridge_registry()
+    return loaded.contracts_by_table, loaded.allowlisted_source_tables
 
 
-CONTRACT_BY_TABLE: dict[str, ObservationContract] = {
-    SourceTable.SHIPMENT_EVENTS: A1_SHIPMENT_TIMELINE,
-    SourceTable.AUDIT_LOGS: A2_AUDIT_ENTRY,
-}
+def contract_by_table() -> dict[str, ObservationContract]:
+    contracts, _ = _load_registry_contracts()
+    return contracts
+
+
+def allowlisted_source_tables() -> frozenset[str]:
+    _, allowlisted = _load_registry_contracts()
+    return allowlisted
 
 
 @dataclass
