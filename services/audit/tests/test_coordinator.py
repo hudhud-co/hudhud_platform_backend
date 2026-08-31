@@ -467,6 +467,19 @@ def test_safe_error_storage_redacts_jwt(store: MemoryAuditStore, now: object) ->
     assert "eyJ" not in row.last_error_message
 
 
+def test_quarantine_persistence_failure_naks(
+    coordinator: ObservationConsumerCoordinator,
+    store: MemoryAuditStore,
+    make_delivery: Callable[..., Delivery],
+    make_envelope: Callable[..., dict[str, Any]],
+) -> None:
+    store.fail_next_quarantine = True
+    outcome = coordinator.handle(make_delivery(make_envelope(producer="shipment")))
+    assert outcome.reason == "quarantine_persistence_failure_nak"
+    assert outcome.jetstream_action is JetStreamConsumerAction.NAK
+    assert store.actions[-1] == "nak"
+
+
 def test_deserialize_poison_quarantines_with_evidence(
     coordinator: ObservationConsumerCoordinator,
     store: MemoryAuditStore,

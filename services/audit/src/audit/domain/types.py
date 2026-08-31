@@ -21,6 +21,7 @@ class Delivery:
     consumer_name: str
     nats_msg_id: str | None = None
     jetstream_seq: int | None = None
+    transport_handle: object | None = None
 
 
 @dataclass

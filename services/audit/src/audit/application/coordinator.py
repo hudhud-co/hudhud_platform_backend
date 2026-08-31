@@ -290,42 +290,57 @@ class ObservationConsumerCoordinator:
         classification = classify_retry_error(error_code)
         sanitized = sanitize_error_message(error_message)
         self._uow.begin()
-        inserted = self._inbox.try_insert_received(
-            consumer_name=self._consumer_name,
-            event_id=event_id,
-            event_type=event_type,
-            event_version=event_version,
-            handler_version=self._handler_version,
-            processing_owner=self._processing_owner,
-            processing_lease_until=now + self._lease_duration,
-            received_at=now,
-            correlation_id=correlation_id,
-            jetstream_stream=delivery.stream,
-            jetstream_seq=delivery.jetstream_seq,
-            nats_msg_id=delivery.nats_msg_id,
-        )
-        if inserted is None:
-            existing = self._inbox.load_existing(
+        try:
+            inserted = self._inbox.try_insert_received(
                 consumer_name=self._consumer_name,
                 event_id=event_id,
+                event_type=event_type,
+                event_version=event_version,
+                handler_version=self._handler_version,
+                processing_owner=self._processing_owner,
+                processing_lease_until=now + self._lease_duration,
+                received_at=now,
+                correlation_id=correlation_id,
+                jetstream_stream=delivery.stream,
+                jetstream_seq=delivery.jetstream_seq,
+                nats_msg_id=delivery.nats_msg_id,
             )
-            if existing is not None and existing.status is InboxStatus.PROCESSED:
-                self._uow.rollback()
-                self._transport.ack(delivery)
-                return HandleOutcome(
-                    jetstream_action=JetStreamConsumerAction.ACK,
-                    inbox_status=InboxStatus.PROCESSED,
-                    observation_written=False,
-                    reason="processed_duplicate_on_reject",
+            if inserted is None:
+                existing = self._inbox.load_existing(
+                    consumer_name=self._consumer_name,
+                    event_id=event_id,
                 )
-        row = self._inbox.mark_quarantined(
-            consumer_name=self._consumer_name,
-            event_id=event_id,
-            quarantined_at=now,
-            error_code=error_code,
-            error_message=sanitized,
-        )
-        self._uow.commit()
+                if existing is not None and existing.status is InboxStatus.PROCESSED:
+                    self._uow.rollback()
+                    self._transport.ack(delivery)
+                    return HandleOutcome(
+                        jetstream_action=JetStreamConsumerAction.ACK,
+                        inbox_status=InboxStatus.PROCESSED,
+                        observation_written=False,
+                        reason="processed_duplicate_on_reject",
+                    )
+            row = self._inbox.mark_quarantined(
+                consumer_name=self._consumer_name,
+                event_id=event_id,
+                quarantined_at=now,
+                error_code=error_code,
+                error_message=sanitized,
+            )
+            self._uow.commit()
+        except RetryableHandlerError as exc:
+            self._uow.rollback()
+            action = decide_handler_rollback_action(retryable=True)
+            self._apply_transport(action, delivery)
+            self._log_safe(
+                "audit_observation_quarantine_persistence_failed",
+                extra={"error_code": exc.code, "error": sanitize_error_message(exc.detail)},
+            )
+            return HandleOutcome(
+                jetstream_action=action,
+                inbox_status=None,
+                observation_written=False,
+                reason="quarantine_persistence_failure_nak",
+            )
         action = decide_post_commit_jetstream_action(committed_status=InboxStatus.QUARANTINED)
         self._apply_transport(action, delivery)
         self._log_safe(

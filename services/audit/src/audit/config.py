@@ -32,6 +32,11 @@ def _env_int(name: str, default: int) -> int:
     return int(raw)
 
 
+class PersistenceBackend(StrEnum):
+    POSTGRES = "postgres"
+    MEMORY = "memory"
+
+
 @dataclass(frozen=True, slots=True)
 class AuditSettings:
     """Audit service settings. Secret values must come from environment only."""
@@ -39,6 +44,7 @@ class AuditSettings:
     environment: RuntimeEnvironment = RuntimeEnvironment.LOCAL
     service_name: str = "audit"
     database_url: str = "postgresql+psycopg://localhost/audit"
+    persistence_backend: PersistenceBackend = PersistenceBackend.POSTGRES
     consumer_name: str = "audit_bridge_entry_v1"
     handler_version: str = "0.1.0"
     processing_owner: str = "audit-worker"
@@ -46,6 +52,17 @@ class AuditSettings:
     inbox_max_attempts: int = 5
     nats_enabled: bool = False
     nats_url: str | None = None
+    nats_tls_enabled: bool = False
+    nats_user: str | None = None
+    nats_password: str | None = None
+    nats_token: str | None = None
+    nats_creds_file: str | None = None
+    allow_no_auth_local: bool = True
+    pull_batch_size: int = 10
+    pull_fetch_timeout_seconds: float = 5.0
+    handler_concurrency: int = 4
+    defer_delay_seconds: float = 5.0
+    shutdown_timeout_seconds: float = 30.0
     adr_0004_credentials_configured: bool = False
 
     def assert_production_gates(self) -> None:
@@ -55,6 +72,23 @@ class AuditSettings:
         if not self.adr_0004_credentials_configured:
             msg = "Production startup blocked — unset gates: adr_0004_credentials_configured"
             raise ProductionStartupBlockedError(msg)
+        if self.persistence_backend is PersistenceBackend.MEMORY:
+            msg = "Production startup blocked — in-memory persistence is forbidden"
+            raise ProductionStartupBlockedError(msg)
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    return float(raw)
+
+
+def _optional_str(name: str) -> str | None:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return None
+    return raw
 
 
 def load_settings(**overrides: object) -> AuditSettings:
@@ -65,6 +99,14 @@ def load_settings(**overrides: object) -> AuditSettings:
     nats_url = overrides.get("nats_url", os.environ.get("AUDIT_NATS_URL") or None)
     if isinstance(nats_url, str) and nats_url.strip() == "":
         nats_url = None
+    persistence_backend = PersistenceBackend(
+        str(
+            overrides.get(
+                "persistence_backend",
+                os.environ.get("AUDIT_PERSISTENCE_BACKEND", PersistenceBackend.POSTGRES.value),
+            )
+        )
+    )
     values: dict[str, object] = {
         "environment": environment,
         "service_name": str(
@@ -76,6 +118,7 @@ def load_settings(**overrides: object) -> AuditSettings:
                 os.environ.get("AUDIT_DATABASE_URL", "postgresql+psycopg://localhost/audit"),
             )
         ),
+        "persistence_backend": persistence_backend,
         "consumer_name": str(
             overrides.get(
                 "consumer_name",
@@ -107,6 +150,40 @@ def load_settings(**overrides: object) -> AuditSettings:
             overrides.get("nats_enabled", _env_bool("AUDIT_NATS_ENABLED", default=False))
         ),
         "nats_url": nats_url,
+        "nats_tls_enabled": bool(
+            overrides.get("nats_tls_enabled", _env_bool("AUDIT_NATS_TLS_ENABLED", default=False))
+        ),
+        "nats_user": overrides.get("nats_user", _optional_str("AUDIT_NATS_USER")),
+        "nats_password": overrides.get("nats_password", _optional_str("AUDIT_NATS_PASSWORD")),
+        "nats_token": overrides.get("nats_token", _optional_str("AUDIT_NATS_TOKEN")),
+        "nats_creds_file": overrides.get("nats_creds_file", _optional_str("AUDIT_NATS_CREDS_FILE")),
+        "allow_no_auth_local": bool(
+            overrides.get(
+                "allow_no_auth_local",
+                _env_bool("AUDIT_ALLOW_NO_AUTH_LOCAL", default=True),
+            )
+        ),
+        "pull_batch_size": int(
+            overrides.get("pull_batch_size", _env_int("AUDIT_PULL_BATCH_SIZE", 10))
+        ),
+        "pull_fetch_timeout_seconds": float(
+            overrides.get(
+                "pull_fetch_timeout_seconds",
+                _env_float("AUDIT_PULL_FETCH_TIMEOUT_SECONDS", 5.0),
+            )
+        ),
+        "handler_concurrency": int(
+            overrides.get("handler_concurrency", _env_int("AUDIT_HANDLER_CONCURRENCY", 4))
+        ),
+        "defer_delay_seconds": float(
+            overrides.get("defer_delay_seconds", _env_float("AUDIT_DEFER_DELAY_SECONDS", 5.0))
+        ),
+        "shutdown_timeout_seconds": float(
+            overrides.get(
+                "shutdown_timeout_seconds",
+                _env_float("AUDIT_SHUTDOWN_TIMEOUT_SECONDS", 30.0),
+            )
+        ),
         "adr_0004_credentials_configured": bool(
             overrides.get(
                 "adr_0004_credentials_configured",

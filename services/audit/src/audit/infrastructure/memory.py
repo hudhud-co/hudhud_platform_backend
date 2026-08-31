@@ -53,6 +53,7 @@ class MemoryAuditStore:
         self.transport_actions: list[JetStreamConsumerAction] = []
         self.last_delivery: Delivery | None = None
         self.fail_next_projection = False
+        self.fail_next_quarantine = False
         self.crash_before_ack = False
 
     def begin(self) -> None:
@@ -172,6 +173,9 @@ class MemoryAuditStore:
         error_code: str,
         error_message: str,
     ) -> InboxRow:
+        if self.fail_next_quarantine:
+            self.fail_next_quarantine = False
+            raise RetryableHandlerError("DB_DEADLOCK", "injected quarantine persistence failure")
         working = self._working_inbox()
         key = (consumer_name, event_id)
         row = working[key]

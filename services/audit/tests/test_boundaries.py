@@ -31,10 +31,12 @@ def test_no_cross_service_imports() -> None:
 
 def test_allowed_shared_packages_only() -> None:
     service_root = Path(__file__).resolve().parents[1] / "src"
-    allowed = {"audit", "event_envelope", "messaging_conformance"}
+    allowed = {"audit", "event_envelope", "messaging_conformance", "nats"}
     stdlib = {
         "abc",
+        "asyncio",
         "collections",
+        "contextlib",
         "copy",
         "dataclasses",
         "datetime",
@@ -46,6 +48,9 @@ def test_allowed_shared_packages_only() -> None:
         "os",
         "pathlib",
         "re",
+        "signal",
+        "sys",
+        "time",
         "typing",
         "uuid",
         "yaml",
@@ -54,6 +59,7 @@ def test_allowed_shared_packages_only() -> None:
         "pydantic",
         "sqlalchemy",
         "alembic",
+        "types",
     }
     for py_file in service_root.rglob("*.py"):
         tree = ast.parse(py_file.read_text(encoding="utf-8"))
@@ -69,10 +75,9 @@ def test_allowed_shared_packages_only() -> None:
                     raise AssertionError(f"Unexpected import {node.module} in {py_file}")
 
 
-def test_does_not_import_nats_or_legacy() -> None:
+def test_does_not_import_legacy() -> None:
     service_root = Path(__file__).resolve().parents[1] / "src"
     for py_file in service_root.rglob("*.py"):
         content = py_file.read_text(encoding="utf-8")
-        assert "import nats" not in content
         assert "hudhud-backend" not in content
         assert "hudhud_backend" not in content

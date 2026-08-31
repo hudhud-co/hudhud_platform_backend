@@ -12,7 +12,12 @@ from audit.infrastructure.persistence.session import build_engine, build_session
 from audit.infrastructure.persistence.sqlalchemy_store import SqlAlchemyAuditStore
 
 
-def create_app(settings: AuditSettings | None = None) -> FastAPI:
+def create_app(
+    settings: AuditSettings | None = None,
+    *,
+    nats_reachable: bool = False,
+    nats_binding_verified: bool = False,
+) -> FastAPI:
     resolved = settings or load_settings(environment=RuntimeEnvironment.LOCAL)
     resolved.assert_production_gates()
 
@@ -35,6 +40,8 @@ def create_app(settings: AuditSettings | None = None) -> FastAPI:
         settings=resolved,
         engine=engine,
         persistence_wired=persistence_wired,
+        nats_reachable=nats_reachable,
+        nats_binding_verified=nats_binding_verified,
     )
     return app
 
