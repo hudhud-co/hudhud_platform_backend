@@ -232,7 +232,7 @@ WHERE table_schema = 'public' AND table_name = 'shipment_events';
 SELECT 'shipment_events_ordering_columns' AS check_id,
        string_agg(column_name, ', ' ORDER BY column_name) AS observed,
        'INFO' AS status,
-       'Bridge cursor uses (occurred_at, id) per ADR-0007' AS note
+       'Legacy cursor columns for display/reconciliation tie-break — not canonical order authority' AS note
 FROM information_schema.columns
 WHERE table_schema = 'public'
   AND table_name = 'shipment_events'

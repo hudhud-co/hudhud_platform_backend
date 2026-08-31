@@ -16,7 +16,7 @@ sources:
     classification: internal
     append_only_evidence: true
     primary_key: id
-    ordering_cursor: "(occurred_at ASC, id ASC)"
+    ordering_cursor: "(occurred_at ASC, id ASC)  # display/reconciliation tie-break only"
     replica_identity: DEFAULT  # verify in preflight SQL
     observation_contract:
       event_type: legacy_bridge.observation.shipment_timeline_entry
@@ -34,7 +34,7 @@ sources:
     classification: confidential
     append_only_evidence: true
     primary_key: id
-    ordering_cursor: "(created_at ASC, id ASC)"
+    ordering_cursor: "(created_at ASC, id ASC)  # display/reconciliation tie-break only"
     replica_identity: DEFAULT
     observation_contract:
       event_type: legacy_bridge.observation.audit_entry

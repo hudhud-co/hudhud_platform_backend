@@ -1,7 +1,7 @@
 # Event contract registry (foundation)
-
-Machine-readable index of registered integration event contracts under
-`contracts/events/`. Envelope wire shape remains in `envelope/`.
+#
+# Machine-readable index of registered integration event contracts under
+# `contracts/events/`. Envelope wire shape remains in `envelope/`.
 
 contracts:
   - event_type: legacy_bridge.observation.shipment_timeline_entry

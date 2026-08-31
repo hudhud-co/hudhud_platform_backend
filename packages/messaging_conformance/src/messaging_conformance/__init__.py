@@ -33,11 +33,12 @@ from messaging_conformance.inbox_decisions import (
 )
 from messaging_conformance.lease import is_lease_active, is_lease_expired
 from messaging_conformance.observation import (
+    A1_SHIPMENT_TIMELINE_ENTRY_EVENT_ID_NAMESPACE,
+    A2_AUDIT_ENTRY_EVENT_ID_NAMESPACE,
     FORBIDDEN_OBSERVATION_IDENTITY_FIELDS,
     ForbiddenObservationIdentityInputError,
     append_only_observation_event_id,
     build_append_only_observation_name,
-    default_observation_namespace_seed,
     reject_forbidden_observation_identity_fields,
 )
 from messaging_conformance.outbox_decisions import (
@@ -70,6 +71,8 @@ from messaging_conformance.values import (
 
 __all__ = [
     "CONFORMANCE_VECTORS",
+    "A1_SHIPMENT_TIMELINE_ENTRY_EVENT_ID_NAMESPACE",
+    "A2_AUDIT_ENTRY_EVENT_ID_NAMESPACE",
     "FORBIDDEN_OBSERVATION_IDENTITY_FIELDS",
     "PERMANENT_ERROR_CODES",
     "POISON_ERROR_CODES",
@@ -110,7 +113,6 @@ __all__ = [
     "decide_outbox_publish_result",
     "decide_post_commit_jetstream_action",
     "decide_stale_outbox_recovery",
-    "default_observation_namespace_seed",
     "get_vector",
     "is_lease_active",
     "is_lease_expired",

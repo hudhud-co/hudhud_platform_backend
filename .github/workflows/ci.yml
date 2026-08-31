@@ -26,6 +26,8 @@ jobs:
       run_service_scoped: ${{ steps.impact.outputs.run_service_scoped }}
       affected_services: ${{ steps.impact.outputs.affected_services }}
       affected_packages: ${{ steps.impact.outputs.affected_packages }}
+      run_contracts_tests: ${{ steps.impact.outputs.run_contracts_tests }}
+      run_cdc_staging_drill_tests: ${{ steps.impact.outputs.run_cdc_staging_drill_tests }}
       impact_json: ${{ steps.impact.outputs.impact_json }}
     steps:
       - name: Checkout
@@ -129,6 +131,75 @@ jobs:
           uv sync --dev
           uv run ruff check .
           uv run pytest
+
+  messaging-conformance-package:
+    name: Messaging conformance package
+    needs: path-impact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@a02a550bdd3185dba2ebb6aa98d77047ce54ad21 # v6.2.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Validate messaging conformance package
+        working-directory: packages/messaging_conformance
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --dev
+          uv run ruff check .
+          uv run pytest -q
+
+  contracts-tests:
+    name: Contract tests
+    needs: path-impact
+    if: >-
+      needs.path-impact.outputs.run_contracts_tests == 'true' ||
+      needs.path-impact.outputs.full_validation == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@a02a550bdd3185dba2ebb6aa98d77047ce54ad21 # v6.2.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Sync repository tooling
+        run: uv sync --dev
+
+      - name: Run contract tests
+        run: uv run pytest tests/contracts -m "not integration"
+
+  cdc-staging-drill-tests:
+    name: CDC staging drill static tests
+    needs: path-impact
+    if: >-
+      needs.path-impact.outputs.run_cdc_staging_drill_tests == 'true' ||
+      needs.path-impact.outputs.full_validation == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@a02a550bdd3185dba2ebb6aa98d77047ce54ad21 # v6.2.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Sync repository tooling
+        run: uv sync --dev
+
+      - name: Run CDC staging drill static tests
+        run: uv run pytest tests/cdc_staging_drill -m "not integration"
 
   path-filter-tests:
     name: Path filter regression

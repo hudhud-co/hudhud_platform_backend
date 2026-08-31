@@ -28,13 +28,13 @@ artifact reference. **Row-count equality alone is insufficient.**
 ### `shipment_events`
 
 - [ ] PK set symmetric difference (backfill vs source @ snapshot) is empty
-- [ ] Ordering verified on `(occurred_at, id)` sample — not `id` alone
+- [ ] Legacy `(occurred_at, id)` cursor samples match allowlist — display/reconciliation tie-break only; not authoritative commit order
 - [ ] No unexpected UPDATE/DELETE decoded (append-only surface)
 
 ### `audit_logs`
 
 - [ ] PK set symmetric difference empty at snapshot boundary
-- [ ] Ordering verified on `(created_at, id)`
+- [ ] Legacy `(created_at, id)` cursor samples match allowlist — display/reconciliation tie-break only; not authoritative commit order
 - [ ] PII fields classified; not logged at INFO in Bridge
 
 ## Semantic layers (ADR-0006 reconciliation matrix)

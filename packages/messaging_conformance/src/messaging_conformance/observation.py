@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from uuid import NAMESPACE_DNS, UUID, uuid5
+from uuid import UUID, uuid5
+
+# Fixed A1/A2 namespaces — authority: contracts/events/registry.yaml
+A1_SHIPMENT_TIMELINE_ENTRY_EVENT_ID_NAMESPACE = UUID("5c4b4b77-2b6b-5d2c-bcfd-efea8ce399c3")
+A2_AUDIT_ENTRY_EVENT_ID_NAMESPACE = UUID("697097cc-6afb-556b-9f9b-4be135ca6282")
 
 FORBIDDEN_OBSERVATION_IDENTITY_FIELDS: frozenset[str] = frozenset(
     {
@@ -62,8 +66,3 @@ def reject_forbidden_observation_identity_fields(fields: dict[str, object]) -> N
         joined = ", ".join(sorted(forbidden))
         msg = f"Forbidden append-only observation identity inputs: {joined}"
         raise ForbiddenObservationIdentityInputError(msg)
-
-
-def default_observation_namespace_seed(domain: str) -> UUID:
-    """Derive a stable namespace UUID from a domain/event-type seed string."""
-    return uuid5(NAMESPACE_DNS, f"hudhud.observation.{domain}")

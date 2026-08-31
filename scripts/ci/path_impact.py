@@ -103,6 +103,8 @@ class ImpactResult:
     run_governance_gates: bool = True
     run_quality_gates: bool = True
     run_service_scoped: bool = False
+    run_contracts_tests: bool = False
+    run_cdc_staging_drill_tests: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -142,6 +144,8 @@ class ImpactResult:
                 "run_governance_gates": self.run_governance_gates,
                 "run_quality_gates": self.run_quality_gates,
                 "run_service_scoped": self.run_service_scoped,
+                "run_contracts_tests": self.run_contracts_tests,
+                "run_cdc_staging_drill_tests": self.run_cdc_staging_drill_tests,
                 "affected_services": sorted(self.affected_services),
                 "affected_packages": sorted(self.affected_packages),
             },
@@ -254,12 +258,14 @@ def classify_path(
                 test_area = tests_match.group(1)
                 if test_area in {"architecture", "governance"}:
                     category = ImpactCategory.GOVERNANCE
-                elif test_area in {"ci", "eventing", "polling_lab", "cdc_lab"}:
+                elif test_area in {"ci", "eventing", "polling_lab", "cdc_lab", "cdc_staging_drill"}:
                     category = (
                         ImpactCategory.CI_TOOLING
                         if test_area == "ci"
                         else ImpactCategory.INFRASTRUCTURE
                     )
+                elif test_area == "contracts":
+                    category = ImpactCategory.CONTRACTS
                 elif test_area in services:
                     category = ImpactCategory.SERVICE
                     service = test_area
@@ -464,6 +470,19 @@ def _finalize_scope(result: ImpactResult) -> ImpactResult:
     result.run_governance_gates = True
     result.run_quality_gates = True
     result.fail_safe_reasons = sorted(set(result.fail_safe_reasons))
+    if result.full_validation:
+        result.run_contracts_tests = True
+        result.run_cdc_staging_drill_tests = True
+    else:
+        result.run_contracts_tests = any(
+            path.startswith("contracts/") or path.startswith("tests/contracts/")
+            for path in result.changed_paths
+        )
+        result.run_cdc_staging_drill_tests = any(
+            path.startswith("infra/cdc/staging-drill/")
+            or path.startswith("tests/cdc_staging_drill/")
+            for path in result.changed_paths
+        )
     return result
 
 
@@ -477,6 +496,8 @@ def render_github_output(result: ImpactResult) -> str:
         f"fail_safe={'true' if result.fail_safe else 'false'}",
         f"docs_only={'true' if result.docs_only else 'false'}",
         f"run_service_scoped={'true' if result.run_service_scoped else 'false'}",
+        f"run_contracts_tests={'true' if result.run_contracts_tests else 'false'}",
+        f"run_cdc_staging_drill_tests={'true' if result.run_cdc_staging_drill_tests else 'false'}",
         f"affected_services={json.dumps(sorted(result.affected_services))}",
         f"affected_packages={json.dumps(sorted(result.affected_packages))}",
     ]

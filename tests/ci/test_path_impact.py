@@ -232,6 +232,8 @@ def test_cli_github_format() -> None:
     assert "docs_only=true" in result.stdout
     assert "fail_safe=false" in result.stdout
     assert "run_service_scoped=false" in result.stdout
+    assert "run_contracts_tests=false" in result.stdout
+    assert "run_cdc_staging_drill_tests=false" in result.stdout
     assert "affected_services=[]" in result.stdout
     assert "affected_packages=[]" in result.stdout
     assert "impact_json=" in result.stdout
@@ -256,6 +258,8 @@ def test_cli_github_format_writes_github_output_file(tmp_path: Path) -> None:
         "fail_safe=false\n"
         "docs_only=true\n"
         "run_service_scoped=false\n"
+        "run_contracts_tests=false\n"
+        "run_cdc_staging_drill_tests=false\n"
         "affected_services=[]\n"
         "affected_packages=[]\n"
         "impact_json<<EOF\n"
@@ -287,6 +291,39 @@ def test_cdc_lab_tests_classified_as_infrastructure() -> None:
     result = _impact("M\ttests/cdc_lab/test_operational_analysis.py")
     assert result.impact_flags["infrastructure"] is True
     assert result.full_validation is True
+
+
+def test_cdc_staging_drill_tests_classified_as_infrastructure() -> None:
+    result = _impact("M\ttests/cdc_staging_drill/test_drill_kit.py")
+    assert result.impact_flags["infrastructure"] is True
+    assert result.run_cdc_staging_drill_tests is True
+    assert result.full_validation is True
+
+
+def test_contracts_tests_classified_as_contracts() -> None:
+    result = _impact("M\ttests/contracts/test_legacy_bridge_observations.py")
+    assert result.impact_flags["contracts"] is True
+    assert result.run_contracts_tests is True
+    assert result.full_validation is True
+
+
+def test_contracts_path_triggers_contract_tests_without_full_validation() -> None:
+    result = _impact("M\tcontracts/events/registry.yaml")
+    assert result.run_contracts_tests is True
+    assert result.full_validation is True
+    assert "contract_change" in result.fail_safe_reasons
+
+
+def test_cdc_staging_drill_infra_triggers_static_tests() -> None:
+    result = _impact("M\tinfra/cdc/staging-drill/validate.py")
+    assert result.run_cdc_staging_drill_tests is True
+    assert result.full_validation is True
+
+
+def test_docs_only_change_does_not_trigger_contract_or_drill_tests() -> None:
+    result = _impact("M\tdocs/audit/legacy-baseline.md")
+    assert result.run_contracts_tests is False
+    assert result.run_cdc_staging_drill_tests is False
 
 
 def test_legacy_polling_lab_infra_path() -> None:

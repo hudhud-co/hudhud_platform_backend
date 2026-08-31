@@ -100,7 +100,7 @@ Exactly-once is not claimed.
 | Concern | Policy |
 |---------|--------|
 | Idempotency key | `event_id` |
-| Ordering | Per-entity by `occurred_at` + `source_pk`; tolerate out-of-order delivery |
+| Display / reconciliation ordering | `(occurred_at, source_pk)` tie-break within an entity context only — not commit order, gap-free delivery, or canonical Audit sequence |
 | Replay | Set `metadata.replay=true` and `metadata.replay_source` |
 | Poison | MaxDeliver + quarantine; no infinite retry (ADR-0002) |
 
