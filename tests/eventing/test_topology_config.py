@@ -125,6 +125,53 @@ def test_subject_grammar_document_exists() -> None:
     assert "provisional" in text.lower()
 
 
+ACCEPTED_BRIDGE_OBSERVATION_SUBJECTS = {
+    "hudhud.shipment.legacy_bridge.observation.shipment_timeline_entry.v1": "HUDHUD_SHIPMENT",
+    "hudhud.audit.legacy_bridge.observation.audit_entry.v1": "HUDHUD_AUDIT",
+}
+
+
+def test_non_aggregate_subject_grammar_is_documented() -> None:
+    grammar = (EVENTING_ROOT / "subject-grammar.md").read_text(encoding="utf-8")
+    assert (
+        "hudhud.{domain_context}.{producer}.{semantic_class}.{event_name}.v{event_version}"
+        in grammar
+    )
+    assert "producer=legacy_bridge" in grammar
+    assert "aggregate_scope=non_aggregate" in grammar
+    assert "not an aggregate identifier" in grammar.lower().replace("*", "")
+    for subject in ACCEPTED_BRIDGE_OBSERVATION_SUBJECTS:
+        assert subject in grammar
+    assert "HUDHUD_LEGACY_BRIDGE" in grammar
+    assert "MUST NOT" in grammar or "Do **not** introduce" in grammar
+
+
+def test_accepted_bridge_observation_filters_match_non_aggregate_grammar() -> None:
+    doc = load_topology_yaml("consumers.yaml")
+    by_filter = {entry["filter_subject"]: entry for entry in doc["consumers"]}
+    for subject, stream in ACCEPTED_BRIDGE_OBSERVATION_SUBJECTS.items():
+        assert subject in by_filter, subject
+        assert by_filter[subject]["stream"] == stream
+        parts = subject.split(".")
+        assert parts[0] == "hudhud"
+        assert parts[2] == "legacy_bridge"
+        assert parts[3] == "observation"
+        assert parts[-1] == "v1"
+
+
+def test_no_legacy_bridge_domain_stream() -> None:
+    streams = load_topology_yaml("streams.yaml")
+    names = {entry["name"] for entry in streams["streams"]}
+    assert "HUDHUD_LEGACY_BRIDGE" not in names
+    for entry in streams["streams"]:
+        for subject in entry["subjects"]:
+            assert not subject.startswith("hudhud.legacy_bridge")
+    consumers = load_topology_yaml("consumers.yaml")
+    for entry in consumers["consumers"]:
+        assert not entry["filter_subject"].startswith("hudhud.legacy_bridge")
+        assert entry["stream"] != "HUDHUD_LEGACY_BRIDGE"
+
+
 def test_finance_stream_exists_wallet_is_projection_only() -> None:
     doc = load_topology_yaml("streams.yaml")
     finance = next(item for item in doc["streams"] if item["name"] == "HUDHUD_FINANCE")

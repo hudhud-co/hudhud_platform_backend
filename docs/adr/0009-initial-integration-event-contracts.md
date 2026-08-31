@@ -36,7 +36,7 @@ Canonical lifecycle, finance, notification projection, and operational facts rem
 | Constraint | Source |
 |------------|--------|
 | At-least-once JetStream; idempotent inbox on `(consumer_name, event_id)` | ADR-0002, `architecture/invariants.md` |
-| Subject grammar S2: `hudhud.{producer}.{event_type}.v{event_version}` | ADR-0002, `infra/eventing/subject-grammar.md` |
+| Subject grammar: aggregate S2 plus non-aggregate stream-routed form (ADR-0009 A1/A2) | ADR-0002, `infra/eventing/subject-grammar.md` |
 | `message_kind` in envelope — not a subject segment | ADR-0002 S2 |
 | Shipment sole canonical lifecycle writer (target) | ADR-0003, `ownership-matrix.yaml` |
 | Finance/settlement policy-blocked | ADR-0005, `service-boundaries.yaml` |
@@ -168,23 +168,34 @@ That event type is reserved for future Audit-native publication after Audit pers
 
 **[decision]** The first accepted publish set contains **exactly two** transitional observations:
 
-| # | `event_type` | `event_version` | Subject (S2, stream-routed) | `message_kind` | Envelope `producer` | Aggregate scope |
+| # | `event_type` | `event_version` | Subject (non-aggregate, stream-routed) | `message_kind` | Envelope `producer` | Aggregate scope |
 |---|--------------|-----------------|-------------------------------|----------------|---------------------|-----------------|
 | A1 | `legacy_bridge.observation.shipment_timeline_entry` | 1 | `hudhud.shipment.legacy_bridge.observation.shipment_timeline_entry.v1` → `HUDHUD_SHIPMENT` | `integration` | `legacy_bridge` | **Non-aggregate** transitional — `shipment_id` correlation in payload; **no** invented `aggregate_version` |
 | A2 | `legacy_bridge.observation.audit_entry` | 1 | `hudhud.audit.legacy_bridge.observation.audit_entry.v1` → `HUDHUD_AUDIT` | `integration` | `legacy_bridge` | **Non-aggregate** — entity-scoped correlation; **no** invented `aggregate_version` |
 
-**Stable observation identity:**
+**Stable observation identity (A1/A2 — verified append-only rows only):**
 
 ```text
-event_id = UUIDv5(namespace, "{source_system}:{source_table}:{source_pk}[:{source_op}]")
+event_id = UUIDv5(
+  event-type-specific stable namespace,
+  "{source_system}:{source_table}:{source_pk}"
+)
 ```
 
+- Backfill and CDC INSERT for the same append-only row MUST generate exactly the same `event_id`.
+- Capture mechanism, LSN, transaction ID, timestamp, and `source_op` MUST NOT affect A1/A2 identity.
 - `event_id`, source LSN/position, `correlation_id`, and `aggregate_version` are **distinct fields**.
-- Backfill and live CDC MUST produce the **same `event_id`** for the same append-only source row.
+- Source LSN/position remains provenance metadata, not event identity.
+- A1/A2 apply only to verified append-only source rows. Future mutable-row observations require an
+  immutable source version/change identity and remain outside this accepted minimal set.
+- Deletes/updates MUST NOT reuse an A1/A2 identity ambiguously.
 - Legacy timeline sources have **no proven canonical Shipment aggregate version** — do not invent one.
 
-**Routing:** Bridge is a **producer**, not a new domain owner. Observations route through
-context streams (`HUDHUD_SHIPMENT`, `HUDHUD_AUDIT`) with `producer=legacy_bridge` in envelope.
+**Routing:** Bridge is a **producer** (transitional technical deployable), not a bounded context
+and not a domain owner. Observations route through context streams (`HUDHUD_SHIPMENT`,
+`HUDHUD_AUDIT`) using the non-aggregate subject grammar. Envelope:
+`producer=legacy_bridge`, `aggregate_scope=non_aggregate`. `legacy_bridge` in the subject is
+the producer/source — **not** an aggregate identifier. No `HUDHUD_LEGACY_BRIDGE` domain stream.
 
 ---
 
@@ -223,7 +234,7 @@ Scores: **Accept** = recommend for minimal Wave 1 set; **Defer** = define but bl
 
 | # | Proposed `event_type` | `event_version` | Subject (S2) | `message_kind` | Producer / authority | Aggregate scope | `aggregate_version` | Intended consumers | Source evidence | Verdict |
 |---|----------------------|-----------------|--------------|----------------|---------------------|-----------------|---------------------|-------------------|-----------------|---------|
-| C1 | `legacy_bridge.observation.shipment_timeline_entry` | 1 | `hudhud.legacy_bridge.legacy_bridge.observation.shipment_timeline_entry.v1` | `integration` | `legacy_bridge` / legacy row | `shipment` / `{shipment_id}` | Optional — use legacy row sequence when present | Tracking, Control Tower, Notification (interim) | `shipment_events` @ legacy SHA | **Accept** (transitional) |
+| C1 | `legacy_bridge.observation.shipment_timeline_entry` | 1 | `hudhud.shipment.legacy_bridge.observation.shipment_timeline_entry.v1` (accepted non-aggregate; not `hudhud.legacy_bridge.…`) | `integration` | `legacy_bridge` / legacy row | `non_aggregate` (shipment_id correlation only) | Forbidden — do not invent | Tracking, Control Tower, Notification (interim) | `shipment_events` @ legacy SHA | **Accept** (transitional) |
 | C2 | `shipment.fact.lifecycle_changed` | 1 | `hudhud.shipment.shipment.fact.lifecycle_changed.v1` | `integration` | `shipment` / canonical writer | `shipment` | **Required** monotonic | Tracking, Control Tower, Notification | ADR-0003, `service-boundaries.yaml` | **Accept** (target; defer native publish) |
 | C3 | `shipment.fact.delivered` | 1 | `hudhud.shipment.shipment.fact.delivered.v1` | `integration` | `shipment` | `shipment` | **Required** | Tracking, Notification; Finance (**blocked**) | ADR-0003 command/fact matrix | **Accept** (target; defer Finance consume) |
 | C4 | `delivery.fact.task_completed` | 1 | `hudhud.delivery.delivery.fact.task_completed.v1` | `integration` | `delivery` / operational | `shipment` | **Required** per task outcome | Shipment (inbox), Tracking (enrichment) | `complete_delivery_task.py`, ADR-0003 | **Accept** (defer native publish) |
@@ -285,9 +296,8 @@ remain implementation work for the next Wave. Accepted ≠ implementation-comple
 
 **Media references:** Optional `media_refs` at envelope level when `metadata` contains evidence pointers — URIs only.
 
-**Idempotency:** `event_id = UUIDv5(namespace, "{source_table}:{source_pk}:{source_position}")` (ADR-0007).
-
-**Idempotency:** `event_id = UUIDv5(namespace, "{source_system}:{source_table}:{source_pk}")`.
+**Idempotency:** `event_id = UUIDv5(event-type-specific stable namespace, "{source_system}:{source_table}:{source_pk}")`.
+`source_op`, LSN, timestamp, and capture mechanism are not part of identity.
 
 **Ordering:** Per-`shipment_id` by `occurred_at` + `source_pk`; consumers MUST tolerate out-of-order delivery. CDC WAL order ≠ canonical aggregate versioning.
 
@@ -315,7 +325,7 @@ remain implementation work for the next Wave. Accepted ≠ implementation-comple
 | `metadata` | object | no | confidential | Sanitized — no secrets |
 | `bridge_mapper_version` | string | **yes** | internal | Bridge mapping code version |
 
-**Idempotency:** same UUIDv5 formula as A1.
+**Idempotency:** same A1 UUIDv5 formula (`"{source_system}:{source_table}:{source_pk}"` only).
 
 **[decision boundary]** This is **not** `audit.fact.entry_recorded` — native Audit fact deferred.
 
@@ -506,7 +516,7 @@ Envelope `pii_present=true` triggers consumer log redaction pipelines.
 
 | Contract group | Owning bounded context | Schema path (future) |
 |----------------|------------------------|----------------------|
-| C1 bridge observations | Platform bridge deployable (transitional) | `contracts/events/legacy_bridge.observation.shipment_timeline_entry/v1.json` |
+| C1 bridge observations | Transitional technical deployable (Legacy Event Bridge) — not a bounded context | `contracts/events/legacy_bridge.observation.shipment_timeline_entry/v1.json` |
 | C2, C3 shipment facts | `shipment` | `contracts/events/shipment.fact.*/v1.json` |
 | C4, C5, C6 delivery facts | `delivery` | `contracts/events/delivery.fact.*/v1.json` |
 | C7 audit facts | `audit` | `contracts/events/audit.fact.entry_recorded/v1.json` |
@@ -577,7 +587,7 @@ See **Accepted minimal first contract set** above. Status **Accepted** — two o
 - Clear separation of bridge observations vs canonical Shipment facts.
 - Wave 1 consumers can implement inbox/projections against stable versioned names.
 - Finance boundary explicitly guarded.
-- Aligns with implemented envelope validation and S2 subject grammar.
+- Aligns with implemented envelope validation, aggregate S2, and non-aggregate subject grammar.
 
 ### Negative
 

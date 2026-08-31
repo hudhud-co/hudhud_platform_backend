@@ -44,21 +44,35 @@ adr_index:
     status: Accepted — minimal observation set only
 
 legacy_event_bridge:
+  classification: transitional_technical_deployable
+  bounded_context: false
+  canonical_aggregate_owner: false
   display_name: Legacy Event Bridge
+  role: cdc_adapter_publisher
+  authority: non_authoritative
   legacy_owner: n/a
-  legacy_module_path: n/a — transitional platform deployable
-  proposed_platform_owner: legacy_event_bridge
+  legacy_module_path: n/a — transitional platform technical deployable
+  proposed_platform_owner: none
+  deployable_id: legacy_event_bridge
+  envelope_producer: legacy_bridge
   adr_reference: ADR-0007
   adr_status: Accepted
   transitional_deployable_candidate: platform_edge_p1
   extraction_status: pending_implementation_gates
+  retires_per_context: true
+  retirement: ADR-0006 stage 13 per bridged context
   policy_prerequisites: [cdc_wal_level_proof, export_snapshot_drill, bridge_durable_landing]
   data_ownership:
     strategy: dedicated_database
+    scope: bridge_local_technical_landing_and_outbox_only
+    domain_lifecycle: none
     legacy_tables: []
     notes: >
-      Transitional non-authoritative capture relay. Read-only legacy credentials only.
-      Owns Bridge checkpoint/outbox landing — not business lifecycle. Retires per ADR-0006 stage 13.
+      Transitional technical deployable — CDC adapter/publisher. Non-authoritative.
+      Not a bounded context and not a canonical aggregate owner.
+      Owns Bridge-local checkpoint, landing, and outbox state only.
+      Owns no Shipment, Audit, Delivery, Finance, or other domain lifecycle.
+      Retires per context after one-writer cutover (ADR-0006 stage 13).
   allowed_dependencies: []
   public_api_ownership: none
   published_events:
@@ -68,6 +82,9 @@ legacy_event_bridge:
   forbidden:
     - canonical_shipment_lifecycle_authority
     - canonical_audit_fact_authority
+    - bounded_context_status
+    - canonical_aggregate_ownership
+    - domain_lifecycle_ownership
     - legacy_write_credentials
     - raw_cdc_row_publication
 
@@ -463,7 +480,6 @@ bounded_contexts:
 shared_packages:
   allowed_categories:
     - event_envelope
-    - messaging_conformance
     - tracing
     - idempotency
     - http_client_primitives

@@ -109,3 +109,46 @@ def test_services_directory_has_readme() -> None:
 def test_packages_directory_has_readme() -> None:
     readme = REPO_ROOT / "packages" / "README.md"
     assert readme.exists()
+
+
+def test_legacy_event_bridge_is_not_a_bounded_context(boundaries: dict) -> None:
+    contexts = boundaries.get("bounded_contexts", {})
+    assert "legacy_event_bridge" not in contexts
+    assert "legacy_bridge" not in contexts
+    bridge = boundaries["legacy_event_bridge"]
+    assert bridge["classification"] == "transitional_technical_deployable"
+    assert bridge["bounded_context"] is False
+    assert bridge["canonical_aggregate_owner"] is False
+    assert bridge["role"] == "cdc_adapter_publisher"
+    assert bridge["authority"] == "non_authoritative"
+    assert bridge["proposed_platform_owner"] == "none"
+    notes = bridge["data_ownership"]["notes"].lower()
+    assert "not a bounded context" in notes
+    assert "outbox" in notes
+    assert bridge["data_ownership"]["domain_lifecycle"] == "none"
+    forbidden = set(bridge.get("forbidden", []))
+    assert "bounded_context_status" in forbidden
+    assert "canonical_aggregate_ownership" in forbidden
+    assert "domain_lifecycle_ownership" in forbidden
+
+
+def test_legacy_event_bridge_is_not_an_ownership_bounded_context(
+    ownership_matrix: dict,
+) -> None:
+    assert "legacy_event_bridge" not in ownership_matrix["ownership"]
+    assert "legacy_bridge" not in ownership_matrix["ownership"]
+    bridge = ownership_matrix["legacy_event_bridge"]
+    assert bridge["classification"] == "transitional_technical_deployable"
+    assert bridge["bounded_context"] is False
+    assert bridge["canonical_aggregate_owner"] is False
+    assert bridge["canonical_writer"] == "none"
+    assert bridge["domain_database_owner"] == "none"
+    assert bridge["technical_state_scope"] == "landing_checkpoint_outbox"
+    assert bridge["retires_per_context"] is True
+
+
+def test_messaging_conformance_is_not_represented_as_implemented(boundaries: dict) -> None:
+    allowed = boundaries["shared_packages"]["allowed_categories"]
+    assert "messaging_conformance" not in allowed
+    package_dir = REPO_ROOT / "packages" / "messaging_conformance"
+    assert not package_dir.exists()

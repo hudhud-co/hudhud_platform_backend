@@ -134,8 +134,11 @@ Scores: **Low** / **Med** / **High** (qualitative — **[proposal]**, not measur
 
 1. **Service-owned** PostgreSQL `integration_outbox` and `integration_inbox` tables, Alembic
    migrations, and adapters — **no shared ORM**.
-2. **Allowlisted shared protocol/conformance kit** (`messaging_conformance`, name provisional):
-   ports, enums, algorithms, fixtures, tests only — not importable ORM models.
+2. **Planned shared protocol/conformance kit** (`messaging_conformance`, name provisional):
+   ports, enums, algorithms, fixtures, tests only — not importable ORM models. The package
+   **does not exist** in this Wave. Allowlist registration in `service-boundaries.yaml` is
+   **atomic with package creation** in a later Wave — do not treat a missing package as
+   implemented or already allowlisted.
 3. **Generated templates (O5)** may bootstrap service-owned implementations.
 4. **At-least-once delivery** with idempotent consumer effects via inbox uniqueness + domain keys.
 5. **Multi-replica-safe** claim/lease semantics (`FOR UPDATE SKIP LOCKED` on outbox relay).
@@ -560,7 +563,9 @@ Replay MUST set envelope `metadata.replay=true` and `metadata.replay_source` whe
 
 ## Conformance-test expectations
 
-**[proposal]** Allowlisted `messaging_conformance` package (or `tests/architecture` suite) provides protocol tests each service runs against in-memory or disposable PostgreSQL:
+**[proposal]** Planned `messaging_conformance` package (or `tests/architecture` suite) — **not
+created and not allowlisted in this Wave** — will provide protocol tests each service runs
+against in-memory or disposable PostgreSQL:
 
 | Test ID | Behavior |
 |---------|----------|
@@ -646,7 +651,7 @@ Traces: span links from HTTP handler → outbox insert → relay publish → inb
 
 ### Positive
 
-- Honors service-owned schema while preventing semantic drift via conformance kit.
+- Honors service-owned schema while preventing semantic drift via a future conformance kit.
 - Makes ADR-0002 algorithms implementable with test evidence.
 - Aligns with `event_envelope` package boundary pattern.
 - Legacy `SKIP LOCKED` claim pattern reused without copying notification-specific schema.
@@ -666,7 +671,9 @@ Traces: span links from HTTP handler → outbox insert → relay publish → inb
 
 ## Unresolved questions
 
-1. **[unresolved policy]** Exact name and allowlist registration for `messaging_conformance` package.
+1. **[unresolved policy]** Exact name for the `messaging_conformance` package. Allowlist
+   registration remains a next-Wave blocker and MUST be atomic with package creation. The
+   package does not exist; it is not represented as implemented.
 2. **[unresolved policy]** Outbox/inbox table naming convention — fixed `integration_*` vs `{service}_integration_*`.
 3. **[unresolved policy]** Aggregate out-of-order buffer window vs immediate reconciliation (ADR-0003 #11).
 4. **[unresolved policy]** Default `published` outbox row retention duration and legal hold interaction.
@@ -685,7 +692,7 @@ Implementation of outbox/inbox persistence is **blocked** until:
 | Gate | Evidence required |
 |------|-------------------|
 | G1 | This ADR **Accepted** with named deciders |
-| G2 | `messaging_conformance` (or equivalent) package registered in `service-boundaries.yaml` allowlist |
+| G2 | `messaging_conformance` (or equivalent) package **created** and registered in `service-boundaries.yaml` allowlist in the same change — package does not exist yet |
 | G3 | Conformance tests C1–C10 pass on reference adapter in CI |
 | G4 | ADR-0002 numeric defaults capacity-tested or explicitly overridden with sign-off |
 | G5 | Service bootstrap skill emits O5 templates bound to this ADR record shapes |

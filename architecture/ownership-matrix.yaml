@@ -1,8 +1,8 @@
 version: 1
 description: >
-  Data and API ownership matrix. Maps bounded contexts to write/read responsibilities.
-  "Writer" means canonical owner of mutable state; "Reader" means allowed read projection
-  or query via API/events only.
+  Bounded context write/read responsibilities. Transitional technical deployables
+  (Legacy Event Bridge) are recorded outside `ownership` so they are not mistaken
+  for bounded contexts or canonical aggregate owners.
   Wave 1 ADR integration: shipment sole writer (ADR-0003); eventing (ADR-0002); one-writer
   cutover (ADR-0006); finance policy-blocked (ADR-0005); identity partial (ADR-0004).
 
@@ -17,25 +17,40 @@ adr_references:
   outbox_inbox: ADR-0008
   initial_contracts: ADR-0009
 
+legacy_event_bridge:
+  classification: transitional_technical_deployable
+  bounded_context: false
+  canonical_aggregate_owner: false
+  role: cdc_adapter_publisher
+  authority: non_authoritative
+  canonical_writer: none
+  adr_reference: ADR-0007
+  adr_status: Accepted
+  readers: []
+  api_owner: none
+  event_publisher: legacy_bridge
+  domain_database_owner: none
+  technical_state_owner: legacy_event_bridge
+  technical_state_scope: landing_checkpoint_outbox
+  retires_per_context: true
+  notes: >
+    Transitional CDC adapter/publisher. Non-authoritative.
+    Not a bounded context or canonical aggregate owner.
+    Owns Bridge-local technical landing/outbox state only.
+    Owns no Shipment, Audit, Delivery, Finance, or other domain lifecycle.
+    Retired per context after cutover (ADR-0006 stage 13).
+  publishes_observations:
+    - legacy_bridge.observation.shipment_timeline_entry
+    - legacy_bridge.observation.audit_entry
+  forbidden:
+    - business_lifecycle_ownership
+    - domain_lifecycle_ownership
+    - legacy_database_write
+    - canonical_domain_fact_emission
+    - bounded_context_status
+    - canonical_aggregate_ownership
+
 ownership:
-
-  legacy_event_bridge:
-    canonical_writer: none
-    adr_reference: ADR-0007
-    adr_status: Accepted
-    readers: []
-    api_owner: none
-    event_publisher: legacy_event_bridge
-    database_owner: legacy_event_bridge
-    notes: Transitional observation relay only — retires per context at ADR-0006 stage 13
-    publishes_observations:
-      - legacy_bridge.observation.shipment_timeline_entry
-      - legacy_bridge.observation.audit_entry
-    forbidden:
-      - business_lifecycle_ownership
-      - legacy_database_write
-      - canonical_domain_fact_emission
-
   auth_identity:
     canonical_writer: auth_identity
     adr_reference: ADR-0004
@@ -261,7 +276,7 @@ cross_cutting_rules:
   - name: legacy_dependency
     rule: hudhud-backend is never a runtime dependency
   - name: legacy_bridge_cdc
-    rule: Legacy Event Bridge publishes transitional observations only; CDC is transport; retires at cutover
+    rule: Legacy Event Bridge is a transitional technical deployable (CDC adapter/publisher), not a bounded context or domain owner; publishes observations only; retires at cutover
     adr: ADR-0007
   - name: service_owned_outbox_inbox
     rule: Each service owns outbox/inbox schema; no shared ORM; inbox idempotency authoritative over NATS dedupe

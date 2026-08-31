@@ -68,13 +68,17 @@ consumers:
     durable_name: tracking_bridge_timeline_v1
     filter_subject: hudhud.shipment.legacy_bridge.observation.shipment_timeline_entry.v1
     description: >
-      [provisional] Tracking/Control Tower consumer for Bridge shipment timeline observations.
+      [provisional] Tracking/Control Tower consumer for Bridge A1 observations.
+      Non-aggregate subject: domain_context=shipment, producer=legacy_bridge
+      (not an aggregate identifier). No Bridge domain stream.
 
   - stream: HUDHUD_AUDIT
     durable_name: audit_bridge_entry_v1
     filter_subject: hudhud.audit.legacy_bridge.observation.audit_entry.v1
     description: >
-      [provisional] Audit service consumer for Bridge audit entry observations.
+      [provisional] Audit service consumer for Bridge A2 observations.
+      Non-aggregate subject: domain_context=audit, producer=legacy_bridge
+      (not an aggregate identifier). Not canonical audit.fact.entry_recorded.
 
   - stream: HUDHUD_DLQ
     durable_name: platform_dlq_observer_v1

@@ -124,7 +124,7 @@ Audit method: `git show` at pinned SHA; cross-check `docs/audit/legacy-data-owne
 | Retirement | Required when context passes ADR-0006 stage 13 for that cluster | Permanent |
 | Cutover | Forwards post-HWM changes until credential revocation | Sole writer after stage 12 |
 
-**[decision boundary]** Bridge consumers MUST use ADR-0002 inbox deduplication on `(consumer_name, event_id)`. Bridge-generated `event_id` MUST be deterministic from `(source_table, source_pk, source_position)` **[proposal]** so replays do not double-apply side effects.
+**[decision boundary]** Bridge consumers MUST use ADR-0002 inbox deduplication on `(consumer_name, event_id)`. Accepted A1/A2 `event_id` is deterministic UUIDv5 over source-row identity only (see Decision — Stable observation identity); `source_position` / LSN is provenance, not identity.
 
 ---
 
@@ -269,8 +269,12 @@ contracts (ADR-0009).
 
 1. **CDC direction** — Native PostgreSQL logical decoding captures **committed** row changes in
    WAL order. Row-level CDC output is **transport**, not canonical domain events.
-2. **Legacy Event Bridge** — Transitional, **non-authoritative** producer (`producer=legacy_bridge`
-   in envelope). Maps allowlisted legacy tables to ADR-0009 observation contracts only.
+2. **Legacy Event Bridge** — Transitional **technical deployable** and CDC adapter/publisher.
+   **Not** a bounded context and **not** a canonical aggregate or domain owner. Non-authoritative
+   producer (`producer=legacy_bridge` in envelope). Maps allowlisted legacy tables to ADR-0009
+   observation contracts only. Owns Bridge-local technical landing/checkpoint/outbox state only.
+   Owns no Shipment, Audit, Delivery, Finance, or other domain lifecycle. Retired per context
+   after one-writer cutover (ADR-0006 stage 13).
 3. **Polling is not the authoritative general capture mechanism** — W3-B lab proves UUID/timestamp/
    sequence polling gaps (including SEQUENCE allocation ≠ commit order). Polling remains
    permissible only for **bounded backfill, reconciliation, or sources with separately proven
@@ -286,7 +290,7 @@ contracts (ADR-0009).
 | Own Bridge cursor/checkpoint/outbox landing storage (platform DB) | Own business lifecycle state |
 | Map allowlisted rows → transitional observations | Validate canonical Shipment transitions |
 | Preserve immutable source provenance (`metadata.source_*`) | Write Legacy database |
-| Publish with stable observation `event_id` (UUIDv5 over source identity) | Write service databases directly |
+| Publish with stable A1/A2 `event_id` (UUIDv5 over source-row identity only) | Write service databases directly |
 | Retire per context after one-writer cutover | Publish raw CDC rows as canonical domain events |
 
 **Durable handoff pattern (composes with ADR-0008):**
@@ -299,7 +303,26 @@ contracts (ADR-0009).
 5. Relay publishes to JetStream (at-least-once); `Nats-Msg-Id` dedup window is bounded — **inbox
    `(consumer_name, event_id)` remains authoritative** for consumer idempotency.
 6. Backfill snapshot and live CDC MUST produce the **same `event_id`** for the same append-only
-   source-row observation.
+   source-row observation (formula below).
+
+**Stable observation identity (accepted A1/A2 only):**
+
+```text
+event_id = UUIDv5(
+  event-type-specific stable namespace,
+  "{source_system}:{source_table}:{source_pk}"
+)
+```
+
+**[decision]** Binding rules:
+
+- Backfill and CDC INSERT for the same append-only row MUST generate exactly the same `event_id`.
+- Capture mechanism, LSN, transaction ID, timestamp, and `source_op` MUST NOT affect A1/A2 identity.
+- Source LSN/position remains provenance metadata (`metadata.source_position`), not event identity.
+- A1/A2 apply only to verified append-only source rows (`shipment_events`, `audit_logs`).
+- Future mutable-row observations require an immutable source version/change identity and remain
+  outside the accepted minimal set (ADR-0009).
+- Deletes/updates MUST NOT reuse an A1/A2 identity ambiguously — they are not in the accepted set.
 
 **Explicitly not selected as authoritative capture:**
 
@@ -357,11 +380,14 @@ Stage A — Coordinated HWM (production)
 
 Stage B — Consumer backfill
   Repeatable-read snapshot export of allowlisted tables ≤ HWM
-  event_id = UUIDv5(namespace, source_system + table + pk [+ op/version when relevant])
+  event_id = UUIDv5(event-type-specific stable namespace,
+                    "{source_system}:{source_table}:{source_pk}")
+  source_op, LSN, xid, timestamp, and capture mechanism are NOT part of identity
 
 Stage C — Live CDC (starts at or before Stage B snapshot activation)
   Peek/decode WAL from slot; durably land before slot feedback
-  Same event_id formula as backfill for same source row
+  Same event_id formula as backfill for the same append-only source row
+  CDC INSERT of a row already observed in backfill MUST collide on event_id (duplicate_safe)
 
 Stage D — Zero-gap gate (ADR-0006 stage 7)
   Staging drill: ∀ committed row R after HWM activation, R appears in Bridge landing or DLQ
@@ -442,7 +468,9 @@ as canonical facts — those require native service authority after cutover.
 ## Migration impact
 
 - **Legacy:** No mutation required for Phase 1 (O3/O5). Optional future O1 requires separate program — out of platform worktree scope.
-- **Platform:** New transitional **Legacy Event Bridge** deployable (not a bounded-context owner of business tables); bridge DB for cursors; NATS publish credentials per ADR-0002.
+- **Platform:** New transitional **Legacy Event Bridge** technical deployable (CDC adapter/publisher;
+  not a bounded context; not a canonical aggregate or domain owner; owns Bridge-local landing/outbox
+  only); bridge DB for cursors/checkpoints/outbox; NATS publish credentials per ADR-0002.
 - **Cutover:** For each context, bridge stream retires at ADR-0006 stage 13; native outbox replaces bridge for that `producer`.
 - **Compatibility:** Consumers MUST tolerate `producer=legacy_bridge` during transition; after cutover, dual subscribe during `event_version` migration only.
 - **Bidirectional dual-write:** **Forbidden.**
@@ -511,7 +539,8 @@ Propagate `X-Request-ID` from legacy HTTP into envelope `correlation_id` when pr
 
 ### Neutral
 
-- Bridge is transitional infrastructure, not a bounded context.
+- Bridge is a transitional technical deployable (CDC adapter/publisher), not a bounded context
+  and not a canonical aggregate or domain-lifecycle owner.
 - Finance streams may be captured but not consumed until policy resolves.
 
 ---
