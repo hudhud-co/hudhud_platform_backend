@@ -1,0 +1,100 @@
+# CDC staging drill evidence manifest (TEMPLATE)
+# Status: KIT_TEMPLATE — replace with executed drill evidence when run.
+# Do not commit secrets, connection strings, or decoded row payloads.
+
+schema_version: 1
+artifact_type: kit_template  # change to executed_drill_evidence when complete
+drill_id: ""
+environment: ""
+operator: ""
+started_at: ""
+completed_at: ""
+
+identity:
+  legacy_pinned_sha: "2e375057fdf9b9ce8416408a4436303be5301def"
+  platform_repo: hudhud_platform_backend
+  adr_references:
+    - ADR-0006
+    - ADR-0007
+
+server_configuration:
+  postgresql_version: ""
+  wal_level: ""
+  max_replication_slots: null
+  max_wal_senders: null
+  max_slot_wal_keep_size: ""
+  ssl_mode: ""
+  preflight_sql_artifact: ""  # path to captured preflight output
+
+hwm_coordination:
+  method: ""  # MUST be replication_protocol_export_snapshot for G4
+  slot_name: ""
+  plugin: ""
+  snapshot_id: ""
+  restart_lsn: ""
+  consistent_point_timestamp: ""
+  ordinary_sql_snapshot_used: false  # must remain false for G4 pass
+  illustrative_count_only: false  # must remain false for zero-gap claim
+
+backfill:
+  snapshot_id_used: ""
+  tables: []
+  # - name: public.shipment_events
+  #   row_count: null
+  #   pk_checksum: ""
+  #   export_artifact: ""
+
+live_cdc:
+  wal_range_start_lsn: ""
+  wal_range_end_lsn: ""
+  durable_landing_before_feedback: null  # boolean — G5
+  peek_only_until_landing: null
+
+restart_checkpoints:
+  - stop_timestamp: ""
+    lag_bytes_at_stop: null
+    resume_timestamp: ""
+    lag_bytes_at_resume: null
+    gap_detected: null
+
+reconciliation:
+  checklist_artifact: ""
+  duplicate_event_id_count: null
+  duplicate_safe_only: null
+  missing_post_hwm_rows: []
+  semantic_sample_size: null
+  pass: null
+
+wal_growth:
+  max_lag_bytes_observed: null
+  warn_threshold_bytes: null
+  stop_threshold_bytes: null
+  stop_triggered: false
+  timeline_artifact: ""
+
+cleanup:
+  slot_retired: false
+  slot_drop_timestamp: ""
+  slot_drop_operator: ""
+  wal_recycled_observed: null
+
+adr_gates:
+  G1_wal_and_capacity: pending
+  G2_least_privilege_credentials: pending
+  G3_slot_wal_monitoring: pending
+  G4_export_snapshot_drill: pending
+  G5_durable_landing_before_feedback: pending
+  G6_ha_failover: not_exercised
+  G7_allowlist_pii: pending
+  G8_zero_gap_restart: pending
+  G9_cleanup_revocation: pending
+  G10_observation_contracts: pending
+
+overall:
+  pass: null
+  blockers: []
+  waivers: []
+
+notes: >
+  This file is a kit template. Executed staging drills must set artifact_type to
+  executed_drill_evidence and populate all sections. Zero-gap claims require G4 and G8 pass.

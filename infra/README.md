@@ -32,3 +32,9 @@ docker compose --profile shipment --profile gateway up
 
 Foundation F0 — compose files and NATS JetStream infrastructure are not yet scaffolded.
 See `docs/audit/legacy-runtime-inventory.md` for legacy deployment reference.
+
+## CDC staging drill kit
+
+Guarded, read-only-default procedures for a future ADR-0007 staging zero-gap drill:
+
+- [infra/cdc/staging-drill/](cdc/staging-drill/) — runbook, templates, checklists (kit artifact, not executed evidence)

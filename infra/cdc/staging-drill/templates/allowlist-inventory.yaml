@@ -1,0 +1,75 @@
+# CDC staging drill — allowlisted source inventory (TEMPLATE)
+# Complete before privileged drill steps. No credentials in this file.
+
+schema_version: 1
+drill_id: ""  # e.g. cdc-staging-2026-08-31-001
+environment: staging
+operator: ""
+completed_at: ""
+
+legacy_evidence:
+  pinned_sha: "2e375057fdf9b9ce8416408a4436303be5301def"
+  note: "Read-only legacy audit reference — not modified by drill"
+
+sources:
+  - table: public.shipment_events
+    classification: internal
+    append_only_evidence: true
+    primary_key: id
+    ordering_cursor: "(occurred_at ASC, id ASC)"
+    replica_identity: DEFAULT  # verify in preflight SQL
+    observation_contract:
+      event_type: legacy_bridge.observation.shipment_timeline_entry
+      event_version: 1
+      stream: HUDHUD_SHIPMENT
+    event_id_formula: "UUIDv5(namespace, '{source_system}:{source_table}:{source_pk}')"
+    pii_fields: []  # list column names if any — minimize in publication
+    excluded_columns: []
+    publication_included: true
+    notes: >
+      Legacy evidence: all 13 status writers append atomically with status mutation.
+      UUID v4 PK — not time-ordered; cursor tie-break required.
+
+  - table: public.audit_logs
+    classification: confidential
+    append_only_evidence: true
+    primary_key: id
+    ordering_cursor: "(created_at ASC, id ASC)"
+    replica_identity: DEFAULT
+    observation_contract:
+      event_type: legacy_bridge.observation.audit_entry
+      event_version: 1
+      stream: HUDHUD_AUDIT
+    event_id_formula: "UUIDv5(namespace, '{source_system}:{source_table}:{source_pk}')"
+    pii_fields:
+      - metadata_jsonb  # may contain IP/user_agent — classify per field policy
+    excluded_columns: []
+    publication_included: true
+    notes: >
+      Decentralized writers; not every shipment_event has matching audit row.
+
+deferred_sources:
+  - table: public.shipments
+    reason: "Mutable aggregate — not in ADR-0009 accepted observation set"
+  - table: public.delivery_cod_collections
+    reason: "ADR-0005 finance policy blocked"
+  - table: notification_push_outbox
+    reason: "Push delivery relay — not domain capture surface"
+
+publication:
+  name: ""  # CDC_DRILL_PUBLICATION_NAME at execution
+  plugin: pgoutput
+  tables: []  # subset of sources where publication_included=true
+
+replication_role:
+  name: ""  # CDC_DRILL_PG_USER_REPLICATION — no password here
+  privileges:
+    - REPLICATION
+    - CONNECT
+    - SELECT on allowlisted tables only
+  write_privileges: false
+
+sign_off:
+  platform_architecture: ""
+  database_operations: ""
+  security: ""
