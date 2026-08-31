@@ -1,6 +1,12 @@
 # Machine-checkable polling strategy outcome matrix (ADR-0007 lab).
 # scenario keys must match tests/polling_lab/scenarios.py
 # outcome: complete | gap | duplicate_safe | unprovable
+#
+# Terminology:
+# - complete: captured expected rows in this synthetic scenario (NOT production gap-free proof)
+# - duplicate_safe: overlap/dedupe tolerates duplicates; does NOT imply gap-free completeness
+# - gap: at least one expected row permanently missed by the strategy in this scenario
+# - unprovable: completeness cannot be established (e.g. hard deletes without tombstones)
 
 strategies:
   timestamp_only:
@@ -23,12 +29,19 @@ strategies:
     description: "Poll with fixed lookback window + PK deduplication"
     requires_schema_change: false
     can_prove_completeness: false
+    duplicate_safe_not_gap_free: true
+    requires_bounded_lateness: true
     requires_unbounded_lookback_for: [late_commit_earlier_ts, long_running_txn_cross_boundary]
   monotonic_sequence:
     description: "WHERE capture_seq > cursor_seq on lab_events_sequenced"
     requires_schema_change: true
-    can_prove_completeness: true
-    completeness_scope: append_only_with_durable_sequence
+    can_prove_completeness: false
+    completeness_scope: allocation_order_not_commit_order
+    notes: >
+      PostgreSQL SEQUENCE/BIGSERIAL/SERIAL allocates on INSERT before COMMIT.
+      Allocation order is not WAL/commit order. A strict sequence > HWM poll can
+      permanently miss rows that allocated a lower sequence but committed after
+      a higher sequence was observed (see sequence_allocation_not_commit_order).
 
 scenarios:
   uuid_non_monotonic_order:
@@ -50,9 +63,16 @@ scenarios:
   timestamp_uuid_composite:
     description: "PostgreSQL composite tuple ordering for (occurred_at, id)"
   monotonic_sequence_append:
-    description: "BIGSERIAL capture_seq on append-only stream"
+    description: "BIGSERIAL capture_seq on append-only stream (committed rows only)"
+  sequence_allocation_not_commit_order:
+    description: >
+      T1 allocates capture_seq=1 (prepared/uncommitted); T2 allocates seq=2 and commits;
+      poller observes seq=2 and advances HWM; T1 commits — strict seq > HWM misses seq=1
   snapshot_post_hwm:
-    description: "HWM snapshot at T0 plus continuous post-HWM capture"
+    description: >
+      Illustrative HWM snapshot at T0 plus post-HWM poll — does NOT prove production
+      zero-gap protocol (requires capture activation, dedupe, restartable position, reconciliation)
+    evidence_class: synthetic_illustrative_not_production_zero_gap_proof
   concurrent_writers:
     description: "Parallel sessions inserting concurrently"
 
@@ -77,14 +97,21 @@ expected_outcomes:
     timestamp_uuid: gap
     updated_at_only: unprovable
     overlap_window_dedupe: duplicate_safe
-    monotonic_sequence: complete
+    monotonic_sequence: gap
   long_running_txn_cross_boundary:
     timestamp_only: gap
     uuid_only: gap
     timestamp_uuid: gap
     updated_at_only: unprovable
     overlap_window_dedupe: duplicate_safe
-    monotonic_sequence: complete
+    monotonic_sequence: gap
+  sequence_allocation_not_commit_order:
+    timestamp_only: gap
+    uuid_only: gap
+    timestamp_uuid: gap
+    updated_at_only: unprovable
+    overlap_window_dedupe: duplicate_safe
+    monotonic_sequence: gap
   update_after_hwm:
     timestamp_only: gap
     uuid_only: gap
@@ -128,12 +155,12 @@ expected_outcomes:
     overlap_window_dedupe: complete
     monotonic_sequence: complete
   snapshot_post_hwm:
-    timestamp_only: complete
-    uuid_only: complete
-    timestamp_uuid: complete
+    timestamp_only: duplicate_safe
+    uuid_only: duplicate_safe
+    timestamp_uuid: duplicate_safe
     updated_at_only: unprovable
     overlap_window_dedupe: duplicate_safe
-    monotonic_sequence: complete
+    monotonic_sequence: duplicate_safe
   concurrent_writers:
     timestamp_only: complete
     uuid_only: gap
@@ -146,6 +173,7 @@ proven_unsafe_for_legacy_bridge:
   - "uuid_only on shipment_events-style UUID PK streams"
   - "timestamp_only when multiple rows share occurred_at/created_at"
   - "timestamp_uuid when application timestamps can precede HWM at commit time"
+  - "monotonic_sequence when allocation order diverges from commit visibility (SEQUENCE not transactional)"
   - "updated_at_only as universal HWM (ADR-0006 H2)"
   - "any append-only poll without tombstones on hard-delete tables"
 
@@ -157,7 +185,8 @@ conditions_for_safe_polling:
   mutable_entities:
     - "updated_at alone is insufficient; CDC or tombstones for deletes/updates"
   completeness_proof:
-    - "Monotonic DB-generated sequence on capture table proves append-only completeness"
+    - "DB-generated sequence alone does NOT prove gap-free polling — allocation precedes commit"
+    - "Finite overlap lookback is duplicate_safe only when max transaction duration and lateness are bounded and enforced"
     - "Hard deletes without tombstones make completeness unprovable via poll alone"
 
 evidence_classification:

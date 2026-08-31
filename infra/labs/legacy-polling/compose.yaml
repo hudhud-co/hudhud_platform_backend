@@ -15,6 +15,10 @@ services:
       POSTGRES_USER: polling_lab
       POSTGRES_PASSWORD: polling_lab_dev_only
       POSTGRES_DB: polling_lab
+    command:
+      - postgres
+      - -c
+      - max_prepared_transactions=10
     volumes:
       - type: volume
         source: hudhud_polling_lab_pgdata

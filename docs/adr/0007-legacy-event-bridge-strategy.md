@@ -1,10 +1,10 @@
 # ADR-0007: Legacy Event Bridge Strategy
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-30
-- **Deciders:** (pending — platform architecture review)
-- **Workstream:** W2-D
-- **Implementation allowed:** no
+- **Deciders:** platform architecture review (Wave 3 capture integration)
+- **Workstream:** W2-D / W3 integration
+- **Implementation allowed:** no — production Bridge gated (see Implementation gates)
 
 Label key: **[evidence]** verified from repository or legacy audit; **[proposal]** recommended design not yet accepted; **[decision]** binding only after acceptance; **[assumption]** engineering default pending validation; **[unresolved policy]** requires named deciders.
 
@@ -260,98 +260,137 @@ Scores: **Low** / **Med** / **High** (qualitative — **proposal**, not measured
 
 ## Decision
 
-**[proposal] Recommended strategy (status remains Proposed — implementation blocked):**
+**[decision]** Adopt **PostgreSQL logical decoding / CDC (O2)** as the **selected transitional
+transport direction** for eligible legacy sources, implemented by a **Legacy Event Bridge**
+deployable that maps allowlisted row changes into explicitly **transitional observation**
+contracts (ADR-0009).
 
-Adopt **O5 — narrowly scoped hybrid**, with **O3 (proven monotonic polling) as a candidate
-capture mechanism** pending completeness proof for each stream. Polling is **not** the Phase 1
-default until a safe monotonic cursor is verified for every relevant write path.
+**Accepted scope:**
 
-1. **Read-only** legacy PostgreSQL role scoped to `SELECT` on approved capture tables only.
-   This is a **narrow, transitional, least-privilege exception** to the steady-state
-   no-cross-service-database-access rule. It is observable, auditable, write-prohibited, and
-   must retire at the ADR-0006 credential-revocation gate for the bridged cluster.
-2. **Durable bridge cursor store** in platform-owned DB (not legacy) recording per-stream
-   `(table, occurred_at|created_at, id)` high-water mark.
-3. **Publish** ADR-0002 envelopes to JetStream with:
-   - `producer`: `legacy_bridge` **[proposal]**
-   - `metadata.source_module`, `metadata.source_table`, `metadata.source_pk`,
-     `metadata.source_position` **[proposal]**
-   - `metadata.replay` / `metadata.replay_source` when applicable
-   - Deterministic `event_id` = UUIDv5(namespace, `{table}:{pk}:{position}`) **[proposal]**
-     using immutable source coordinates; `event_id` is distinct from cursor/position and
-     replay of the same source row MUST reproduce the same `event_id`.
-4. **Pre-HWM / post-HWM:** Align with ADR-0006 stage 3 — record bridge cursor at HWM **before
-   or atomically with** consumer backfill snapshot; continuous capture must guarantee post-HWM
-   rows reach JetStream before consumer cutover **once a mechanism is proven**.
-5. **Retire** bridge stream when ADR-0006 stage 13 completes for that fact class; native
-   service outbox becomes sole publisher.
+1. **CDC direction** — Native PostgreSQL logical decoding captures **committed** row changes in
+   WAL order. Row-level CDC output is **transport**, not canonical domain events.
+2. **Legacy Event Bridge** — Transitional, **non-authoritative** producer (`producer=legacy_bridge`
+   in envelope). Maps allowlisted legacy tables to ADR-0009 observation contracts only.
+3. **Polling is not the authoritative general capture mechanism** — W3-B lab proves UUID/timestamp/
+   sequence polling gaps (including SEQUENCE allocation ≠ commit order). Polling remains
+   permissible only for **bounded backfill, reconciliation, or sources with separately proven
+   completeness** (finite overlap = `duplicate_safe`, not gap-free).
+4. **Service-native outbox** — Per extracted context, ADR-0008 service-owned outbox replaces Bridge
+   relay; Bridge retires at ADR-0006 stage 13 per fact class.
+5. **Hybrid O5** — CDC primary; polling as bounded supplement when ops-approved.
 
-**Phase 2 escalation (unresolved):** Add **O2 CDC** for table clusters where polling lag or
-completeness proof fails (hot mutable tables, hard deletes, non-event status paths). **O1 legacy
-transactional outbox** remains viable when legacy mutation is explicitly authorized — it is
-outside this evidence task, not permanently forbidden.
+**Legacy Event Bridge authority (binding):**
 
-**Explicitly not selected without completeness proof:**
+| Bridge MUST | Bridge MUST NOT |
+|-------------|-----------------|
+| Own Bridge cursor/checkpoint/outbox landing storage (platform DB) | Own business lifecycle state |
+| Map allowlisted rows → transitional observations | Validate canonical Shipment transitions |
+| Preserve immutable source provenance (`metadata.source_*`) | Write Legacy database |
+| Publish with stable observation `event_id` (UUIDv5 over source identity) | Write service databases directly |
+| Retire per context after one-writer cutover | Publish raw CDC rows as canonical domain events |
 
-- **O3 polling as Phase 1 default** — legacy evidence reports UUID PKs and timestamps but does
-  not yet prove a monotonic, gap-free source position for every relevant write.
-- **`updated_at` or `occurred_at` alone** as a universally safe high-water mark — vulnerable to
-  late inserts, equal timestamps, clock skew, hard deletes, transaction visibility lag, and
-  incomplete multi-writer coverage.
-- **O1** — requires legacy mutation (forbidden without separate authorization).
-- **O4** — insufficient durability for ADR-0006.
+**Durable handoff pattern (composes with ADR-0008):**
+
+1. Receive/peek decoded CDC change; record source LSN/position.
+2. Durably land source coordinates + normalized observation + Bridge outbox row — **same Bridge DB
+   transaction**.
+3. **Commit** Bridge storage.
+4. **Only then** advance replication slot / send feedback (never before step 3).
+5. Relay publishes to JetStream (at-least-once); `Nats-Msg-Id` dedup window is bounded — **inbox
+   `(consumer_name, event_id)` remains authoritative** for consumer idempotency.
+6. Backfill snapshot and live CDC MUST produce the **same `event_id`** for the same append-only
+   source-row observation.
+
+**Explicitly not selected as authoritative capture:**
+
+- **O3 polling as Phase 1 default** — lab + legacy evidence: not gap-free; sequence ≠ commit order.
+- **`updated_at` or timestamps alone** as universal HWM.
+- **O1 legacy transactional outbox** without separate legacy mutation authorization.
+- **O4 after-commit** — insufficient durability.
+
+**Status: Accepted.** Production implementation remains **gated** (below). Accepted ≠
+implementation-complete.
+
+## Implementation gates
+
+Production Legacy Event Bridge implementation is **blocked** until:
+
+| Gate | Evidence required |
+|------|-------------------|
+| G1 | `wal_level=logical`, replication slots/senders capacity on legacy host |
+| G2 | Least-privilege replication credentials (table allowlist, no write) |
+| G3 | Slot/WAL capacity monitoring and alert runbook |
+| G4 | **Atomic snapshot/slot drill** — `CREATE_REPLICATION_SLOT ... EXPORT_SNAPSHOT` (not lab helper alone) |
+| G5 | Durable Bridge landing + outbox (ADR-0008 pattern) before slot feedback |
+| G6 | HA/failover strategy for replication slot continuity |
+| G7 | Source allowlist + PII minimization |
+| G8 | Staging zero-gap / restart / reconciliation evidence (ADR-0006 stage 7) |
+| G9 | Credential revocation at ADR-0006 completion per bridged cluster |
+| G10 | ADR-0009 observation contracts registered; first consumers inbox-ready |
+
+**Wave 3 evidence incorporated:**
+
+| Source | Finding |
+|--------|---------|
+| Legacy capture audit | All verified Shipment status writers append `shipment_events` atomically |
+| W3-B polling lab | UUID/timestamp/sequence polling not gap-free; overlap = duplicate_safe not gap-free |
+| W3-C CDC lab | Logical decoding captures committed changes; snapshot helper illustrative only |
+| ADR-0009 | Two transitional observation contracts only |
 
 **[decision boundary] Forbidden regardless of option:**
 
 - Bidirectional dual-write between legacy and platform databases.
 - Platform services holding legacy **write** credentials (read-only bridge role except break-glass).
 - Treating `notification_push_outbox` as domain integration outbox.
-- Publishing accepted `contracts/events/*` payloads without contract registration and consumer sign-off.
-
-**Status: Proposed.** Production proof (bridge lag SLO, zero-gap drill, first-consumer inbox tests) and CDC capacity decision remain blockers before acceptance.
+- Publishing canonical domain facts from Bridge (`audit.fact.*`, `shipment.fact.*`) — observations only.
+- Advancing replication slot before durable Bridge landing commit.
 
 ---
 
 ## Pre-HWM, backfill, and post-HWM capture
 
-**[proposal]** For each bridge stream:
+**[decision]** CDC + coordinated exported snapshot (production drill required):
 
 ```text
-Stage A — HWM record
-  bridge_cursor_0 := max captured key at T0 (transaction-scoped snapshot preferred)
+Stage A — Coordinated HWM (production)
+  CREATE_REPLICATION_SLOT ... EXPORT_SNAPSHOT → snapshot_id + restart_lsn atomically bound
 
-Stage B — Consumer backfill (if any)
-  Historical rows ≤ HWM loaded into consumer projection store via deterministic replay
-  event_id derived from source row (same formula as live bridge)
+Stage B — Consumer backfill
+  Repeatable-read snapshot export of allowlisted tables ≤ HWM
+  event_id = UUIDv5(namespace, source_system + table + pk [+ op/version when relevant])
 
-Stage C — Live capture (starts at or before Stage B snapshot)
-  Poll legacy WHERE (occurred_at, id) > cursor OR (created_at, id) > cursor
-  Publish to JetStream; advance cursor only after broker ACK
+Stage C — Live CDC (starts at or before Stage B snapshot activation)
+  Peek/decode WAL from slot; durably land before slot feedback
+  Same event_id formula as backfill for same source row
 
 Stage D — Zero-gap gate (ADR-0006 stage 7)
-  Prove: ∀ row R written after T0, R appears in JetStream or quarantine DLQ
-  Bridge cursor ≥ max(source keys) at verification instant
+  Staging drill: ∀ committed row R after HWM activation, R appears in Bridge landing or DLQ
+  Semantic reconciliation proves backfill ∪ live CDC completeness
 ```
 
-**[decision boundary]** Do not start consumer write cutover until Stage D evidence exists for that stream.
+**[evidence]** W3-B polling lab: finite overlap and snapshot row-count checks are **illustrative**
+only — not production zero-gap proof.
 
-**[evidence gap]** Hard deletes on legacy operational tables — tombstone strategy **unresolved** (ADR-0006); polling append-only tables avoids deletes on `shipment_events`/`audit_logs`.
+**[decision boundary]** Do not start consumer write cutover until Stage D staging evidence exists.
+
+**[evidence gap]** Hard deletes on legacy operational tables — tombstone strategy **unresolved** (ADR-0006); `shipment_events`/`audit_logs` are append-only in legacy evidence.
 
 ---
 
-## Envelope mapping (proposal — not accepted contracts)
+## Envelope mapping (ADR-0009 accepted observations only)
 
-Bridge maps **verified legacy rows** to **provisional** integration shapes. Names below are **mapping targets for bridge implementation planning**, not registered `contracts/events/*` until Wave 1 contract gate passes.
+Bridge maps **verified legacy rows** to **transitional observation** contracts only (ADR-0009):
 
-| Legacy source | Verified fields | Provisional bridge mapping | First-consumer suitability |
-|---------------|-----------------|----------------------------|----------------------------|
-| `shipment_events` row | `event_type`, `occurred_at`, `old_status`, `new_status`, `actor_*`, `metadata_jsonb` | Lifecycle/timeline integration facts | Tracking, Control Tower, Notification (derived) |
-| `audit_logs` row | `action`, `entity_type`, `entity_id`, `metadata_jsonb` | Audit transport events | Audit service |
-| `in_app_notifications` + catalog keys | Created by `InAppNotificationService` | **Not** captured via push_outbox for domain bridge — prefer `shipment_events` + audit | Notification (partial — see gap) |
-| `delivery_cod_collections` insert | `shipment_id`, amounts | COD fact candidate | **Policy-blocked** (ADR-0005) — bridge may capture but Finance consumer blocked |
-| Wallet ledger insert | `idempotency_key`, `entry_type` | Wallet fact candidate | **Policy-blocked** |
+| Legacy source | Accepted observation `event_type` | Stream routing |
+|---------------|-------------------------------------|----------------|
+| `shipment_events` row | `legacy_bridge.observation.shipment_timeline_entry` v1 | `HUDHUD_SHIPMENT` |
+| `audit_logs` row | `legacy_bridge.observation.audit_entry` v1 | `HUDHUD_AUDIT` |
 
-**[evidence]** Notification today is triggered **synchronously** from use cases (`emit_shipment_status_notification`) — bridge can **supplement** Notification consumer by translating `shipment_events` with status transitions, but parity with all notification catalog keys (pickup scheduling, merchant application, etc.) requires **additional cursors** or **unresolved** legacy-side hooks.
+**Deferred / blocked:** COD, wallet, canonical Shipment lifecycle facts, notification projections,
+media/proof, pickup/hub/linehaul facts — see ADR-0009.
+
+**[decision boundary]** Bridge MUST NOT emit `audit.fact.entry_recorded` or `shipment.fact.*`
+as canonical facts — those require native service authority after cutover.
 
 ---
 
@@ -543,9 +582,9 @@ Propagate `X-Request-ID` from legacy HTTP into envelope `correlation_id` when pr
 
 ```text
 ADR path: docs/adr/0007-legacy-event-bridge-strategy.md
-Status: Proposed
-Deciders: (pending)
-Canonical docs updated: none (proposed only)
+Status: Accepted
+Deciders: platform architecture review (Wave 3 capture integration)
+Canonical docs updated: service-boundaries.yaml, ownership-matrix.yaml, docs/adr/README.md
 Unresolved questions: 9 (see section above)
-Implementation allowed: no
+Implementation allowed: no (production gates G1–G10)
 ```

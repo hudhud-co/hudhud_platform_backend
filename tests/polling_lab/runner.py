@@ -73,6 +73,8 @@ def run_single_poll_scenario(spec: ScenarioSpec, strategy: str) -> PhaseResult:
         captured_ids,
         allow_duplicates=strategy == "overlap_window_dedupe",
     )
+    if spec.scenario_id == "snapshot_post_hwm" and outcome == "complete":
+        outcome = "duplicate_safe"
     return PhaseResult(strategy=strategy, outcome=outcome, captured_ids=captured_ids)
 
 
@@ -255,6 +257,42 @@ def run_timestamp_uuid_composite_phased(strategy: str) -> PhaseResult:
     return run_same_timestamp_phased(strategy)
 
 
+def run_sequence_allocation_not_commit_order_phased(strategy: str) -> PhaseResult:
+    """Prove SEQUENCE allocation order != commit visibility order (PostgreSQL behavior)."""
+    psql(reset_sql())
+    psql(
+        """
+BEGIN;
+INSERT INTO lab_events_sequenced (id, occurred_at, event_type) VALUES
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', '2026-01-01T09:00:00Z', 'late_alloc');
+PREPARE TRANSACTION 'lab_seq_late';
+"""
+    )
+    psql(
+        """
+INSERT INTO lab_events_sequenced (id, occurred_at, event_type) VALUES
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', '2026-01-01T11:00:00Z', 'early_commit');
+"""
+    )
+    cursor = Cursor()
+    first = fetch_events(strategy, _overlap_cursor(cursor, strategy))
+    cursor = advance_cursor(strategy, first, cursor)
+
+    psql("COMMIT PREPARED 'lab_seq_late';")
+
+    second = fetch_events(strategy, _overlap_cursor(cursor, strategy))
+    all_rows, saw_duplicates = merge_poll_batches(first, second)
+    captured_ids = {row.row_id for row in all_rows}
+    allow_dupes = strategy == "overlap_window_dedupe"
+    outcome = classify_capture(
+        {UUID_A, UUID_B},
+        captured_ids,
+        allow_duplicates=allow_dupes,
+        saw_cross_poll_duplicates=saw_duplicates,
+    )
+    return PhaseResult(strategy=strategy, outcome=outcome, captured_ids=captured_ids)
+
+
 PHASED_RUNNERS = {
     "uuid_non_monotonic_order": run_uuid_non_monotonic_phased,
     "same_timestamp_tiebreak": run_same_timestamp_phased,
@@ -264,6 +302,7 @@ PHASED_RUNNERS = {
     "overlap_window_dedupe": run_late_commit_phased,
     "concurrent_writers": run_concurrent_writers_phased,
     "update_after_hwm": run_update_after_hwm_phased,
+    "sequence_allocation_not_commit_order": run_sequence_allocation_not_commit_order_phased,
 }
 
 

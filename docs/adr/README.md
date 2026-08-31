@@ -30,19 +30,24 @@ This directory holds Architecture Decision Records (ADRs) for the HUDHUD platfor
 | [ADR-0004](0004-identity-gateway-and-service-trust.md) | Identity, Gateway, and service trust | **Proposed** | Identity owns auth identity; domain services own membership/policy; Gateway routes only | Customer/Organization ownership; hub/driver grant ownership finalization | ADR-0001, ADR-0002, ADR-0006 |
 | [ADR-0005](0005-cod-wallet-ledger-and-settlement.md) | COD, wallet, ledger, and settlement | **Proposed — Policy Blocked** | Double-entry finance authority recommended; Wallet as projection; Delivery→Finance not Delivery→Wallet | Policy register P-01–P-17; COA; commission/settlement rules | ADR-0002 (Accepted), ADR-0003 (Accepted), ADR-0004 (Proposed) |
 | [ADR-0006](0006-one-writer-data-cutover-and-reconciliation.md) | One-writer data cutover | **Accepted** | One-writer cutover; semantic reconciliation; credential revocation; zero-gap HWM capture | CDC/replication tooling; per-context cutover execution | ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005 |
-| [ADR-0007](0007-legacy-event-bridge-strategy.md) | Legacy event bridge strategy | **Proposed** | Transitional legacy→JetStream capture; read-only bridge candidate; hybrid poll/CDC/WAL/outbox options | Capture mechanism completeness proof; bridge lag SLO; zero-gap drill; contract registration | ADR-0001, ADR-0002, ADR-0003, ADR-0005, ADR-0006 |
+| [ADR-0007](0007-legacy-event-bridge-strategy.md) | Legacy event bridge strategy | **Accepted** | CDC transitional transport; Legacy Event Bridge observations only; polling not authoritative | Production Bridge gates G1–G10; EXPORT_SNAPSHOT drill; durable landing | ADR-0001, ADR-0002, ADR-0003, ADR-0005, ADR-0006, ADR-0008, ADR-0009 |
+| [ADR-0008](0008-service-owned-outbox-inbox-processing.md) | Service-owned outbox/inbox | **Accepted** | Per-service outbox/inbox; no shared ORM; conformance kit; state-aware inbox duplicates | messaging_conformance allowlist; disposable DB proof; first service bootstrap | ADR-0002, ADR-0003, ADR-0006, ADR-0007 |
+| [ADR-0009](0009-initial-integration-event-contracts.md) | Initial integration event contracts | **Accepted — minimal observation set only** | Two Bridge observations: shipment timeline + audit entry | JSON Schemas; production publishers; consumer inbox | ADR-0002, ADR-0007, ADR-0003, ADR-0005 |
 
-## ADR Numbering Reference
+## Wave 3 ADR Index (capture + messaging)
+
+| ADR | Title | Status | Accepted scope |
+|-----|-------|--------|----------------|
+| ADR-0007 | Legacy event bridge | **Accepted** | CDC direction; transitional Bridge; not implementation-complete |
+| ADR-0008 | Service-owned outbox/inbox | **Accepted** | Owned schema/adapters; conformance kit; not implementation-complete |
+| ADR-0009 | Initial contracts | **Accepted** | Two observation contracts only; all else deferred |
+
+## ADR Numbering Reference (continued)
 
 | ADR | Subject |
 |-----|---------|
-| ADR-0001 | Transitional deployables and extraction order |
-| ADR-0002 | Event envelope, outbox/inbox, and JetStream |
-| ADR-0003 | Shipment lifecycle authority |
-| ADR-0004 | Identity, Gateway, and service trust |
-| ADR-0005 | COD, wallet, ledger, and settlement |
-| ADR-0006 | One-writer data cutover |
-| ADR-0007 | Legacy event bridge strategy |
+| ADR-0008 | Service-owned outbox/inbox persistence |
+| ADR-0009 | Initial integration event contracts (minimal Bridge observations) |
 
 ## Relationship to Legacy
 

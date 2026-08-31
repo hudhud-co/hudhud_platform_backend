@@ -277,6 +277,23 @@ def test_cli_github_format_writes_github_output_file(tmp_path: Path) -> None:
     assert payload["validation_scope"]["run_quality_gates"] is True
 
 
+def test_polling_lab_tests_classified_as_infrastructure() -> None:
+    result = _impact("M\ttests/polling_lab/test_strategies_matrix.py")
+    assert result.impact_flags["infrastructure"] is True
+    assert result.full_validation is True
+
+
+def test_cdc_lab_tests_classified_as_infrastructure() -> None:
+    result = _impact("M\ttests/cdc_lab/test_operational_analysis.py")
+    assert result.impact_flags["infrastructure"] is True
+    assert result.full_validation is True
+
+
+def test_legacy_polling_lab_infra_path() -> None:
+    result = _impact("M\tinfra/labs/legacy-polling/REPORT.md")
+    assert result.impact_flags["infrastructure"] is True
+
+
 def test_git_diff_integration_when_base_available() -> None:
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"],

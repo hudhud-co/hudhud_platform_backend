@@ -39,8 +39,9 @@ Required replication prerequisites (verified in scenario 1):
 
 1. **Create** — `pg_create_logical_replication_slot(name, 'test_decoding')` fixes
    `restart_lsn` at creation WAL position.
-2. **Stream** — `pg_logical_slot_get_changes` / `pg_recvlogical` advances consumer cursor;
-   unconfirmed data remains available until `pg_replication_slot_advance` or implicit flush.
+2. **Stream** — `pg_logical_slot_peek_changes` reads without advancing; `pg_logical_slot_get_changes`
+   **consumes** and advances the slot position. Production Bridge MUST NOT call `get_changes` (or
+   equivalent feedback) until decoded changes are durably landed in Bridge-owned storage.
 3. **Lag** — `pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)` bytes retained for the slot.
 4. **Inactive consumer** — slot prevents WAL recycling past `restart_lsn`; disk grows.
 5. **Drop** — `pg_drop_replication_slot` releases retention; WAL may be recycled; **changes
@@ -81,17 +82,24 @@ follower promotion runbooks — treat as **unresolved ops policy** for legacy br
 Lab tests assert lag visibility and slot metadata; production bridge would export Prometheus
 metrics per ADR-0007 observability proposal.
 
-## Snapshot coordination (zero-gap)
+## Snapshot coordination (illustrative lab only)
 
 ADR-0006 stage 3 requires post-HWM capture **before or atomically with** backfill snapshot.
 
-Lab procedure (scenario 10):
+**[synthetic-lab observation]** Lab scenario 10 calls `lab.capture_hwm_snapshot()` which returns
+`pg_export_snapshot()`, `pg_current_wal_lsn()`, and a row count in one SQL function. This is
+**illustrative only** — it is **not** the PostgreSQL replication protocol
+`CREATE_REPLICATION_SLOT ... EXPORT_SNAPSHOT` that atomically binds a consistent snapshot to a
+logical slot/WAL start position.
 
-1. Create logical slot (capture starts at `restart_lsn`).
-2. `pg_export_snapshot()` + record `pg_current_wal_lsn()` as HWM.
-3. Backfill rows visible in snapshot (repeatable read).
-4. Concurrent inserts after snapshot appear only in WAL stream.
-5. Union(backfill, WAL from slot) = no gap.
+Production Bridge requires a **staging exported-snapshot drill** proving:
+
+1. Coordinated slot creation + exported snapshot identity
+2. Backfill from snapshot repeatable-read view
+3. Live CDC from slot `restart_lsn` with deterministic dedupe against backfill
+4. Durable Bridge landing before slot advancement/feedback
+
+Do **not** claim the zero-gap backfill protocol is fully proven from lab scenario 10 alone.
 
 Bridge must persist **both** snapshot id / backfill cursor **and** slot `restart_lsn` at HWM.
 
@@ -125,16 +133,21 @@ Bridge must map deletes to tombstone integration facts — **unresolved policy**
 
 ## Bridge persistence before acknowledging progress
 
-A Legacy Event Bridge (ADR-0007 proposal) MUST durably persist **before** advancing slot/cursor:
+A Legacy Event Bridge (ADR-0007) MUST durably persist **before** advancing slot/cursor or
+acknowledging replication feedback:
 
-1. **Source position** — `(slot_name, confirmed_flush_lsn)` or equivalent LSN coordinate
-2. **Decoded transport record** — raw change + source xid/LSN/timestamp (for deterministic
-   `event_id` = UUIDv5 over `{table}:{pk}:{position}`)
-3. **Mapped envelope** (optional stage) — ADR-0002 JSON pending contract registration
-4. **Publish ack** — JetStream ACK for relay path, or outbox `published_at` if buffered
+1. **Receive/peek** decoded changes (prefer peek until durable landing is ready)
+2. **Source position** — `(slot_name, lsn, xid)` coordinates
+3. **Normalized observation + outbox record** — stable `event_id`, transitional envelope payload
+4. **Commit** Bridge-owned storage transaction
+5. **Only then** advance slot / send replication feedback / mark checkpoint
+6. **Publish** via retryable outbox (at-least-once); consumer inbox deduplicates
 
-Ack order: **persist checkpoint → publish → advance slot**. Never advance slot past unpublished
-or un-persisted changes.
+**Unsafe for production:** calling `pg_logical_slot_get_changes` (or Debezium auto-ack) before
+step 4 commits — changes can be lost if Bridge crashes after slot advance.
+
+Ack order: **durable landing commit → publish → slot advance/feedback**. Never advance slot past
+unpersisted changes.
 
 ## Cleanup
 
@@ -149,10 +162,10 @@ Removes containers, `hudhud_cdc_lab` network, and `hudhud_cdc_lab_pgdata` volume
 | Proves | Does not prove |
 |--------|------------------|
 | Native PG16 logical decoding mechanics | HA / failover slot continuity |
-| Slot identity, LSN resume, ordering | Semantic ADR-0002 event quality |
-| Post-commit visibility, rollback exclusion | Legacy production topology |
-| Snapshot + WAL gap-free coordination pattern | Debezium/Kafka ops model |
+| Post-commit visibility, rollback exclusion | Coordinated EXPORT_SNAPSHOT + slot drill |
+| Illustrative snapshot count + LSN helper (scenario 10) | Semantic ADR-0002 event quality |
 | Slot lag / WAL retention visibility | Zero-gap under legacy multi-writer without table allowlist |
+| `get_changes` slot advancement mechanics (lab) | Production durable landing before feedback |
 | Container restart slot durability | Cross-region DR |
 
 Transport completeness ≠ domain event quality. CDC row changes are **not** canonical domain

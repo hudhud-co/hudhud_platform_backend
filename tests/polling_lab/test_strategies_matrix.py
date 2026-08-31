@@ -13,11 +13,33 @@ def test_proven_unsafe_strategies_documented() -> None:
     assert any("tombstone" in item for item in unsafe)
 
 
-def test_monotonic_sequence_requires_schema_change() -> None:
+def test_monotonic_sequence_does_not_prove_completeness() -> None:
     matrix = load_matrix()
     seq = matrix["strategies"]["monotonic_sequence"]
     assert seq["requires_schema_change"] is True
-    assert seq["can_prove_completeness"] is True
+    assert seq["can_prove_completeness"] is False
+
+
+def test_overlap_duplicate_safe_is_not_gap_free() -> None:
+    matrix = load_matrix()
+    overlap = matrix["strategies"]["overlap_window_dedupe"]
+    assert overlap.get("duplicate_safe_not_gap_free") is True
+    assert overlap.get("requires_bounded_lateness") is True
+
+
+def test_sequence_allocation_scenario_expects_gap() -> None:
+    matrix = load_matrix()
+    outcomes = matrix["expected_outcomes"]["sequence_allocation_not_commit_order"]
+    assert outcomes["monotonic_sequence"] == "gap"
+
+
+def test_snapshot_post_hwm_is_illustrative_not_zero_gap_proof() -> None:
+    matrix = load_matrix()
+    meta = matrix["scenarios"]["snapshot_post_hwm"]
+    assert meta.get("evidence_class") == "synthetic_illustrative_not_production_zero_gap_proof"
+    outcomes = matrix["expected_outcomes"]["snapshot_post_hwm"]
+    assert outcomes["timestamp_uuid"] == "duplicate_safe"
+    assert outcomes["monotonic_sequence"] == "duplicate_safe"
 
 
 def test_timestamp_uuid_cannot_prove_completeness() -> None:

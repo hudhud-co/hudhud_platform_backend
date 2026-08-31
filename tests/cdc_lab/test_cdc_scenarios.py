@@ -147,8 +147,9 @@ def test_scenario_09_replay_from_known_lsn(cdc_client: CdcLabClient, lab_slot: s
     assert replay_lsn in {change.lsn for change in third_peek}
 
 
-# Scenario 10 — snapshot plus WAL position with no capture gap
-def test_scenario_10_snapshot_plus_wal_no_gap(cdc_client: CdcLabClient) -> None:
+# Scenario 10 — illustrative snapshot + WAL count check (NOT coordinated EXPORT_SNAPSHOT protocol)
+def test_scenario_10_snapshot_plus_wal_is_illustrative_only(cdc_client: CdcLabClient) -> None:
+    """Lab helper returns count + LSN — not CREATE_REPLICATION_SLOT ... EXPORT_SNAPSHOT."""
     slot = unique_slot()
     cdc_client.create_slot(slot)
     try:
@@ -243,6 +244,28 @@ def test_scenario_15_container_restart_preserves_slot_and_resume(
     resumed = cdc_client.get_changes(slot)
     assert _change_blob(resumed, "after-container-restart")
     cdc_client.drop_slot(slot)
+
+
+def test_get_changes_advances_slot_before_durable_bridge_persist(cdc_client: CdcLabClient) -> None:
+    """pg_logical_slot_get_changes consumes slot position — unsafe before Bridge durable landing."""
+    slot = unique_slot()
+    cdc_client.create_slot(slot)
+    try:
+        cdc_client.insert_probe("advance-before-persist")
+        before = cdc_client.slot_info(slot)
+
+        changes = cdc_client.get_changes(slot)
+        assert changes
+        after = cdc_client.slot_info(slot)
+        assert (
+            after.confirmed_flush_lsn != before.confirmed_flush_lsn
+            or after.restart_lsn != before.restart_lsn
+        )
+
+        replay = cdc_client.peek_changes(slot)
+        assert not _change_blob(replay, "advance-before-persist")
+    finally:
+        cdc_client.drop_slot(slot)
 
 
 def test_transport_is_not_canonical_domain_event(cdc_client: CdcLabClient, lab_slot: str) -> None:

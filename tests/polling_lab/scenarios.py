@@ -187,6 +187,12 @@ INSERT INTO lab_events (id, occurred_at, event_type) VALUES
 """,
         expected_event_ids=frozenset({UUID_A, UUID_B, UUID_C, UUID_D, UUID_E, UUID_F}),
     ),
+    "sequence_allocation_not_commit_order": ScenarioSpec(
+        scenario_id="sequence_allocation_not_commit_order",
+        setup_sql=reset_sql(),
+        expected_event_ids=frozenset({UUID_A, UUID_B}),
+        allow_overlap_duplicates=True,
+    ),
 }
 
 SCENARIO_IDS = tuple(SCENARIOS.keys())

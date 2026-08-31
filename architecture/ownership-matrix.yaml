@@ -13,8 +13,28 @@ adr_references:
   identity_trust: ADR-0004
   finance_settlement: ADR-0005
   deployables: ADR-0001
+  legacy_bridge: ADR-0007
+  outbox_inbox: ADR-0008
+  initial_contracts: ADR-0009
 
 ownership:
+
+  legacy_event_bridge:
+    canonical_writer: none
+    adr_reference: ADR-0007
+    adr_status: Accepted
+    readers: []
+    api_owner: none
+    event_publisher: legacy_event_bridge
+    database_owner: legacy_event_bridge
+    notes: Transitional observation relay only — retires per context at ADR-0006 stage 13
+    publishes_observations:
+      - legacy_bridge.observation.shipment_timeline_entry
+      - legacy_bridge.observation.audit_entry
+    forbidden:
+      - business_lifecycle_ownership
+      - legacy_database_write
+      - canonical_domain_fact_emission
 
   auth_identity:
     canonical_writer: auth_identity
@@ -206,6 +226,9 @@ ownership:
     api_owner: audit
     event_publisher: audit
     database_owner: undecided
+    consumed_events:
+      - legacy_bridge.observation.audit_entry
+    notes: Native audit.fact.entry_recorded deferred until Audit cutover
 
   gateway:
     canonical_writer: none
@@ -237,6 +260,12 @@ cross_cutting_rules:
     rule: Forbidden — use IDs and events instead
   - name: legacy_dependency
     rule: hudhud-backend is never a runtime dependency
+  - name: legacy_bridge_cdc
+    rule: Legacy Event Bridge publishes transitional observations only; CDC is transport; retires at cutover
+    adr: ADR-0007
+  - name: service_owned_outbox_inbox
+    rule: Each service owns outbox/inbox schema; no shared ORM; inbox idempotency authoritative over NATS dedupe
+    adr: ADR-0008
   - name: extraction_order
     rule: Low-risk consumer-first extraction; Hub and Linehaul remain separate
     adr: ADR-0001

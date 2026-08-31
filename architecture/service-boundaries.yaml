@@ -33,6 +33,43 @@ adr_index:
   ADR-0006:
     title: One-writer data cutover
     status: Accepted
+  ADR-0007:
+    title: Legacy event bridge strategy
+    status: Accepted
+  ADR-0008:
+    title: Service-owned outbox/inbox
+    status: Accepted
+  ADR-0009:
+    title: Initial integration event contracts
+    status: Accepted — minimal observation set only
+
+legacy_event_bridge:
+  display_name: Legacy Event Bridge
+  legacy_owner: n/a
+  legacy_module_path: n/a — transitional platform deployable
+  proposed_platform_owner: legacy_event_bridge
+  adr_reference: ADR-0007
+  adr_status: Accepted
+  transitional_deployable_candidate: platform_edge_p1
+  extraction_status: pending_implementation_gates
+  policy_prerequisites: [cdc_wal_level_proof, export_snapshot_drill, bridge_durable_landing]
+  data_ownership:
+    strategy: dedicated_database
+    legacy_tables: []
+    notes: >
+      Transitional non-authoritative capture relay. Read-only legacy credentials only.
+      Owns Bridge checkpoint/outbox landing — not business lifecycle. Retires per ADR-0006 stage 13.
+  allowed_dependencies: []
+  public_api_ownership: none
+  published_events:
+    - legacy_bridge.observation.shipment_timeline_entry
+    - legacy_bridge.observation.audit_entry
+  consumed_events: []
+  forbidden:
+    - canonical_shipment_lifecycle_authority
+    - canonical_audit_fact_authority
+    - legacy_write_credentials
+    - raw_cdc_row_publication
 
 bounded_contexts:
 
@@ -275,7 +312,8 @@ bounded_contexts:
     allowed_dependencies: [shipment]
     public_api_ownership: undecided
     published_events: []
-    consumed_events: [shipment.lifecycle.changed]
+    consumed_events:
+      - legacy_bridge.observation.shipment_timeline_entry
 
   control_tower:
     display_name: Control Tower
@@ -292,7 +330,8 @@ bounded_contexts:
     allowed_dependencies: [shipment]
     public_api_ownership: undecided
     published_events: []
-    consumed_events: []
+    consumed_events:
+      - legacy_bridge.observation.shipment_timeline_entry
 
   wallet_cod:
     display_name: Wallet and COD
@@ -346,7 +385,8 @@ bounded_contexts:
     allowed_dependencies: []
     public_api_ownership: undecided
     published_events: []
-    consumed_events: [shipment.lifecycle.changed]
+    consumed_events:
+      - legacy_bridge.observation.shipment_timeline_entry
 
   support_claims:
     display_name: Support and Claims
@@ -398,7 +438,8 @@ bounded_contexts:
     allowed_dependencies: []
     public_api_ownership: undecided
     published_events: []
-    consumed_events: []
+    consumed_events:
+      - legacy_bridge.observation.audit_entry
 
   gateway:
     display_name: Gateway
@@ -422,6 +463,7 @@ bounded_contexts:
 shared_packages:
   allowed_categories:
     - event_envelope
+    - messaging_conformance
     - tracing
     - idempotency
     - http_client_primitives

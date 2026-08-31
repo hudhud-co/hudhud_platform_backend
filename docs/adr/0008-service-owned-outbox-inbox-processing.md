@@ -1,10 +1,10 @@
 # ADR-0008: Service-Owned Outbox/Inbox Persistence and Processing
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-30
-- **Deciders:** (pending — platform architecture review)
+- **Deciders:** platform architecture review (Wave 3 capture integration)
 - **Workstream:** W3-D
-- **Implementation allowed:** no — persistence strategy and processing semantics only; schema bootstrap blocked until acceptance and implementation gates
+- **Implementation allowed:** no — schema bootstrap blocked until implementation gates (G1–G8 below)
 
 Label key: **[evidence]** verified from repository, legacy audit, or accepted ADR; **[proposal]** recommended design not yet accepted; **[decision]** binding only after acceptance; **[assumption]** engineering default pending validation; **[unresolved policy]** requires named deciders.
 
@@ -127,18 +127,35 @@ Scores: **Low** / **Med** / **High** (qualitative — **[proposal]**, not measur
 
 ## Decision
 
-**[proposal]** Adopt **Option O4** as the platform persistence and processing strategy, with **Option O5** as the approved bootstrap accelerator once O4 is accepted.
+**[decision]** Adopt **Option O4** as the platform persistence and processing strategy, with
+**Option O5** as the approved bootstrap accelerator.
 
-**Per service:**
+**Accepted scope:**
 
-1. **Own** PostgreSQL tables `integration_outbox` and `integration_inbox` (names provisional — service may prefix, e.g. `pickup_integration_outbox`, but column semantics MUST conform).
-2. **Own** Alembic migrations creating and evolving those tables.
-3. **Implement** port interfaces (outbox writer, relay claimer, inbox recorder, inbox handler orchestrator) in the service infrastructure layer — SQLAlchemy allowed **inside the service only**.
-4. **Depend on** allowlisted shared packages for envelope (`event_envelope`) and, after acceptance, a new **`messaging_conformance`** (name provisional) package providing protocols, status enums, algorithm constants, and pytest fixtures — **not** ORM models.
+1. **Service-owned** PostgreSQL `integration_outbox` and `integration_inbox` tables, Alembic
+   migrations, and adapters — **no shared ORM**.
+2. **Allowlisted shared protocol/conformance kit** (`messaging_conformance`, name provisional):
+   ports, enums, algorithms, fixtures, tests only — not importable ORM models.
+3. **Generated templates (O5)** may bootstrap service-owned implementations.
+4. **At-least-once delivery** with idempotent consumer effects via inbox uniqueness + domain keys.
+5. **Multi-replica-safe** claim/lease semantics (`FOR UPDATE SKIP LOCKED` on outbox relay).
+6. Exact SQL shapes, retention durations, batch sizes, leases, relay deployment form, partitioning,
+   and package naming remain **provisional** pending first service bootstrap.
 
 **Explicitly rejected:** O1, O3; O2 as sustained strategy.
 
-**Status: Proposed.** Acceptance requires named deciders and implementation gate clearance below.
+**Status: Accepted.** Accepted ≠ implementation-complete.
+
+**Bridge composition (ADR-0007):** Bridge deployable owns its own outbox landing table using the
+same algorithm semantics. CDC position lands durably → normalization → outbox row → slot advance →
+JetStream publish. Consumers use service-owned inbox per this ADR.
+
+### NATS deduplication boundary
+
+**[decision]** `Nats-Msg-Id` / JetStream `duplicate_window` (provisional 2m) is **bounded
+transport deduplication only**. It is **not** the financial or business idempotency authority.
+**Inbox uniqueness on `(consumer_name, event_id)`** and **service-owned transactional domain
+effects** remain authoritative for consumer idempotency.
 
 ---
 
@@ -153,14 +170,29 @@ Four distinct acknowledgement layers MUST NOT be conflated:
 | **Business-effect commit** | Domain/projection transaction commit | Owned mutable state reflects handler outcome | Data corruption or lost side effects |
 | **DLQ/quarantine** | Inbox `quarantined` + optional publish to `hudhud.dlq.{consumer}` | Poison isolated; JetStream ACK stops infinite retry | Stream blockage or silent drop |
 
-**[proposal]** Correct ordering for consumers:
+**[decision]** Correct ordering for consumers:
 
 1. Pull message (JetStream pending).
-2. Insert inbox row (unique `(consumer_name, event_id)`) — **single DB transaction start**.
-3. If duplicate → JetStream **ACK** immediately (inbox already decided).
-4. Run handler; commit domain/projection in **same transaction** as inbox status → `processed`.
-5. Commit → JetStream **ACK**.
-6. On poison → mark inbox `quarantined`, publish DLQ envelope, JetStream **ACK**.
+2. Begin handler transaction.
+3. Insert inbox row (unique `(consumer_name, event_id)`) with `status='received'`.
+4. **State-aware duplicate handling** (see table below) — unique-key conflict alone MUST NOT
+   always JetStream ACK.
+5. Run handler; commit domain/projection in **same transaction** as inbox status → `processed`.
+6. Commit → JetStream **ACK**.
+7. On poison → mark inbox `quarantined`, publish DLQ envelope, JetStream **ACK** per quarantine policy.
+
+| Inbox state on duplicate insert | JetStream action |
+|---------------------------------|----------------|
+| `processed` (terminal success) | **ACK** — no handler re-run |
+| `quarantined` (intentional terminal) | **ACK** or documented replay policy — alert if unexpected redelivery |
+| `failed` / retryable | **NAK** or backoff — reclaim, not silent ACK |
+| `processing` with **expired lease** | Safely reclaim row; retry handler |
+| `processing` with **active lease** (another replica) | Do not create second effect — ACK or defer per lease age policy |
+| No row; crash before effect COMMIT | Transaction rolls back — redelivery retries insert+handler |
+| Row `processed`; crash before ACK | Redelivery → duplicate insert conflict → **ACK** without double effect |
+
+**Crash coupling:** inbox insert and domain effect MUST share one transaction — crash before
+COMMIT rolls back both. Crash after COMMIT before ACK → redelivery sees `processed` and ACKs.
 
 **Replay authorization** is a **separate administrative action** (operator/service credential per ADR-0004) — not implied by JetStream ACK or inbox `processed`.
 
@@ -288,7 +320,8 @@ stateDiagram-v2
     [*] --> processed: duplicate_insert_skip
 ```
 
-**Duplicate path:** second delivery attempts insert → conflict → treat as `processed` for JetStream ACK purposes without re-running handler.
+**Duplicate path:** second delivery attempts insert → conflict → apply state-aware policy in
+Inbox processing §3; **`processed` terminal duplicate → ACK** without re-running handler.
 
 ---
 
@@ -439,8 +472,13 @@ msg.ack()
 | Condition | Action |
 |-----------|--------|
 | Inbox row exists, `status=processed` | ACK; no handler |
-| Inbox row exists, `status=processing` | **[assumption]** Another replica active — ACK or short NAK based on `processing_started_at` age |
-| Inbox row exists, `status=quarantined` | ACK; alert if redelivery |
+| Inbox row exists, `status=quarantined` | ACK per documented terminal/replay policy; alert on unexpected payload drift |
+| Inbox row exists, `status=failed` | NAK/backoff — retryable, not silent ACK |
+| Inbox row exists, `status=processing`, lease expired | Reclaim safely; retry handler |
+| Inbox row exists, `status=processing`, active lease | Do not double-apply — defer or ACK per lease-age policy |
+| Insert succeeds, handler fails retryably | Roll back effect + inbox; NAK |
+| Insert succeeds, crash before COMMIT | Redelivery — handler idempotent |
+| COMMIT `processed`, crash before ACK | Redelivery → conflict on `processed` → ACK |
 
 ### 4. Aggregate version gap / out-of-order
 
@@ -488,7 +526,9 @@ Replay MUST set envelope `metadata.replay=true` and `metadata.replay_source` whe
 | I4 | Crash after COMMIT, before ACK | `processed` | committed | pending | Redelivery → duplicate skip → ACK |
 | I5 | Handler retryable error | `failed` or rolled back | unchanged | NAK | Backoff redelivery |
 | I6 | Poison / max deliver | `quarantined` | unchanged | ACK | Manual fix + replay |
-| I7 | Duplicate `event_id` | existing row | no double effect | ACK | Idempotency |
+| I7 | Duplicate `event_id`, `status=processed` | existing row | no double effect | ACK | Idempotency |
+| I7b | Duplicate `event_id`, `status=failed` | existing row | unchanged | NAK | Retry |
+| I7c | Duplicate `event_id`, `status=quarantined` | existing row | unchanged | ACK | Terminal policy |
 | I8 | Out-of-order aggregate | `failed`/reconciliation | unchanged | ACK/NAK per policy | Reconciliation ops |
 | I9 | Gap in aggregate_version | reconciliation flag | unchanged | ACK | Forward fix (ADR-0003) |
 
@@ -694,9 +734,9 @@ Implementation of outbox/inbox persistence is **blocked** until:
 
 ```text
 ADR path: docs/adr/0008-service-owned-outbox-inbox-processing.md
-Status: proposed
-Deciders: (pending)
-Canonical docs updated: none (proposed only)
+Status: Accepted
+Deciders: platform architecture review (Wave 3 capture integration)
+Canonical docs updated: service-boundaries.yaml, ownership-matrix.yaml, docs/adr/README.md
 Unresolved questions: 9 (see section above)
-Implementation allowed: no
+Implementation allowed: no (gates G1–G8)
 ```

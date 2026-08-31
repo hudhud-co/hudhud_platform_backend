@@ -1,10 +1,10 @@
 # ADR-0009: Initial Versioned Integration-Event Payload Contracts
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-30
-- **Deciders:** (pending — platform architecture review)
+- **Deciders:** platform architecture review (Wave 3 capture integration)
 - **Workstream:** W3-E
-- **Implementation allowed:** no
+- **Implementation allowed:** no — JSON Schemas and production publishers remain next Wave
 
 Label key: **[evidence]** verified from repository or legacy audit; **[proposal]** recommended design not yet accepted; **[decision]** binding only after acceptance; **[assumption]** engineering default pending validation; **[unresolved policy]** requires named deciders.
 
@@ -14,15 +14,22 @@ Label key: **[evidence]** verified from repository or legacy audit; **[proposal]
 
 ### Problem statement
 
-**[evidence]** ADR-0001 (Accepted) sequences **Wave 1 low-risk consumer extraction** — Audit, Notification, Tracking, Control Tower, and Media/Proof projections — before authoritative write-owner cutover. ADR-0007 (Proposed) defines a transitional **Legacy Event Bridge** that maps legacy rows to ADR-0002 envelopes. ADR-0002 (Accepted) defines envelope shape, subject grammar (S2), outbox/inbox semantics, and compatibility policy, but explicitly defers `contracts/events/{event_type}/v{N}.json` creation.
+**[evidence]** ADR-0007 (Accepted) defines transitional **Legacy Event Bridge** CDC capture
+mapping legacy rows to observation contracts. ADR-0002 (Accepted) defines envelope shape,
+subject grammar (S2), outbox/inbox semantics, and compatibility policy, but explicitly defers
+`contracts/events/{event_type}/v{N}.json` creation.
 
 **[evidence]** The platform implements a technical envelope package (`packages/event_envelope/`) with `MessageKind`, `AggregateScope`, and validation aligned to ADR-0002, but **no versioned domain payload schemas** exist yet (`contracts/README.md` — Foundation F0).
 
 The decision question is:
 
-> **Which first versioned integration-event payload contracts (`event_type` + `event_version`) should be defined for Wave 1 low-risk consumers, distinguishing canonical facts from transitional bridge observations and projection triggers, without inventing finance policy or treating CDC/poll rows as canonical domain events?**
+> **Which first versioned transitional observation contracts should the Legacy Event Bridge
+> publish during Wave 1, without inventing finance policy, aggregate versions for legacy rows,
+> or treating CDC/poll rows as canonical domain events?**
 
-**[proposal]** This ADR prepares draft payload field definitions and accept/defer/reject recommendations. It does **not** create JSON Schema files, service code, or update `architecture/service-boundaries.yaml` event lists.
+**[decision]** This ADR accepts **two transitional observation contract identities only**.
+Canonical lifecycle, finance, notification projection, and operational facts remain **deferred**
+(documented as future candidates). JSON Schema files and production publishers are **next Wave**.
 
 ### Verified platform constraints (evidence)
 
@@ -63,7 +70,7 @@ The decision question is:
 |-------|----------------|-----------|------------|---------|
 | **Immutable physical fact** | `integration` | Operational context (Pickup, Hub, Linehaul, Delivery) | Append-only; never erased | `delivery.fact.task_completed` |
 | **Canonical Shipment lifecycle event** | `integration` or `domain` | **Shipment only** (post-cutover) | Append-only canonical timeline | `shipment.fact.lifecycle_changed` |
-| **Transitional legacy observation** | `integration` | `legacy_bridge` (read-only capture) | Observation of legacy row; **not** canonical domain authority | `legacy_bridge.observation.shipment_timeline_entry` |
+| **Transitional legacy observation** | `integration` | `legacy_bridge` (read-only capture) | Observation of legacy row; **not** canonical domain authority | `legacy_bridge.observation.shipment_timeline_entry`, `legacy_bridge.observation.audit_entry` |
 | **Projection notification** | `projection` | Notification (derived) | Idempotent upsert of delivery intent | `notification.projection.delivery_requested` |
 | **Command** | `command` | Authorized caller → Shipment | Intent; handler validates | `delivery.command.complete` |
 | **Integration event** | `integration` | Any authorized publisher | Cross-service fact after commit | All rows above except pure projections |
@@ -144,7 +151,73 @@ The decision question is:
 
 ---
 
-## Candidate evaluation matrix
+### Audit observation versus canonical Audit fact
+
+| Aspect | `legacy_bridge.observation.audit_entry` | `audit.fact.entry_recorded` (future) |
+|--------|-------------------------------------------|--------------------------------------|
+| **Producer** | `legacy_bridge` | `audit` (native, post-cutover) |
+| **Authority** | Legacy row observation | Audit service after persistence |
+| **Verdict** | **[decision] Accept** as Wave 1 bridge contract | **Defer** — not Bridge-emitted |
+
+**[decision boundary]** Bridge MUST NOT emit `audit.fact.entry_recorded` as if Audit-owned.
+That event type is reserved for future Audit-native publication after Audit persistence.
+
+---
+
+## Accepted minimal first contract set
+
+**[decision]** The first accepted publish set contains **exactly two** transitional observations:
+
+| # | `event_type` | `event_version` | Subject (S2, stream-routed) | `message_kind` | Envelope `producer` | Aggregate scope |
+|---|--------------|-----------------|-------------------------------|----------------|---------------------|-----------------|
+| A1 | `legacy_bridge.observation.shipment_timeline_entry` | 1 | `hudhud.shipment.legacy_bridge.observation.shipment_timeline_entry.v1` → `HUDHUD_SHIPMENT` | `integration` | `legacy_bridge` | **Non-aggregate** transitional — `shipment_id` correlation in payload; **no** invented `aggregate_version` |
+| A2 | `legacy_bridge.observation.audit_entry` | 1 | `hudhud.audit.legacy_bridge.observation.audit_entry.v1` → `HUDHUD_AUDIT` | `integration` | `legacy_bridge` | **Non-aggregate** — entity-scoped correlation; **no** invented `aggregate_version` |
+
+**Stable observation identity:**
+
+```text
+event_id = UUIDv5(namespace, "{source_system}:{source_table}:{source_pk}[:{source_op}]")
+```
+
+- `event_id`, source LSN/position, `correlation_id`, and `aggregate_version` are **distinct fields**.
+- Backfill and live CDC MUST produce the **same `event_id`** for the same append-only source row.
+- Legacy timeline sources have **no proven canonical Shipment aggregate version** — do not invent one.
+
+**Routing:** Bridge is a **producer**, not a new domain owner. Observations route through
+context streams (`HUDHUD_SHIPMENT`, `HUDHUD_AUDIT`) with `producer=legacy_bridge` in envelope.
+
+---
+
+## Deferred and rejected contracts (future candidates)
+
+### Deferred (documented, not accepted first-publish)
+
+| Candidate | Reason |
+|-----------|--------|
+| `shipment.fact.lifecycle_changed`, `shipment.fact.delivered` | Canonical Shipment authority — post-cutover native outbox |
+| `delivery.fact.task_completed`, `delivery.fact.task_failed`, `DeliveryCompleted` | Delivery service cutover |
+| `delivery.fact.cod_collected`, `CodCollected` | ADR-0005 policy-blocked |
+| `notification.projection.delivery_requested` | Notification-native — not Bridge first set |
+| `media_proof.observation.evidence_registered` | Ownership unresolved |
+| Pickup/Hub/Linehaul facts (C10–C13) | Not Wave 1 bridge scope |
+| `delivery.command.complete` | ADR-0004 identity gate |
+| Finance/Wallet facts (C14–C15) | ADR-0005 policy-blocked |
+| Bridge wallet/COD row observations | Finance policy-blocked |
+
+### Rejected
+
+| Candidate | Reason |
+|-----------|--------|
+| `audit.fact.entry_recorded` from Bridge | Audit-owned canonical fact — not transitional observation |
+| CDC row → canonical lifecycle without Shipment apply | Violates sole-writer invariant |
+| `NotificationEventKey` as `event_type` | Unversioned catalog keys |
+| `tracking.projection.timeline_row` | Internal projection |
+| `DeliveryCompleted.cod_collected` as finance substitute | COD remains separate `CodCollected` fact (ADR-0003/0005) |
+| Delivery→Wallet path | Forbidden (ADR-0005) |
+
+---
+
+## Candidate evaluation matrix (historical analysis)
 
 Scores: **Accept** = recommend for minimal Wave 1 set; **Defer** = define but block publish/consume; **Reject** = do not define now.
 
@@ -156,7 +229,7 @@ Scores: **Accept** = recommend for minimal Wave 1 set; **Defer** = define but bl
 | C4 | `delivery.fact.task_completed` | 1 | `hudhud.delivery.delivery.fact.task_completed.v1` | `integration` | `delivery` / operational | `shipment` | **Required** per task outcome | Shipment (inbox), Tracking (enrichment) | `complete_delivery_task.py`, ADR-0003 | **Accept** (defer native publish) |
 | C5 | `delivery.fact.task_failed` | 1 | `hudhud.delivery.delivery.fact.task_failed.v1` | `integration` | `delivery` | `shipment` | **Required** | Shipment, Tracking | `fail_delivery_task.py` | **Accept** (defer native publish) |
 | C6 | `delivery.fact.cod_collected` | 1 | `hudhud.delivery.delivery.fact.cod_collected.v1` | `integration` | `delivery` | `shipment` | **Required** | Finance (**blocked**), Audit | `delivery_cod_collections`, ADR-0005 | **Defer** |
-| C7 | `audit.fact.entry_recorded` | 1 | `hudhud.audit.audit.fact.entry_recorded.v1` | `integration` | `audit` or `legacy_bridge` | `non_aggregate` or entity-scoped | N/A (non-aggregate) | Audit service | `audit_logs` | **Accept** |
+| C7 | `audit.fact.entry_recorded` | 1 | `hudhud.audit.audit.fact.entry_recorded.v1` | `integration` | `audit` (native only) | `non_aggregate` or entity-scoped | N/A (non-aggregate) | Audit service | `audit_logs` | **Defer** — use A2 observation from Bridge |
 | C8 | `notification.projection.delivery_requested` | 1 | `hudhud.notification.notification.projection.delivery_requested.v1` | `projection` | `notification` | `non_aggregate` | N/A | Notification internal workers | Derived from C1/C2; legacy catalog mapping | **Accept** |
 | C9 | `media_proof.observation.evidence_registered` | 1 | `hudhud.media_proof.media_proof.observation.evidence_registered.v1` | `integration` | `media_proof` or `legacy_bridge` | Context-specific (`shipment`, `pickup_task`, …) | Optional | Control Tower, Tracking, Notification | Evidence tables / MinIO keys | **Accept** (draft; defer impl.) |
 | C10 | `pickup.fact.accepted` | 1 | `hudhud.pickup.pickup.fact.accepted.v1` | `integration` | `pickup` | `shipment` | **Required** | Shipment | `acceptance_scan_pickup_task.py`, boundaries YAML | **Defer** (not Wave 1 consumer) |
@@ -172,65 +245,33 @@ Scores: **Accept** = recommend for minimal Wave 1 set; **Defer** = define but bl
 
 ---
 
-## Recommended minimal first contract set
+## Decision
 
-**[proposal]** Wave 1 low-risk consumers should implement against this **ordered** minimal set:
+**[decision]** Accept **A1** and **A2** only (see Accepted minimal first contract set).
 
-| Priority | Contract | Phase | Rationale |
-|----------|----------|-------|-----------|
-| 1 | **C7** `audit.fact.entry_recorded` v1 | Bridge + native | Lowest coupling; append-only source; no lifecycle authority |
-| 2 | **C1** `legacy_bridge.observation.shipment_timeline_entry` v1 | Bridge only | Enables Tracking, Control Tower, Notification without Shipment cutover |
-| 3 | **C8** `notification.projection.delivery_requested` v1 | Native (Notification) | Decouples push/in-app dispatch from legacy synchronous emit |
-| 4 | **C9** `media_proof.observation.evidence_registered` v1 | Bridge optional | Enriches Control Tower / Tracking timelines with URI refs only |
+**[decision]** Defer all canonical lifecycle, finance, notification projection, media/proof, and
+operational facts until respective service authority and ADR gates clear.
 
-**Target contracts (define payloads now; publish after cutover):**
+**[decision]** Reject Bridge emission of canonical Audit/Shipment facts and finance paths.
 
-| Contract | Gate |
-|----------|------|
-| **C2** `shipment.fact.lifecycle_changed` v1 | Shipment service native outbox + ADR-0006 stage 13 bridge retirement |
-| **C3** `shipment.fact.delivered` v1 | Same; Finance consume remains blocked |
-| **C4** / **C5** delivery facts | Delivery service cutover |
-
-**[proposal]** Consumers MUST subscribe with explicit `event_version` in subject filter (e.g. `hudhud.legacy_bridge.legacy_bridge.observation.shipment_timeline_entry.v1`). Wildcard across versions is forbidden in production durables.
+**Status: Accepted** — minimal observation set only. JSON Schemas and production publishers
+remain implementation work for the next Wave. Accepted ≠ implementation-complete.
 
 ---
 
-## Deferred and rejected contracts
+## Draft payload field definitions (accepted observations)
 
-### Deferred
+### A1 — `legacy_bridge.observation.shipment_timeline_entry` v1
 
-| Contract | Reason |
-|----------|--------|
-| C6 `delivery.fact.cod_collected` | ADR-0005 policy-blocked; no Finance consumer; bridge capture only |
-| C10–C13 operational facts (pickup, hub, linehaul) | Wave 1 scope is read projections — Shipment inbox not extracting yet |
-| C17 `delivery.command.complete` | Write-path / identity ADR-0004 gate |
-| C3 Finance consumption of `shipment.fact.delivered` | Merchant payable policy unresolved |
-| Native C2 publish | Shipment not cutover; bridge C1 satisfies interim |
-
-### Rejected
-
-| Candidate | Reason |
-|-----------|--------|
-| C14, C15 finance/wallet facts | ADR-0005 policy-blocked; no direct Delivery→Wallet |
-| C16 `tracking.projection.timeline_row` | Internal read-model row — not a cross-service integration contract |
-| C18 wallet ledger bridge events | Finance policy-blocked |
-| C19 notification catalog keys as `event_type` | Unversioned; wrong semantic layer |
-| Generic `payload: object` without `event_version` | Violates ADR-0002 compatibility policy |
-| CDC row → canonical lifecycle event without Shipment apply step | Violates sole-writer invariant |
-
----
-
-## Draft payload field definitions
-
-### C1 — `legacy_bridge.observation.shipment_timeline_entry` v1
-
-**Envelope:** `message_kind=integration`, `producer=legacy_bridge`, `aggregate_scope=aggregate`, `aggregate_type=shipment`, `data_classification=internal`, `pii_present=false` (default; set true if metadata contains address/phone).
+**Envelope:** `message_kind=integration`, `producer=legacy_bridge`, `aggregate_scope=non_aggregate`,
+`aggregate_type=shipment`, `aggregate_id={shipment_id}` (correlation only — **no** `aggregate_version`),
+`data_classification=internal`, `pii_present=false` (default; set true if metadata contains address/phone).
 
 | Field | Type | Required | Classification | Notes |
 |-------|------|----------|----------------|-------|
 | `source_table` | string | **yes** | internal | e.g. `shipment_events` |
 | `source_pk` | UUID string | **yes** | internal | Legacy row id |
-| `source_position` | string | **yes** | internal | `{occurred_at}|{source_pk}` cursor coordinate |
+| `source_position` | string | **yes** | internal | LSN or `{occurred_at}|{source_pk}` — distinct from `event_id` |
 | `source_module` | string | **yes** | internal | Legacy module that appended row |
 | `legacy_event_type` | string | **yes** | internal | e.g. `SHIPMENT_DELIVERED`, `PICKUP_ACCEPTANCE_SCAN` |
 | `occurred_at` | RFC 3339 | **yes** | internal | From legacy row |
@@ -246,13 +287,43 @@ Scores: **Accept** = recommend for minimal Wave 1 set; **Defer** = define but bl
 
 **Idempotency:** `event_id = UUIDv5(namespace, "{source_table}:{source_pk}:{source_position}")` (ADR-0007).
 
-**Ordering:** Per-`shipment_id` by `occurred_at` + `source_pk`; consumers MUST tolerate out-of-order bridge delivery.
+**Idempotency:** `event_id = UUIDv5(namespace, "{source_system}:{source_table}:{source_pk}")`.
 
-**Compatibility:** Additive optional fields only within v1; breaking changes → v2.
+**Ordering:** Per-`shipment_id` by `occurred_at` + `source_pk`; consumers MUST tolerate out-of-order delivery. CDC WAL order ≠ canonical aggregate versioning.
 
 ---
 
-### C2 — `shipment.fact.lifecycle_changed` v1
+### A2 — `legacy_bridge.observation.audit_entry` v1
+
+**Envelope:** `message_kind=integration`, `producer=legacy_bridge`, `aggregate_scope=non_aggregate`,
+`data_classification=internal`.
+
+| Field | Type | Required | Classification | Notes |
+|-------|------|----------|----------------|-------|
+| `source_table` | string | **yes** | internal | e.g. `audit_logs` |
+| `source_pk` | UUID string | **yes** | internal | Legacy row id |
+| `source_position` | string | **yes** | internal | LSN or `{created_at}|{source_pk}` |
+| `source_module` | string | **yes** | internal | Legacy module that appended row |
+| `audit_entry_id` | UUID string | **yes** | internal | Same as `source_pk` |
+| `action` | string | **yes** | internal | e.g. `SHIPMENT_DELIVERED` |
+| `entity_type` | string | **yes** | internal | |
+| `entity_id` | UUID string | **yes** | internal | |
+| `actor_type` | string | **yes** | internal | |
+| `actor_id` | UUID string | no | confidential | |
+| `source` | string | **yes** | internal | Legacy `source` column |
+| `occurred_at` | RFC 3339 | **yes** | internal | `created_at` from legacy row |
+| `metadata` | object | no | confidential | Sanitized — no secrets |
+| `bridge_mapper_version` | string | **yes** | internal | Bridge mapping code version |
+
+**Idempotency:** same UUIDv5 formula as A1.
+
+**[decision boundary]** This is **not** `audit.fact.entry_recorded` — native Audit fact deferred.
+
+---
+
+### Deferred draft payloads (not accepted first-publish)
+
+#### C2 — `shipment.fact.lifecycle_changed` v1 (deferred)
 
 **Envelope:** `message_kind=integration`, `producer=shipment`, `aggregate_version` **required**.
 
@@ -487,15 +558,15 @@ Envelope `pii_present=true` triggers consumer log redaction pipelines.
 
 ---
 
-## Decision
+## Decision (summary)
 
-**[proposal]** Adopt the **recommended minimal first contract set** (C7, C1, C8, C9 draft) plus **target canonical definitions** (C2, C3, C4, C5) documented but not published until respective service cutover.
+See **Accepted minimal first contract set** above. Status **Accepted** — two observations only.
 
-**[proposal]** Explicitly **defer** C6 and all finance/wallet contracts until ADR-0005 acceptance.
+---
 
-**[proposal]** **Reject** using legacy `NotificationEventKey` strings or CDC rows as canonical lifecycle events.
+## Decision (superseded section removed)
 
-**Status: Proposed.** Capture-source completeness (bridge cursor proof), Media/Proof ownership, and notification catalog parity remain unresolved — **do not mark Accepted** until named deciders resolve blockers.
+**[decision]** Historical proposal sections below retained for traceability only.
 
 ---
 
@@ -619,9 +690,9 @@ Logs: envelope `safe_log_fields()` only — no raw confidential payload.
 
 ```text
 ADR path: docs/adr/0009-initial-integration-event-contracts.md
-Status: Proposed
-Deciders: (pending)
-Canonical docs updated: none (proposed only)
+Status: Accepted — minimal observation set only
+Deciders: platform architecture review (Wave 3 capture integration)
+Canonical docs updated: service-boundaries.yaml, ownership-matrix.yaml, docs/adr/README.md
 Unresolved questions: 8 (see section above)
-Implementation allowed: no
+Implementation allowed: no (JSON Schemas + publishers next Wave)
 ```

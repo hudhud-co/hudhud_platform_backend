@@ -31,7 +31,9 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA lab
 
 COMMENT ON SCHEMA lab IS 'Isolated CDC lab schema — row changes are transport facts, not domain events.';
 
--- Transaction-scoped snapshot + HWM helper for zero-gap lab proof (scenario 10).
+-- Illustrative snapshot helper for lab scenario 10 only.
+-- NOT equivalent to CREATE_REPLICATION_SLOT ... EXPORT_SNAPSHOT coordinated protocol.
+-- Production Bridge requires a staging drill binding exported snapshot to slot/WAL start.
 CREATE OR REPLACE FUNCTION lab.capture_hwm_snapshot()
 RETURNS TABLE(snapshot_id text, hwm_lsn text, probe_count bigint)
 LANGUAGE plpgsql

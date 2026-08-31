@@ -64,6 +64,18 @@ consumers:
     description: >
       [provisional] Notification consumer on shipment stream — separate durable from tracking.
 
+  - stream: HUDHUD_SHIPMENT
+    durable_name: tracking_bridge_timeline_v1
+    filter_subject: hudhud.shipment.legacy_bridge.observation.shipment_timeline_entry.v1
+    description: >
+      [provisional] Tracking/Control Tower consumer for Bridge shipment timeline observations.
+
+  - stream: HUDHUD_AUDIT
+    durable_name: audit_bridge_entry_v1
+    filter_subject: hudhud.audit.legacy_bridge.observation.audit_entry.v1
+    description: >
+      [provisional] Audit service consumer for Bridge audit entry observations.
+
   - stream: HUDHUD_DLQ
     durable_name: platform_dlq_observer_v1
     filter_subject: hudhud.dlq.>

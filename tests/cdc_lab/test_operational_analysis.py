@@ -14,10 +14,13 @@ REQUIRED_TOPICS = (
     "Failover limitations",
     "Monitoring signals",
     "Snapshot coordination",
+    "EXPORT_SNAPSHOT",
+    "illustrative",
     "Schema evolution",
     "PII exposure",
     "Delete / tombstone behavior",
     "Bridge persistence before acknowledging progress",
+    "get_changes",
     "Transport completeness",
     "domain event",
 )

@@ -32,8 +32,16 @@ def polling_lab_stack():
 def _should_skip(strategy: str, scenario_id: str) -> bool:
     return (
         (strategy == "updated_at_only" and scenario_id != "update_after_hwm")
-        or (strategy == "monotonic_sequence" and scenario_id != "monotonic_sequence_append")
+        or (
+            strategy == "monotonic_sequence"
+            and scenario_id
+            not in {"monotonic_sequence_append", "sequence_allocation_not_commit_order"}
+        )
         or (scenario_id == "update_after_hwm" and strategy != "updated_at_only")
+        or (
+            scenario_id == "sequence_allocation_not_commit_order"
+            and strategy != "monotonic_sequence"
+        )
     )
 
 
