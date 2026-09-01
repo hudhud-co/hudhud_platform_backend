@@ -38,6 +38,7 @@ def create_app(settings: BridgeSettings | None = None) -> FastAPI:
             nats_adapter = JetStreamPublisherAdapter(
                 nats_client,
                 publish_timeout_seconds=resolved.relay_publish_timeout_seconds,
+                transport_max_msg_bytes=resolved.relay_transport_max_msg_bytes,
             )
             nats_reachable = nats_adapter.ping()
         except Exception:

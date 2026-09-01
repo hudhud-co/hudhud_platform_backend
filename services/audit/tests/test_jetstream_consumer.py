@@ -458,6 +458,74 @@ def test_poll_once_processes_single_batch() -> None:
     asyncio.run(_run())
 
 
+def test_idle_polling_bounded_fetch_count() -> None:
+    async def _run() -> None:
+        info = _valid_info()
+        subscription = FakePullSubscription(
+            info=info,
+            batches=[],
+            block_when_exhausted=False,
+        )
+
+        class NoopCoordinator:
+            def handle(self, _delivery: Delivery) -> None:
+                return None
+
+        worker = ObservationPullWorker(
+            subscription=subscription,
+            coordinator=NoopCoordinator(),  # type: ignore[arg-type]
+            pull_batch_size=1,
+            pull_fetch_timeout_seconds=0.01,
+            handler_concurrency=1,
+            shutdown_timeout_seconds=1.0,
+            idle_backoff_seconds=0.02,
+        )
+        task = asyncio.create_task(worker.run_forever())
+        try:
+            await asyncio.wait_for(asyncio.sleep(0.06), timeout=1.0)
+        finally:
+            worker.request_shutdown()
+            await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), timeout=1.0)
+        assert subscription.fetch_count <= 4
+
+    asyncio.run(_run())
+
+
+def test_unhandled_handler_error_naks_delivery() -> None:
+    async def _run() -> None:
+        envelope = valid_a2_envelope()
+        msg = FakeMsg(data=json.dumps(envelope).encode(), subject=A2_SUBJECT)
+
+        class FailingCoordinator:
+            def handle(self, _delivery: Delivery) -> None:
+                raise RuntimeError("simulated handler failure")
+
+        info = _valid_info()
+        subscription = FakePullSubscription(
+            info=info,
+            batches=[[msg]],
+            block_when_exhausted=False,
+        )
+        loop = asyncio.get_running_loop()
+        broker = JetStreamBrokerAckClient(loop=loop, defer_delay_seconds=5.0)
+        deferred = DeferredJetStreamTransport()
+        worker = ObservationPullWorker(
+            subscription=subscription,
+            coordinator=FailingCoordinator(),  # type: ignore[arg-type]
+            broker=broker,
+            deferred_transport=deferred,
+            pull_batch_size=1,
+            pull_fetch_timeout_seconds=0.1,
+            handler_concurrency=1,
+            shutdown_timeout_seconds=1.0,
+        )
+        processed = await asyncio.wait_for(worker.poll_once(), timeout=2.0)
+        assert processed == 1
+        assert msg.actions == ["nak"]
+
+    asyncio.run(_run())
+
+
 def test_worker_backpressure_limits_concurrency() -> None:
     async def _run() -> None:
         in_flight = 0

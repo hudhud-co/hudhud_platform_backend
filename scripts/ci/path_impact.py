@@ -258,7 +258,14 @@ def classify_path(
                 test_area = tests_match.group(1)
                 if test_area in {"architecture", "governance"}:
                     category = ImpactCategory.GOVERNANCE
-                elif test_area in {"ci", "eventing", "polling_lab", "cdc_lab", "cdc_staging_drill"}:
+                elif test_area in {
+                    "ci",
+                    "eventing",
+                    "polling_lab",
+                    "cdc_lab",
+                    "cdc_staging_drill",
+                    "service_postgres_proof",
+                }:
                     category = (
                         ImpactCategory.CI_TOOLING
                         if test_area == "ci"

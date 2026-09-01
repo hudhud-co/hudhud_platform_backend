@@ -137,6 +137,23 @@ def test_secret_safe_publish_errors() -> None:
     assert "super-secret" not in (result.error_message or "")
 
 
+def test_oversized_envelope_rejected_before_publish() -> None:
+    fake = FakeJetStreamClient()
+    adapter = JetStreamPublisherAdapter(
+        fake,
+        publish_timeout_seconds=1.0,
+        transport_max_msg_bytes=32,
+    )
+    result = adapter.publish(
+        subject=A1_SUBJECT,
+        payload_json=_sample_envelope_dict(),
+        transport_msg_id="msg-id",
+    )
+    assert not result.ack_received
+    assert result.error_code == "PAYLOAD_TOO_LARGE"
+    assert fake.publish_log == []
+
+
 def test_nats_configuration_gates() -> None:
     settings = load_settings(
         environment=RuntimeEnvironment.LOCAL,

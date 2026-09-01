@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -14,11 +15,10 @@ from messaging_conformance import (
 )
 from messaging_conformance.retry import classify_retry_error
 
+from legacy_event_bridge.config import DEFAULT_OUTBOX_RETRY_BACKOFF_SECONDS
 from legacy_event_bridge.domain.sanitize import sanitize_error_message
 from legacy_event_bridge.domain.types import OutboxRecord
 from legacy_event_bridge.ports import OutboxStorePort, PublisherPort
-
-_BACKOFF_SECONDS = (5, 30, 120, 600, 1800)
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,12 +39,17 @@ class OutboxPublisher:
         owner_id: str,
         batch_size: int,
         lease_seconds: int,
+        retry_backoff_seconds: Sequence[int] = DEFAULT_OUTBOX_RETRY_BACKOFF_SECONDS,
     ) -> None:
         self._outbox = outbox_store
         self._publisher = publisher
         self._owner_id = owner_id
         self._batch_size = batch_size
         self._lease_seconds = lease_seconds
+        self._retry_backoff_seconds = tuple(retry_backoff_seconds)
+        if not self._retry_backoff_seconds:
+            msg = "retry_backoff_seconds must contain at least one entry"
+            raise ValueError(msg)
 
     def publish_pending(self) -> PublishBatchOutcome:
         now = datetime.now(tz=UTC)
@@ -84,9 +89,8 @@ class OutboxPublisher:
             published_at = now if decision.target_status is OutboxStatus.PUBLISHED else None
             next_attempt = None
             if decision.schedule_retry:
-                next_attempt = now + timedelta(
-                    seconds=_backoff_seconds(min(row.attempt_count, len(_BACKOFF_SECONDS) - 1))
-                )
+                backoff_index = min(row.attempt_count, len(self._retry_backoff_seconds) - 1)
+                next_attempt = now + timedelta(seconds=self._retry_backoff_seconds[backoff_index])
                 retries += 1
             if decision.target_status is OutboxStatus.QUARANTINED:
                 quarantined += 1
@@ -131,7 +135,3 @@ def _to_snapshot(row: OutboxRecord) -> OutboxRecordSnapshot:
         processing_owner=row.processing_owner,
         processing_until=row.processing_until,
     )
-
-
-def _backoff_seconds(index: int) -> int:
-    return _BACKOFF_SECONDS[index]

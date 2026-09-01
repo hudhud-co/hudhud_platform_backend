@@ -171,11 +171,19 @@ class ObservationPullWorker:
                 await flush_transport_actions(self._broker, list(deferred.pending))
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001 — coordinator should not leak; fail safe
+        except Exception as exc:  # noqa: BLE001 — explicit NAK for retryable redelivery
             logger.error(
                 "audit_handler_unhandled_error",
                 extra={"error_code": type(exc).__name__},
             )
+            if self._broker is not None:
+                try:
+                    await self._broker.apply_nak(delivery)
+                except Exception as transport_exc:  # noqa: BLE001 — leave for AckWait
+                    logger.error(
+                        "audit_handler_nak_failed",
+                        extra={"error_code": type(transport_exc).__name__},
+                    )
 
     @staticmethod
     def _is_fetch_timeout(exc: BaseException) -> bool:

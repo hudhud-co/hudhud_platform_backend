@@ -33,6 +33,7 @@ def main() -> int:
     nats_adapter = JetStreamPublisherAdapter(
         nats_client,
         publish_timeout_seconds=settings.relay_publish_timeout_seconds,
+        transport_max_msg_bytes=settings.relay_transport_max_msg_bytes,
     )
     publisher = OutboxPublisher(
         outbox_store=store,
@@ -40,6 +41,7 @@ def main() -> int:
         owner_id=settings.relay_owner_id,
         batch_size=settings.relay_batch_size,
         lease_seconds=settings.outbox_lease_seconds,
+        retry_backoff_seconds=settings.outbox_retry_backoff_seconds,
     )
     worker_settings = RelayWorkerSettings(
         batch_size=settings.relay_batch_size,

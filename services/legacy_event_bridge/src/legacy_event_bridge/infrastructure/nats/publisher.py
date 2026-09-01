@@ -17,9 +17,11 @@ class JetStreamPublisherAdapter:
         client: JetStreamPublishClient,
         *,
         publish_timeout_seconds: float,
+        transport_max_msg_bytes: int = 256 * 1024,
     ) -> None:
         self._client = client
         self._publish_timeout_seconds = publish_timeout_seconds
+        self._transport_max_msg_bytes = transport_max_msg_bytes
 
     def publish(
         self,
@@ -29,6 +31,15 @@ class JetStreamPublisherAdapter:
         transport_msg_id: str,
     ) -> PublishResult:
         payload = envelope_dict_to_wire_bytes(payload_json)
+        if len(payload) > self._transport_max_msg_bytes:
+            return PublishResult(
+                ack_received=False,
+                error_code="PAYLOAD_TOO_LARGE",
+                error_message=(
+                    f"serialized envelope exceeds transport limit "
+                    f"({self._transport_max_msg_bytes} bytes)"
+                ),
+            )
         try:
             self._client.publish(
                 subject=subject,

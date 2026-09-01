@@ -33,6 +33,14 @@ uv run uvicorn legacy_event_bridge.main:app --host 127.0.0.1 --port 8095
 Production startup remains blocked until ADR-0004 service credentials and ADR-0007 staging
 gates are explicitly satisfied in configuration.
 
+Outbox publish retry delays default to `5s → 30s → 120s → 600s → 1800s` via
+`LEGACY_BRIDGE_OUTBOX_RETRY_BACKOFF_SECONDS` (comma-separated). These values are
+**provisional** and not accepted production policy.
+
+Stored outbox JSON is canonicalized to deterministic UTF-8 bytes at publish time
+(`sort_keys=True`, compact separators). Original producer whitespace/order is not
+preserved when JSONB storage has already normalized the envelope dict.
+
 ## Validation
 
 ```bash

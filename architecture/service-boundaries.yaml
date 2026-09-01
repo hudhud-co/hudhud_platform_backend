@@ -43,6 +43,24 @@ adr_index:
     title: Initial integration event contracts
     status: Accepted — minimal observation set only
 
+wave_6_runtime_evidence:
+  integration_date: 2026-09-01
+  production_ready: false
+  services:
+    legacy_event_bridge:
+      postgres_persistence: proven_local_disposable_lab
+      jetstream_outbox_relay: implemented_not_live_environment_proven
+      live_cdc_adapter: deferred
+      blockers:
+        - adr_0004_credentials_unresolved
+        - adr_0007_staging_gates
+        - live_cdc_adapter
+    audit:
+      postgres_persistence: proven_local_disposable_lab
+      jetstream_pull_consumer: implemented_not_live_environment_proven
+      blockers:
+        - adr_0004_credentials_unresolved
+
 legacy_event_bridge:
   classification: transitional_technical_deployable
   bounded_context: false
@@ -62,6 +80,11 @@ legacy_event_bridge:
   retires_per_context: true
   retirement: ADR-0006 stage 13 per bridged context
   policy_prerequisites: [cdc_wal_level_proof, export_snapshot_drill, bridge_durable_landing]
+  runtime_evidence:
+    postgres_persistence: proven_local_disposable_lab
+    jetstream_outbox_relay: implemented_not_live_environment_proven
+    live_cdc_adapter: deferred
+    production_ready: false
   data_ownership:
     strategy: dedicated_database
     scope: bridge_local_technical_landing_and_outbox_only
@@ -448,6 +471,10 @@ bounded_contexts:
     transitional_deployable_candidate: platform_edge_p1
     extraction_status: bootstrap_integrated
     policy_prerequisites: []
+    runtime_evidence:
+      postgres_persistence: proven_local_disposable_lab
+      jetstream_pull_consumer: implemented_not_live_environment_proven
+      production_ready: false
     data_ownership:
       strategy: dedicated_database
       legacy_tables: [audit_logs]

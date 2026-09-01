@@ -14,6 +14,11 @@ class NatsPublishError(Exception):
         super().__init__(self.message)
 
 
+class PayloadTooLargeError(NatsPublishError):
+    def __init__(self, message: str = "envelope exceeds transport size limit") -> None:
+        super().__init__("PAYLOAD_TOO_LARGE", message)
+
+
 class SubjectForbiddenError(NatsPublishError):
     def __init__(self, message: str = "subject not allowlisted") -> None:
         super().__init__("SUBJECT_FORBIDDEN", message)

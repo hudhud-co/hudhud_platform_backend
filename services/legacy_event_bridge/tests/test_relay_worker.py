@@ -113,6 +113,39 @@ def test_transient_retry_then_publish(store: MemoryBridgeStore) -> None:
     assert outcome.published_count == 1
 
 
+def test_configurable_retry_backoff_seconds(store: MemoryBridgeStore) -> None:
+    fake = FakeJetStreamClient(should_fail_transient=True)
+    adapter = JetStreamPublisherAdapter(fake, publish_timeout_seconds=1.0)
+    backoff_seconds = [7, 14]
+    publisher = OutboxPublisher(
+        outbox_store=store,
+        publisher=adapter,
+        owner_id="relay",
+        batch_size=10,
+        lease_seconds=30,
+        retry_backoff_seconds=backoff_seconds,
+    )
+    now = datetime.now(tz=UTC)
+    row = store.insert(
+        store.begin(),
+        event_id=uuid4(),
+        subject=A1_SUBJECT,
+        payload_json=_sample_envelope_dict(),
+        landing_id=uuid4(),
+        max_attempts=5,
+        at=now,
+    )
+    store.begin().commit()
+    scheduled_at = datetime.now(tz=UTC)
+    publisher.publish_pending()
+    updated = store.outbox[row.id]
+    expected_delay = backoff_seconds[
+        min(updated.attempt_count, len(backoff_seconds) - 1)
+    ]
+    delta = (updated.next_attempt_at - scheduled_at).total_seconds()
+    assert expected_delay <= delta <= expected_delay + 1
+
+
 def test_permanent_quarantine_on_forbidden_subject(store: MemoryBridgeStore) -> None:
     fake = FakeJetStreamClient()
     worker = _relay_worker(store, fake)

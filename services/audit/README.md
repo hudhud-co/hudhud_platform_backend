@@ -57,7 +57,8 @@ does not expose a business HTTP API.
 
 Production NATS credentials remain blocked by ADR-0004. A local JetStream adapter
 requires explicit configuration, embeds no credentials, preserves ACK-after-commit,
-and is not started by tests or the default app factory.
+explicit NAK on unexpected handler errors, and is not started by tests or the
+default app factory.
 
 ## Validation
 
@@ -74,6 +75,6 @@ Do not run Docker, NATS, or PostgreSQL for this Wave's targeted tests.
 
 - ADR-0004 service-to-service NATS credentials
 - Production/staging database credentials and network isolation
-- Disposable Alembic upgrade against a real PostgreSQL (deferred — no DB in this Wave)
+- Live-environment JetStream consumer proof (local disposable PostgreSQL proven in Wave 6)
 - Compose/CI registration (integration wave)
 - Native `audit.fact.entry_recorded` after Audit cutover

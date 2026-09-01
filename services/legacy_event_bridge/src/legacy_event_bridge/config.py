@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_OUTBOX_RETRY_BACKOFF_SECONDS: tuple[int, ...] = (5, 30, 120, 600, 1800)
+MAX_OUTBOX_RETRY_BACKOFF_ENTRIES = 10
+MIN_OUTBOX_RETRY_BACKOFF_SECONDS = 1
+MAX_OUTBOX_RETRY_BACKOFF_SECONDS = 86_400
 
 
 class RuntimeEnvironment(StrEnum):
@@ -48,6 +53,19 @@ class BridgeSettings(BaseSettings):
     relay_batch_size: int = 50
     relay_poll_interval_seconds: float = 1.0
     relay_publish_timeout_seconds: float = 5.0
+    outbox_retry_backoff_seconds: list[int] = Field(
+        default_factory=lambda: list(DEFAULT_OUTBOX_RETRY_BACKOFF_SECONDS),
+        description=(
+            "Provisional outbox publish retry delays in seconds — "
+            "not accepted production policy."
+        ),
+    )
+    relay_transport_max_msg_bytes: int = Field(
+        default=256 * 1024,
+        ge=1024,
+        le=1024 * 1024,
+        description="Provisional JetStream transport ceiling before publish.",
+    )
 
     nats_url: str | None = None
     nats_dev_no_auth: bool = False
@@ -71,6 +89,31 @@ class BridgeSettings(BaseSettings):
             joined = ", ".join(missing)
             msg = f"Production startup blocked — unset gates: {joined}"
             raise ProductionStartupBlockedError(msg)
+
+    @field_validator("outbox_retry_backoff_seconds")
+    @classmethod
+    def validate_outbox_retry_backoff_seconds(cls, values: list[int]) -> list[int]:
+        if not values:
+            msg = "outbox_retry_backoff_seconds must contain at least one entry"
+            raise ValueError(msg)
+        if len(values) > MAX_OUTBOX_RETRY_BACKOFF_ENTRIES:
+            msg = (
+                f"outbox_retry_backoff_seconds exceeds maximum of "
+                f"{MAX_OUTBOX_RETRY_BACKOFF_ENTRIES} entries"
+            )
+            raise ValueError(msg)
+        for value in values:
+            if value < MIN_OUTBOX_RETRY_BACKOFF_SECONDS:
+                msg = (
+                    f"outbox retry backoff must be >= {MIN_OUTBOX_RETRY_BACKOFF_SECONDS} seconds"
+                )
+                raise ValueError(msg)
+            if value > MAX_OUTBOX_RETRY_BACKOFF_SECONDS:
+                msg = (
+                    f"outbox retry backoff must be <= {MAX_OUTBOX_RETRY_BACKOFF_SECONDS} seconds"
+                )
+                raise ValueError(msg)
+        return values
 
     def relay_configuration_valid(self) -> bool:
         """Return True when relay NATS settings are internally consistent."""

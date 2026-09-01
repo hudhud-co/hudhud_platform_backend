@@ -42,6 +42,11 @@ legacy_event_bridge:
   publishes_observations:
     - legacy_bridge.observation.shipment_timeline_entry
     - legacy_bridge.observation.audit_entry
+  runtime_evidence:
+    postgres_persistence: proven_local_disposable_lab
+    jetstream_outbox_relay: implemented_not_live_environment_proven
+    live_cdc_adapter: deferred
+    production_ready: false
   forbidden:
     - business_lifecycle_ownership
     - domain_lifecycle_ownership
@@ -243,6 +248,10 @@ ownership:
     database_owner: audit
     consumed_events:
       - legacy_bridge.observation.audit_entry
+    runtime_evidence:
+      postgres_persistence: proven_local_disposable_lab
+      jetstream_pull_consumer: implemented_not_live_environment_proven
+      production_ready: false
     notes: Native audit.fact.entry_recorded deferred until Audit cutover
 
   gateway:
