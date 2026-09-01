@@ -3,7 +3,39 @@
 from __future__ import annotations
 
 import ast
+import sys
 from pathlib import Path
+
+import pytest
+
+ALLOWED_SHARED_PACKAGES = {
+    "legacy_event_bridge",
+    "event_envelope",
+    "messaging_conformance",
+    "nats",
+}
+ALLOWED_THIRD_PARTY_PACKAGES = {
+    "alembic",
+    "fastapi",
+    "pydantic",
+    "pydantic_settings",
+    "sqlalchemy",
+    "yaml",
+}
+_STDLIB_MODULE_NAMES = sys.stdlib_module_names
+
+
+def _import_root(module: str) -> str:
+    return module.split(".", 1)[0]
+
+
+def _is_allowed_import(module: str) -> bool:
+    root = _import_root(module)
+    if root in ALLOWED_SHARED_PACKAGES:
+        return True
+    if root in ALLOWED_THIRD_PARTY_PACKAGES:
+        return True
+    return root in _STDLIB_MODULE_NAMES
 
 
 def test_no_cross_service_imports() -> None:
@@ -14,53 +46,38 @@ def test_no_cross_service_imports() -> None:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    root = alias.name.split(".")[0]
+                    root = _import_root(alias.name)
                     assert root not in forbidden_roots
             elif isinstance(node, ast.ImportFrom) and node.module:
-                root = node.module.split(".")[0]
+                root = _import_root(node.module)
                 assert root not in forbidden_roots
+
+
+@pytest.mark.parametrize(
+    ("module", "expected"),
+    [
+        ("collections.abc", True),
+        ("legacy_event_bridge.config", True),
+        ("shipment.domain", False),
+        ("unallowlisted_hudhud_package", False),
+    ],
+)
+def test_import_allowlist_classification(module: str, expected: bool) -> None:
+    assert _is_allowed_import(module) is expected
 
 
 def test_allowed_shared_packages_only() -> None:
     service_root = Path(__file__).resolve().parents[1] / "src"
-    allowed = {"legacy_event_bridge", "event_envelope", "messaging_conformance", "nats"}
-    stdlib = {
-        "abc",
-        "asyncio",
-        "dataclasses",
-        "datetime",
-        "enum",
-        "functools",
-        "json",
-        "logging",
-        "os",
-        "pathlib",
-        "re",
-        "signal",
-        "ssl",
-        "sys",
-        "threading",
-        "time",
-        "typing",
-        "uuid",
-        "yaml",
-        "__future__",
-        "fastapi",
-        "pydantic",
-        "pydantic_settings",
-        "sqlalchemy",
-        "alembic",
-    }
     for py_file in service_root.rglob("*.py"):
         tree = ast.parse(py_file.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
-            module = None
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    module = alias.name.split(".")[0]
-                    if module not in allowed and module not in stdlib:
+                    if not _is_allowed_import(alias.name):
                         raise AssertionError(f"Unexpected import {alias.name} in {py_file}")
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                module = node.module.split(".")[0]
-                if module not in allowed and module not in stdlib:
-                    raise AssertionError(f"Unexpected import {node.module} in {py_file}")
+            elif (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and not _is_allowed_import(node.module)
+            ):
+                raise AssertionError(f"Unexpected import {node.module} in {py_file}")
