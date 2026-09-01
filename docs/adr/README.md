@@ -33,6 +33,13 @@ This directory holds Architecture Decision Records (ADRs) for the HUDHUD platfor
 | [ADR-0007](0007-legacy-event-bridge-strategy.md) | Legacy event bridge strategy | **Accepted** | CDC transitional transport; Legacy Event Bridge observations only; polling not authoritative | Production Bridge gates G1–G10; EXPORT_SNAPSHOT drill; durable landing | ADR-0001, ADR-0002, ADR-0003, ADR-0005, ADR-0006, ADR-0008, ADR-0009 |
 | [ADR-0008](0008-service-owned-outbox-inbox-processing.md) | Service-owned outbox/inbox | **Accepted** | Per-service outbox/inbox; no shared ORM; conformance kit; state-aware inbox duplicates | messaging_conformance allowlist; disposable DB proof; first service bootstrap | ADR-0002, ADR-0003, ADR-0006, ADR-0007 |
 | [ADR-0009](0009-initial-integration-event-contracts.md) | Initial integration event contracts | **Accepted — minimal observation set only** | Two Bridge observations: shipment timeline + audit entry | JSON Schemas; production publishers; consumer inbox | ADR-0002, ADR-0007, ADR-0003, ADR-0005 |
+| [ADR-0010](0010-nats-service-identities-subject-acls-and-rotation.md) | NATS service identities, subject ACLs, and rotation | **Proposed** | NATS transport auth; per-deployable JWT+TLS; JetStream API grants | ADR approval; ACL proof; rotation drills; Bridge/Audit live proof | ADR-0002, ADR-0004, ADR-0007, ADR-0008, ADR-0009 |
+
+## Wave 7 ADR Index (NATS transport security)
+
+| ADR | Title | Status | Proposed scope |
+|-----|-------|--------|----------------|
+| ADR-0010 | NATS service identities and ACLs | **Proposed** | O6 hybrid JWT+TLS; runtime vs bootstrap identities; not implementation-complete |
 
 ## Wave 3 ADR Index (capture + messaging)
 
@@ -48,6 +55,7 @@ This directory holds Architecture Decision Records (ADRs) for the HUDHUD platfor
 |-----|---------|
 | ADR-0008 | Service-owned outbox/inbox persistence |
 | ADR-0009 | Initial integration event contracts (minimal Bridge observations) |
+| ADR-0010 | NATS service identities, subject ACLs, and credential rotation |
 
 ## Relationship to Legacy
 
