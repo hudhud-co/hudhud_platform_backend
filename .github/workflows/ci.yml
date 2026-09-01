@@ -106,8 +106,8 @@ jobs:
       - name: Port allocation verifier
         run: uv run python scripts/quality/verify_port_allocations.py
 
-      - name: Architecture, governance, CI, eventing, capture lab, and postgres proof static tests
-        run: uv run pytest tests/architecture tests/governance tests/ci tests/eventing tests/polling_lab tests/cdc_lab tests/service_postgres_proof -m "not integration"
+      - name: Architecture, governance, CI, eventing, capture lab, postgres proof, and observation eventing static tests
+        run: uv run pytest tests/architecture tests/governance tests/ci tests/eventing tests/polling_lab tests/cdc_lab tests/service_postgres_proof tests/observation_eventing_proof -m "not integration"
 
   event-envelope-package:
     name: Event envelope package
@@ -321,6 +321,10 @@ jobs:
               -f infra/labs/legacy-cdc/compose.yaml \
               --profile cdc-lab \
               config
+            docker compose \
+              -f infra/labs/observation-eventing-proof/compose.yaml \
+              --profile observation-eventing-proof \
+              config
           else
             echo "Docker not available — skipping compose config validation."
           fi
@@ -420,3 +424,29 @@ jobs:
       - name: Cleanup service PostgreSQL proof resources
         if: always()
         run: sh infra/labs/service-postgres-proof/scripts/cleanup.sh
+
+  observation-eventing-proof-runtime-integration:
+    name: Observation eventing proof runtime integration
+    needs: path-impact
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@a02a550bdd3185dba2ebb6aa98d77047ce54ad21 # v6.2.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Sync repository tooling
+        run: uv sync --dev
+
+      - name: Run observation eventing proof integration suite
+        run: timeout 90s uv run pytest tests/observation_eventing_proof -m integration -v -o addopts=
+
+      - name: Cleanup observation eventing proof resources
+        if: always()
+        run: sh infra/labs/observation-eventing-proof/scripts/cleanup.sh

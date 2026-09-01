@@ -483,6 +483,18 @@ Audit readiness calls `consumer_info` before work ([`verify_nats_readiness`](ser
 
 ---
 
+## Wave 7 local evidence boundary (W7-A)
+
+**[evidence]** W7-A (`infra/labs/observation-eventing-proof/`, `tests/observation_eventing_proof/`) proves **local disposable** A2 runtime behavior: Legacy Event Bridge outbox relay publishes to JetStream; Audit pull consumer binds to durable `audit_bridge_entry_v1`, fetches, ACKs, and persists inbox/observation rows against real PostgreSQL and JetStream in a dedicated no-auth Compose lab.
+
+**[evidence]** W7-A proves the current Bridge publisher and Audit consumer can interoperate with real PostgreSQL and JetStream. It does **not** prove production credentials, TLS, ACL enforcement, HA, staging CDC, or production capacity.
+
+**[decision boundary]** Local functional evidence may be recorded as **available** for gates G9 and G10. Staging identity/TLS/ACL evidence remains **open**. G9 and G10 MUST NOT be marked globally complete until scoped-credential proof runs in staging or production-like environments.
+
+**[decision boundary]** ADR-0010 remains **Proposed**. W7-A local no-auth evidence MUST NOT be converted into a staging or production acceptance claim.
+
+---
+
 ## Implementation gates
 
 Production NATS transport security is **blocked** until:
@@ -497,8 +509,8 @@ Production NATS transport security is **blocked** until:
 | G6 | **Rotation drill** — dual-validity + rollback executed in staging |
 | G7 | **Revocation drill** — emergency revoke + readiness failure observed |
 | G8 | **TLS verification** — staging with production-like TLS trust (no `allow_no_auth`) |
-| G9 | **Bridge publisher live proof** — A1/A2 publish + PubAck stream match under scoped creds |
-| G10 | **Audit bind/pull/ACK proof** — `consumer_info`, fetch, ACK under scoped creds only |
+| G9 | **Bridge publisher live proof** — local functional evidence **available** (W7-A disposable lab, no-auth); staging scoped-creds + TLS/ACL proof **open** |
+| G10 | **Audit bind/pull/ACK proof** — local functional evidence **available** (W7-A); staging scoped-creds + TLS/ACL proof **open** |
 | G11 | **Monitoring and audit logs** — connection identity, auth failures, ACL violations (no secret values) |
 | G12 | **Three-node compatibility evidence** — same JWT/account model on clustered NATS (config replay or staging cluster) |
 

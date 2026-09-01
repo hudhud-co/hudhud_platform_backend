@@ -16,6 +16,7 @@ adr_references:
   legacy_bridge: ADR-0007
   outbox_inbox: ADR-0008
   initial_contracts: ADR-0009
+  nats_transport_security: ADR-0010
 
 legacy_event_bridge:
   classification: transitional_technical_deployable
@@ -44,7 +45,7 @@ legacy_event_bridge:
     - legacy_bridge.observation.audit_entry
   runtime_evidence:
     postgres_persistence: proven_local_disposable_lab
-    jetstream_outbox_relay: implemented_not_live_environment_proven
+    jetstream_outbox_relay: proven_local_disposable_lab_no_auth
     live_cdc_adapter: deferred
     production_ready: false
   forbidden:
@@ -250,7 +251,7 @@ ownership:
       - legacy_bridge.observation.audit_entry
     runtime_evidence:
       postgres_persistence: proven_local_disposable_lab
-      jetstream_pull_consumer: implemented_not_live_environment_proven
+      jetstream_pull_consumer: proven_local_disposable_lab_no_auth
       production_ready: false
     notes: Native audit.fact.entry_recorded deferred until Audit cutover
 

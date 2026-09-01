@@ -265,6 +265,7 @@ def classify_path(
                     "cdc_lab",
                     "cdc_staging_drill",
                     "service_postgres_proof",
+                    "observation_eventing_proof",
                 }:
                     category = (
                         ImpactCategory.CI_TOOLING

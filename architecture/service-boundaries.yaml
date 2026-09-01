@@ -42,6 +42,9 @@ adr_index:
   ADR-0009:
     title: Initial integration event contracts
     status: Accepted — minimal observation set only
+  ADR-0010:
+    title: NATS service identities, subject ACLs, and rotation
+    status: Proposed
 
 wave_6_runtime_evidence:
   integration_date: 2026-09-01
@@ -60,6 +63,35 @@ wave_6_runtime_evidence:
       jetstream_pull_consumer: implemented_not_live_environment_proven
       blockers:
         - adr_0004_credentials_unresolved
+
+wave_7_eventing_evidence:
+  integration_date: 2026-09-01
+  production_ready: false
+  classifications:
+    local_eventing_runtime_proof: verified
+    production_nats_security: proposed
+    staging_tls_acl_evidence: pending
+    legacy_cdc_runtime: deferred
+  lab: infra/labs/observation-eventing-proof
+  proof_scope: W7-A local disposable A2 Bridge→JetStream→Audit
+  limitations:
+    - no_production_credentials
+    - no_tls_enforcement
+    - no_acl_enforcement
+    - no_staging_cdc
+    - no_ha_cluster
+  services:
+    legacy_event_bridge:
+      jetstream_outbox_relay: proven_local_disposable_lab_no_auth
+      blockers:
+        - adr_0004_credentials_unresolved
+        - adr_0010_staging_tls_acl_gates
+        - live_cdc_adapter
+    audit:
+      jetstream_pull_consumer: proven_local_disposable_lab_no_auth
+      blockers:
+        - adr_0004_credentials_unresolved
+        - adr_0010_staging_tls_acl_gates
 
 legacy_event_bridge:
   classification: transitional_technical_deployable
@@ -82,7 +114,7 @@ legacy_event_bridge:
   policy_prerequisites: [cdc_wal_level_proof, export_snapshot_drill, bridge_durable_landing]
   runtime_evidence:
     postgres_persistence: proven_local_disposable_lab
-    jetstream_outbox_relay: implemented_not_live_environment_proven
+    jetstream_outbox_relay: proven_local_disposable_lab_no_auth
     live_cdc_adapter: deferred
     production_ready: false
   data_ownership:
@@ -473,7 +505,7 @@ bounded_contexts:
     policy_prerequisites: []
     runtime_evidence:
       postgres_persistence: proven_local_disposable_lab
-      jetstream_pull_consumer: implemented_not_live_environment_proven
+      jetstream_pull_consumer: proven_local_disposable_lab_no_auth
       production_ready: false
     data_ownership:
       strategy: dedicated_database
