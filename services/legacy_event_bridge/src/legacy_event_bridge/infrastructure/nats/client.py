@@ -119,7 +119,9 @@ class LiveNatsJetStreamClient:
             connect_kwargs["token"] = self._settings.nats_token
         if self._settings.nats_tls_enabled:
             connect_kwargs["tls"] = _build_tls_context(self._settings)
-        self._client = await NatsClient().connect(**connect_kwargs)
+        client = NatsClient()
+        await client.connect(**connect_kwargs)
+        self._client = client
         self._js = self._client.jetstream()
 
     async def _async_ping(self) -> bool:

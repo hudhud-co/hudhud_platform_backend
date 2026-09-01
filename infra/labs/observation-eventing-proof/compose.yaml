@@ -1,0 +1,115 @@
+# HUDHUD Wave 7-A — disposable Bridge→Audit live eventing proof lab.
+# Synthetic credentials only; NATS_AUTH_ENABLED=false is local disposable proof only.
+# Ephemeral loopback host ports; dedicated Compose project, network, and volumes.
+
+name: hudhud-observation-eventing-proof-lab
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hudhud-observation-eventing-proof-postgres
+    profiles:
+      - observation-eventing-proof
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: obs_evt_lab_owner
+      POSTGRES_PASSWORD: obs_evt_lab_owner_dev_only
+      POSTGRES_DB: obs_evt_lab
+    command:
+      - postgres
+      - -c
+      - max_prepared_transactions=10
+    ports:
+      - target: 5432
+        host_ip: 127.0.0.1
+        published: 0
+        protocol: tcp
+    volumes:
+      - type: volume
+        source: hudhud_observation_eventing_proof_pgdata
+        target: /var/lib/postgresql/data
+      - type: bind
+        source: ./init
+        target: /docker-entrypoint-initdb.d
+        read_only: true
+    networks:
+      - hudhud_observation_eventing_proof
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U obs_evt_lab_owner -d obs_evt_lab"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    labels:
+      hudhud.lab: observation-eventing-proof
+      hudhud.wave: "7-A"
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: hudhud-observation-eventing-proof-nats
+    profiles:
+      - observation-eventing-proof
+    restart: unless-stopped
+    environment:
+      JETSTREAM_STORE_DIR: /data/jetstream
+      NATS_AUTH_ENABLED: "false"
+    entrypoint: ["/bin/sh", "/etc/nats/entrypoint.sh"]
+    volumes:
+      - type: volume
+        source: hudhud_observation_eventing_proof_jetstream
+        target: /data/jetstream
+      - type: bind
+        source: ../../eventing/nats/entrypoint.sh
+        target: /etc/nats/entrypoint.sh
+        read_only: true
+    ports:
+      - target: 4222
+        host_ip: 127.0.0.1
+        published: 0
+        protocol: tcp
+    networks:
+      - hudhud_observation_eventing_proof
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    labels:
+      hudhud.lab: observation-eventing-proof
+      hudhud.nats.auth: "false-local-disposable-proof"
+
+  topology-bootstrap:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    container_name: hudhud-observation-eventing-proof-bootstrap
+    profiles:
+      - observation-eventing-proof
+    restart: "no"
+    working_dir: /repo
+    volumes:
+      - type: bind
+        source: ../../..
+        target: /repo
+    environment:
+      NATS_URL: nats://nats:4222
+      UV_CACHE_DIR: /tmp/uv-cache
+    command:
+      - /bin/sh
+      - -c
+      - uv run python infra/labs/observation-eventing-proof/scripts/bootstrap_audit_topology.py
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - hudhud_observation_eventing_proof
+
+networks:
+  hudhud_observation_eventing_proof:
+    name: hudhud_observation_eventing_proof
+    driver: bridge
+
+volumes:
+  hudhud_observation_eventing_proof_pgdata:
+    name: hudhud_observation_eventing_proof_pgdata
+  hudhud_observation_eventing_proof_jetstream:
+    name: hudhud_observation_eventing_proof_jetstream
