@@ -149,6 +149,12 @@ def test_observation_eventing_proof_classified_as_infrastructure() -> None:
     assert result.full_validation is True
 
 
+def test_nats_security_proof_classified_as_infrastructure() -> None:
+    result = _impact("M\ttests/nats_security_proof/test_compose_topology.py")
+    assert result.impact_flags["infrastructure"] is True
+    assert result.full_validation is True
+
+
 def test_port_registry_classified_as_architecture() -> None:
     result = _impact("M\tarchitecture/runtime-port-registry.yaml")
     assert result.impact_flags["architecture"] is True

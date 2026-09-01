@@ -96,10 +96,14 @@ wave_7_eventing_evidence:
 wave_8_runtime_evidence:
   integration_date: 2026-09-01
   production_ready: false
+  nats_security_lab: verified_local_disposable_evidence
+  staging_production_security: pending
   services:
     tracking:
-      postgres_persistence: proven_local_disposable_lab
-      jetstream_pull_consumer: proven_local_disposable_lab_no_auth
+      implementation: bootstrap_observation_projection
+      unit_fake_evidence: verified
+      postgres_persistence_runtime_proof: pending
+      jetstream_secured_runtime_proof: pending
       blockers:
         - adr_0010_staging_tls_acl_gates
         - authenticated_http_query_api
@@ -392,8 +396,10 @@ bounded_contexts:
     extraction_status: bootstrap_observation_projection
     policy_prerequisites: []
     runtime_evidence:
-      postgres_persistence: proven_local_disposable_lab
-      jetstream_pull_consumer: proven_local_disposable_lab_no_auth
+      implementation: bootstrap_observation_projection
+      unit_fake_evidence: verified
+      postgres_persistence_runtime_proof: pending
+      jetstream_secured_runtime_proof: pending
       production_ready: false
     data_ownership:
       strategy: read_projection

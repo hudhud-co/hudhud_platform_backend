@@ -1,4 +1,4 @@
-"""Readiness evaluation for Audit runtime gates."""
+"""Readiness evaluation for Tracking runtime gates."""
 
 from __future__ import annotations
 

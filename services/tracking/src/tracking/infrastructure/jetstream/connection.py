@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import ssl
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -54,7 +55,7 @@ def build_nats_connect_options(settings: TrackingSettings) -> dict[str, Any]:
     options: dict[str, Any] = {"servers": [settings.nats_url]}
 
     if settings.nats_tls_enabled:
-        options["tls"] = True
+        options["tls"] = _build_tls_context(settings)
 
     if settings.nats_user:
         options["user"] = settings.nats_user
@@ -138,6 +139,12 @@ async def verify_nats_readiness(
         stream=A1_STREAM,
         durable_name=A1_DURABLE_CONSUMER,
     )
+
+
+def _build_tls_context(settings: TrackingSettings) -> ssl.SSLContext:
+    if settings.nats_tls_ca_file:
+        return ssl.create_default_context(cafile=settings.nats_tls_ca_file)
+    return ssl.create_default_context()
 
 
 def log_connection_failure(exc: BaseException) -> None:

@@ -39,11 +39,11 @@ class PersistenceBackend(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class TrackingSettings:
-    """Audit service settings. Secret values must come from environment only."""
+    """Tracking service settings. Secret values must come from environment only."""
 
     environment: RuntimeEnvironment = RuntimeEnvironment.LOCAL
     service_name: str = "tracking"
-    database_url: str = "postgresql+psycopg://localhost/audit"
+    database_url: str = "postgresql+psycopg://localhost/tracking"
     persistence_backend: PersistenceBackend = PersistenceBackend.POSTGRES
     consumer_name: str = "tracking_bridge_timeline_v1"
     handler_version: str = "0.1.0"
@@ -53,6 +53,7 @@ class TrackingSettings:
     nats_enabled: bool = False
     nats_url: str | None = None
     nats_tls_enabled: bool = False
+    nats_tls_ca_file: str | None = None
     nats_user: str | None = None
     nats_password: str | None = None
     nats_token: str | None = None
@@ -153,6 +154,10 @@ def load_settings(**overrides: object) -> TrackingSettings:
         "nats_tls_enabled": bool(
             overrides.get("nats_tls_enabled", _env_bool("TRACKING_NATS_TLS_ENABLED", default=False))
         ),
+        "nats_tls_ca_file": overrides.get(
+            "nats_tls_ca_file",
+            _optional_str("TRACKING_NATS_TLS_CA_FILE"),
+        ),
         "nats_user": overrides.get("nats_user", _optional_str("TRACKING_NATS_USER")),
         "nats_password": overrides.get("nats_password", _optional_str("TRACKING_NATS_PASSWORD")),
         "nats_token": overrides.get("nats_token", _optional_str("TRACKING_NATS_TOKEN")),
@@ -190,7 +195,7 @@ def load_settings(**overrides: object) -> TrackingSettings:
         "adr_0010_credentials_configured": bool(
             overrides.get(
                 "adr_0010_credentials_configured",
-                _env_bool("TRACKING_ADR_0004_CREDENTIALS_CONFIGURED", default=False),
+                _env_bool("TRACKING_ADR_0010_CREDENTIALS_CONFIGURED", default=False),
             )
         ),
     }

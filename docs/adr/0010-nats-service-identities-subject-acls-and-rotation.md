@@ -244,12 +244,13 @@ Adopt **O6 — Hybrid NATS operator/account/user JWT (NKeys) plus TLS** as the p
 | `hudhud-eventing-bootstrap` | Create/update streams and durables; smoke tests | **Yes** | Admin user JWT or break-glass creds |
 | `legacy-event-bridge` | Publish A1/A2 observations | **No** | Service user JWT (`.creds`) |
 | `audit` | Pull-consume A2 durable; ACK/NAK/defer | **No** | Service user JWT (`.creds`) |
+| `tracking` | Pull-consume A1 durable; ACK/NAK/defer | **No** | Service user JWT (`.creds`) |
 | `shipment`, `pickup`, `hub`, … | Future native publishers/consumers per ADR-0002 | **No** | Service user JWT per deployable |
 | `hudhud-nats-operator` | Human break-glass, incident response, ACL audit | **Yes** (emergency) | Short-lived operator creds; audited |
 
 **[proposal]** NATS user name SHOULD match deployable id from `architecture/service-boundaries.yaml` (e.g. `legacy-event-bridge`, `audit`). Envelope `producer` field MUST match the authorized publish identity for publishers.
 
-**[decision boundary]** Runtime service identities (`legacy-event-bridge`, `audit`, future services) MUST NOT receive:
+**[decision boundary]** Runtime service identities (`legacy-event-bridge`, `audit`, `tracking`, future services) MUST NOT receive:
 
 - `$JS.API.STREAM.*` (CREATE, UPDATE, DELETE, PURGE, …)
 - `$JS.API.CONSUMER.CREATE.>` or `$JS.API.CONSUMER.DELETE.>`
@@ -495,6 +496,26 @@ Audit readiness calls `consumer_info` before work ([`verify_nats_readiness`](ser
 
 ---
 
+## Wave 8 local NATS security evidence boundary (W8-B)
+
+**[evidence]** W8-B (`infra/labs/nats-security-proof/`, `tests/nats_security_proof/`) proves **local disposable** JWT/NKeys + TLS transport against a dedicated Compose lab. The proof exercised Bridge publish, Audit bind/pull/ACK, and Tracking-scoped ACL entries from `identity-manifest.yaml` — not production or staging endpoints.
+
+**[evidence]** Positive cases verified locally:
+
+- Per-deployable user JWT (`.creds`) authentication with TLS server verification against a generated CA bundle
+- Exact scoped ACLs for `legacy-event-bridge`, `audit`, and `tracking` identities (no broad `$JS.API.>` runtime grant)
+- Negative authorization cases: Bridge cannot publish wildcard domain subjects; Audit and Tracking cannot `$JS.API.CONSUMER.CREATE`; runtime identities cannot mutate topology
+- Credential overlap/rotation drill with dual-validity publisher and consumer identities (`v1`/`v2`)
+- Targeted revocation via account JWT refresh — propagation in this lab required **NATS server container restart** after copying the refreshed account JWT to the resolver directory (2s resolver interval alone was insufficient)
+
+**[evidence]** Tracking Wave 8-A implementation and tests use **fakes/mocks only** — no live PostgreSQL migration proof and no secured JetStream runtime proof for Tracking in W8-A.
+
+**[decision boundary]** W8-B local disposable evidence may be recorded as **available** for ACL/TLS model validation in a lab. Staging identity/TLS/ACL evidence, HA cluster replay, production secret delivery, and operational governance remain **open**.
+
+**[decision boundary]** ADR-0010 remains **Proposed**. W8-B local evidence MUST NOT be converted into staging or production acceptance claims. ADR-0004 status is unchanged.
+
+---
+
 ## Implementation gates
 
 Production NATS transport security is **blocked** until:
@@ -504,13 +525,13 @@ Production NATS transport security is **blocked** until:
 | G1 | **ADR-0010 accepted** with named deciders (platform architecture + security operations) |
 | G2 | Selected model **O6** implemented in server/account configuration (or documented interim O2/O3 with expiry date) |
 | G3 | Server/account JWT topology: operator, account, service users issued |
-| G4 | **Exact ACL verification** — automated negative tests: Bridge cannot publish `hudhud.shipment.>`; Audit cannot `$JS.API.CONSUMER.CREATE`; bootstrap cannot publish `hudhud.*` events |
-| G5 | **Secret delivery mechanism** chosen and documented (K8s secrets / Vault / etc.) — names only in repo |
-| G6 | **Rotation drill** — dual-validity + rollback executed in staging |
-| G7 | **Revocation drill** — emergency revoke + readiness failure observed |
-| G8 | **TLS verification** — staging with production-like TLS trust (no `allow_no_auth`) |
-| G9 | **Bridge publisher live proof** — local functional evidence **available** (W7-A disposable lab, no-auth); staging scoped-creds + TLS/ACL proof **open** |
-| G10 | **Audit bind/pull/ACK proof** — local functional evidence **available** (W7-A); staging scoped-creds + TLS/ACL proof **open** |
+| G4 | **Exact ACL verification** — automated negative tests: Bridge cannot publish `hudhud.shipment.>`; Audit cannot `$JS.API.CONSUMER.CREATE`; bootstrap cannot publish `hudhud.*` events — **local disposable evidence available (W8-B); staging replay open** |
+| G5 | **Secret delivery mechanism** chosen and documented (K8s secrets / Vault / etc.) — names only in repo — **open** |
+| G6 | **Rotation drill** — dual-validity + rollback executed in staging — **local overlap verified (W8-B); staging drill open** |
+| G7 | **Revocation drill** — emergency revoke + readiness failure observed — **local targeted revocation verified (W8-B); staging drill open** |
+| G8 | **TLS verification** — staging with production-like TLS trust (no `allow_no_auth`) — **local TLS + CA verification verified (W8-B); staging open** |
+| G9 | **Bridge publisher live proof** — local functional evidence **available** (W7-A no-auth; W8-B scoped JWT/TLS/ACL); staging scoped-creds + TLS/ACL proof **open** |
+| G10 | **Audit bind/pull/ACK proof** — local functional evidence **available** (W7-A no-auth; W8-B scoped JWT/TLS/ACL); staging scoped-creds + TLS/ACL proof **open** |
 | G11 | **Monitoring and audit logs** — connection identity, auth failures, ACL violations (no secret values) |
 | G12 | **Three-node compatibility evidence** — same JWT/account model on clustered NATS (config replay or staging cluster) |
 

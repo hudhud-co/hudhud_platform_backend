@@ -50,6 +50,7 @@ def test_allowed_shared_packages_only() -> None:
         "pathlib",
         "re",
         "signal",
+        "ssl",
         "sys",
         "time",
         "typing",

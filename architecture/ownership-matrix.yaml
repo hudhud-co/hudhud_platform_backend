@@ -186,8 +186,10 @@ ownership:
     consumed_events:
       - legacy_bridge.observation.shipment_timeline_entry
     runtime_evidence:
-      postgres_persistence: proven_local_disposable_lab
-      jetstream_pull_consumer: proven_local_disposable_lab_no_auth
+      implementation: bootstrap_observation_projection
+      unit_fake_evidence: verified
+      postgres_persistence_runtime_proof: pending
+      jetstream_secured_runtime_proof: pending
       production_ready: false
     notes: >
       Read projection only — A1 legacy observation, not Shipment lifecycle authority.

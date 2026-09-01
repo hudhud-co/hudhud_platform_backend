@@ -74,12 +74,13 @@ uv run pytest -q
 uv run python ../../scripts/quality/verify_boundaries.py
 ```
 
-Do not run Docker, NATS, or PostgreSQL for this Wave's targeted tests.
+Wave 8-A evidence is **unit/fake only** — no live PostgreSQL, NATS, or Docker proof in
+this service's targeted tests.
 
 ## Remaining gates
 
-- ADR-0010 service-to-service NATS credentials and TLS in production
+- ADR-0010 service-to-service NATS credentials and TLS in production/staging
+- PostgreSQL migration runtime proof (disposable lab)
+- Secured JetStream consumer runtime proof (disposable lab)
 - Production/staging database credentials and network isolation
-- Live-environment JetStream consumer proof
 - Authenticated HTTP/gateway query API
-- Compose/CI registration (integration wave)
