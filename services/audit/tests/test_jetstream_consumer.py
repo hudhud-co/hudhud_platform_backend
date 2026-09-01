@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import ssl
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -627,7 +628,10 @@ def test_production_allows_adr_gate() -> None:
     )
     options = build_nats_connect_options(settings)
     assert options["servers"] == ["nats://broker.example:4222"]
-    assert options["tls"] is True
+    tls_context = options["tls"]
+    assert isinstance(tls_context, ssl.SSLContext)
+    assert tls_context.verify_mode == ssl.CERT_REQUIRED
+    assert tls_context.check_hostname is True
 
 
 def test_production_requires_tls() -> None:

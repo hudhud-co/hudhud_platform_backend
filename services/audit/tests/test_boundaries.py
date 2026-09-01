@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import sys
 from pathlib import Path
 
 
@@ -31,48 +32,34 @@ def test_no_cross_service_imports() -> None:
 
 def test_allowed_shared_packages_only() -> None:
     service_root = Path(__file__).resolve().parents[1] / "src"
-    allowed = {"audit", "event_envelope", "messaging_conformance", "nats"}
-    stdlib = {
-        "abc",
-        "asyncio",
-        "collections",
-        "contextlib",
-        "copy",
-        "dataclasses",
-        "datetime",
-        "enum",
-        "functools",
-        "hashlib",
-        "json",
-        "logging",
-        "os",
-        "pathlib",
-        "re",
-        "signal",
-        "sys",
-        "time",
-        "typing",
-        "uuid",
-        "yaml",
-        "__future__",
-        "fastapi",
-        "pydantic",
-        "sqlalchemy",
-        "alembic",
-        "types",
-    }
+    allowed_service_local = {"audit"}
+    allowed_shared_packages = {"event_envelope", "messaging_conformance", "nats"}
+    allowed_third_party = {"alembic", "fastapi", "pydantic", "sqlalchemy", "yaml"}
+    stdlib_modules = sys.stdlib_module_names
     for py_file in service_root.rglob("*.py"):
         tree = ast.parse(py_file.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     module = alias.name.split(".")[0]
-                    if module not in allowed and module not in stdlib:
-                        raise AssertionError(f"Unexpected import {alias.name} in {py_file}")
+                    if (
+                        module in allowed_service_local
+                        or module in allowed_shared_packages
+                        or module in allowed_third_party
+                        or module in stdlib_modules
+                    ):
+                        continue
+                    raise AssertionError(f"Unexpected import {alias.name} in {py_file}")
             elif isinstance(node, ast.ImportFrom) and node.module:
                 module = node.module.split(".")[0]
-                if module not in allowed and module not in stdlib:
-                    raise AssertionError(f"Unexpected import {node.module} in {py_file}")
+                if (
+                    module in allowed_service_local
+                    or module in allowed_shared_packages
+                    or module in allowed_third_party
+                    or module in stdlib_modules
+                ):
+                    continue
+                raise AssertionError(f"Unexpected import {node.module} in {py_file}")
 
 
 def test_does_not_import_legacy() -> None:
