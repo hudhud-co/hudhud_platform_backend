@@ -72,6 +72,7 @@ class BridgeSettings(BaseSettings):
     nats_user: str | None = None
     nats_password: str | None = None
     nats_token: str | None = None
+    nats_creds_file: str | None = None
     nats_tls_enabled: bool = False
     nats_tls_ca_file: str | None = None
     nats_connect_timeout_seconds: float = 5.0
@@ -121,7 +122,11 @@ class BridgeSettings(BaseSettings):
             return True
         if not self.nats_url:
             return False
-        has_credentials = bool(self.nats_token or (self.nats_user and self.nats_password))
+        has_credentials = bool(
+            self.nats_token
+            or self.nats_creds_file
+            or (self.nats_user and self.nats_password)
+        )
         if self.nats_dev_no_auth:
             return self.environment is not RuntimeEnvironment.PRODUCTION
         if self.environment is RuntimeEnvironment.PRODUCTION:

@@ -154,6 +154,19 @@ def test_oversized_envelope_rejected_before_publish() -> None:
     assert fake.publish_log == []
 
 
+def test_nats_configuration_accepts_creds_file() -> None:
+    settings = load_settings(
+        environment=RuntimeEnvironment.TEST,
+        relay_enabled=True,
+        nats_url="tls://127.0.0.1:4222",
+        nats_tls_enabled=True,
+        nats_creds_file="/tmp/disposable-proof.creds",
+        adr_0004_credentials_configured=True,
+    )
+    assert_nats_configuration(settings)
+    assert settings.relay_configuration_valid()
+
+
 def test_nats_configuration_gates() -> None:
     settings = load_settings(
         environment=RuntimeEnvironment.LOCAL,

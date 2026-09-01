@@ -1,0 +1,9 @@
+# Runtime-generated security material — never commit.
+generated/
+*.creds
+*.nk
+*.pem
+*.key
+*.jwt
+*.csr
+*.srl

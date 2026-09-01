@@ -1,0 +1,116 @@
+# Non-secret identity and permission manifest for NATS security proof (ADR-0010 model).
+# Secret seeds, JWT signing keys, and .creds contents are generated at runtime only.
+
+version: 1
+operator: HUDHUD
+account: HUDHUD
+tls_server_name: hudhud-nats-security-proof
+
+subjects:
+  a1: hudhud.shipment.legacy_bridge.observation.shipment_timeline_entry.v1
+  a2: hudhud.audit.legacy_bridge.observation.audit_entry.v1
+
+streams:
+  shipment: HUDHUD_SHIPMENT
+  audit: HUDHUD_AUDIT
+
+consumers:
+  tracking: tracking_bridge_timeline_v1
+  audit: audit_bridge_entry_v1
+
+identities:
+  hudhud-eventing-bootstrap:
+    purpose: topology provisioning only
+    topology_admin: true
+    publish:
+      - $JS.API.INFO
+      - $JS.API.STREAM.CREATE.>
+      - $JS.API.STREAM.UPDATE.>
+      - $JS.API.STREAM.INFO.>
+      - $JS.API.STREAM.NAMES
+      - $JS.API.STREAM.LIST
+      - $JS.API.CONSUMER.CREATE.>
+      - $JS.API.CONSUMER.DURABLE.CREATE.>
+      - $JS.API.CONSUMER.INFO.>
+    subscribe:
+      - _INBOX.>
+    deny_publish:
+      - hudhud.>
+    deny_subscribe: []
+    versions: [bootstrap]
+
+  legacy-event-bridge:
+    purpose: A1/A2 observation publisher
+    topology_admin: false
+    publish:
+      - hudhud.shipment.legacy_bridge.observation.shipment_timeline_entry.v1
+      - hudhud.audit.legacy_bridge.observation.audit_entry.v1
+    subscribe:
+      - _INBOX.>
+    deny_publish:
+      - hudhud.shipment.>
+      - hudhud.audit.>
+      - $JS.API.>
+    versions: [v1, v2]
+
+  audit:
+    purpose: bind-only A2 durable pull consumer
+    topology_admin: false
+    publish:
+      - $JS.API.CONSUMER.INFO.HUDHUD_AUDIT.audit_bridge_entry_v1
+      - $JS.API.CONSUMER.MSG.NEXT.HUDHUD_AUDIT.audit_bridge_entry_v1
+      - $JS.ACK.HUDHUD_AUDIT.audit_bridge_entry_v1.>
+    subscribe:
+      - _INBOX.>
+      - $JS.FC.HUDHUD_AUDIT.>
+    deny_publish:
+      - hudhud.>
+      - $JS.API.STREAM.>
+      - $JS.API.CONSUMER.CREATE.>
+      - $JS.API.CONSUMER.DELETE.>
+    versions: [v1, v2]
+
+  tracking:
+    purpose: bind-only A1 durable pull consumer
+    topology_admin: false
+    publish:
+      - $JS.API.CONSUMER.INFO.HUDHUD_SHIPMENT.tracking_bridge_timeline_v1
+      - $JS.API.CONSUMER.MSG.NEXT.HUDHUD_SHIPMENT.tracking_bridge_timeline_v1
+      - $JS.ACK.HUDHUD_SHIPMENT.tracking_bridge_timeline_v1.>
+    subscribe:
+      - _INBOX.>
+      - $JS.FC.HUDHUD_SHIPMENT.>
+    deny_publish:
+      - hudhud.>
+      - $JS.API.STREAM.>
+      - $JS.API.CONSUMER.CREATE.>
+      - $JS.API.CONSUMER.DELETE.>
+    versions: [v1, v2]
+
+  hudhud-nats-break-glass:
+    purpose: documented emergency inspection only
+    topology_admin: true
+    publish:
+      - $JS.API.STREAM.INFO.>
+      - $JS.API.CONSUMER.INFO.>
+    subscribe:
+      - _INBOX.>
+    deny_publish:
+      - hudhud.>
+    versions: [break-glass]
+
+runtime_services_lack_topology_mutation:
+  - legacy-event-bridge
+  - audit
+  - tracking
+
+forbidden_wildcards:
+  - $JS.API.>
+
+revocation:
+  mechanism: nsc delete user --revoke with account JWT refresh in resolver directory
+  resolver_interval: 2s
+  verified_propagation: nats-server container restart after account JWT copy (2s resolver interval alone is insufficient in this disposable lab)
+  overlap_identities:
+    publisher: legacy-event-bridge-v1/v2
+    consumer: audit-v1/v2

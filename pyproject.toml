@@ -12,6 +12,7 @@ dependencies = [
 dev = [
     "jsonschema>=4.23",
     "nats-py>=2.9",
+    "nkeys>=0.2",
     "pytest>=8.0",
     "ruff>=0.8",
 ]

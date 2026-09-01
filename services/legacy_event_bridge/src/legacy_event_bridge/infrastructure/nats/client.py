@@ -53,7 +53,11 @@ def assert_nats_configuration(settings: BridgeSettings) -> None:
 
 
 def _has_credentials(settings: BridgeSettings) -> bool:
-    return bool(settings.nats_token or (settings.nats_user and settings.nats_password))
+    return bool(
+        settings.nats_token
+        or settings.nats_creds_file
+        or (settings.nats_user and settings.nats_password)
+    )
 
 
 class LiveNatsJetStreamClient:
@@ -117,6 +121,8 @@ class LiveNatsJetStreamClient:
             connect_kwargs["password"] = self._settings.nats_password
         if self._settings.nats_token:
             connect_kwargs["token"] = self._settings.nats_token
+        if self._settings.nats_creds_file:
+            connect_kwargs["user_credentials"] = self._settings.nats_creds_file
         if self._settings.nats_tls_enabled:
             connect_kwargs["tls"] = _build_tls_context(self._settings)
         client = NatsClient()

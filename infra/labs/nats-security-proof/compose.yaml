@@ -1,0 +1,122 @@
+# HUDHUD Wave 8-B — disposable NATS JWT/NKeys, TLS, ACL, rotation, and revocation proof.
+# Runtime-generated credentials only; TLS required on client port.
+# Ephemeral loopback host port; dedicated Compose project, network, and volumes.
+
+name: hudhud-nats-security-proof-lab
+
+services:
+  security-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.security-init
+    image: hudhud-nats-security-proof-security-init:0.14.3
+    container_name: hudhud-nats-security-proof-security-init
+    profiles:
+      - nats-security-proof
+    restart: "no"
+    user: root
+    entrypoint: ["/bin/sh", "/scripts/init_security_material.sh"]
+    environment:
+      GENERATED_DIR: /generated
+      NSC_HOME: /generated/nsc-home
+      NKEYS_PATH: /generated/nsc-home/keys
+    volumes:
+      - type: volume
+        source: hudhud_nats_security_proof_generated
+        target: /generated
+      - type: bind
+        source: ./scripts/init_security_material.sh
+        target: /scripts/init_security_material.sh
+        read_only: true
+    labels:
+      hudhud.lab: nats-security-proof
+      hudhud.wave: "8-B"
+
+  nats:
+    image: nats:2.10.24-alpine
+    container_name: hudhud-nats-security-proof-nats
+    profiles:
+      - nats-security-proof
+    restart: unless-stopped
+    environment:
+      GENERATED_DIR: /generated
+      JETSTREAM_STORE_DIR: /data/jetstream
+    entrypoint: ["/bin/sh", "/etc/nats/entrypoint.sh"]
+    depends_on:
+      security-init:
+        condition: service_completed_successfully
+    volumes:
+      - type: volume
+        source: hudhud_nats_security_proof_generated
+        target: /generated
+        read_only: true
+      - type: volume
+        source: hudhud_nats_security_proof_jetstream
+        target: /data/jetstream
+      - type: bind
+        source: ./nats/entrypoint.sh
+        target: /etc/nats/entrypoint.sh
+        read_only: true
+    ports:
+      - target: 4222
+        host_ip: 127.0.0.1
+        published: 0
+        protocol: tcp
+    networks:
+      - hudhud_nats_security_proof
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    labels:
+      hudhud.lab: nats-security-proof
+      hudhud.nats.auth: jwt-nkeys-tls-local-disposable-proof
+
+  topology-bootstrap:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    container_name: hudhud-nats-security-proof-bootstrap
+    profiles:
+      - nats-security-proof
+    restart: "no"
+    working_dir: /repo
+    volumes:
+      - type: bind
+        source: ../../..
+        target: /repo
+      - type: volume
+        source: hudhud_nats_security_proof_generated
+        target: /generated
+        read_only: true
+    environment:
+      NATS_URL: tls://nats:4222
+      NATS_CREDS_FILE: /generated/creds/hudhud-eventing-bootstrap.creds
+      NATS_TLS_CA_FILE: /generated/ca/ca.pem
+      UV_CACHE_DIR: /tmp/uv-cache
+      UV_PROJECT_ENVIRONMENT: /tmp/bootstrap-venv
+    command:
+      - /bin/sh
+      - -c
+      - uv run --with nkeys python infra/labs/nats-security-proof/scripts/bootstrap_topology.py
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - hudhud_nats_security_proof
+
+networks:
+  hudhud_nats_security_proof:
+    name: hudhud_nats_security_proof
+    driver: bridge
+
+volumes:
+  hudhud_nats_security_proof_jetstream:
+    name: hudhud_nats_security_proof_jetstream
+  hudhud_nats_security_proof_generated:
+    name: hudhud_nats_security_proof_generated

@@ -1,0 +1,4 @@
+FROM natsio/nats-box:0.14.3
+
+USER root
+RUN apk add --no-cache openssl bash

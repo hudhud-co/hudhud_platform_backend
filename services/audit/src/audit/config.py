@@ -53,6 +53,7 @@ class AuditSettings:
     nats_enabled: bool = False
     nats_url: str | None = None
     nats_tls_enabled: bool = False
+    nats_tls_ca_file: str | None = None
     nats_user: str | None = None
     nats_password: str | None = None
     nats_token: str | None = None
@@ -152,6 +153,9 @@ def load_settings(**overrides: object) -> AuditSettings:
         "nats_url": nats_url,
         "nats_tls_enabled": bool(
             overrides.get("nats_tls_enabled", _env_bool("AUDIT_NATS_TLS_ENABLED", default=False))
+        ),
+        "nats_tls_ca_file": overrides.get(
+            "nats_tls_ca_file", _optional_str("AUDIT_NATS_TLS_CA_FILE")
         ),
         "nats_user": overrides.get("nats_user", _optional_str("AUDIT_NATS_USER")),
         "nats_password": overrides.get("nats_password", _optional_str("AUDIT_NATS_PASSWORD")),
