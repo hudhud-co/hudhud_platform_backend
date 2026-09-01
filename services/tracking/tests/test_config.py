@@ -7,7 +7,12 @@ from unittest.mock import patch
 
 import pytest
 
-from tracking.config import ProductionStartupBlockedError, RuntimeEnvironment, load_settings
+from tracking.config import (
+    JwtSettings,
+    ProductionStartupBlockedError,
+    RuntimeEnvironment,
+    load_settings,
+)
 from tracking.infrastructure.jetstream.connection import (
     NatsAuthRequiredError,
     build_nats_connect_options,
@@ -84,3 +89,55 @@ def test_production_requires_tls_and_credentials() -> None:
     )
     with pytest.raises(NatsAuthRequiredError, match="ADR-0010"):
         build_nats_connect_options(settings)
+
+
+def test_jwt_settings_defaults() -> None:
+    settings = load_settings(environment=RuntimeEnvironment.TEST)
+    assert settings.jwt.issuer is None
+    assert settings.jwt.audience is None
+    assert settings.jwt.jwks_url is None
+    assert settings.jwt.allowed_algorithms == ("RS256", "ES256")
+    assert settings.jwt.jwks_timeout_seconds == 5.0
+    assert settings.jwt.jwks_cache_ttl_seconds == 300
+
+
+def test_jwt_settings_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TRACKING_JWT_ISSUER", "https://identity.example")
+    monkeypatch.setenv("TRACKING_JWT_AUDIENCE", "tracking")
+    monkeypatch.setenv("TRACKING_JWT_JWKS_URL", "https://identity.example/jwks.json")
+    monkeypatch.setenv("TRACKING_JWT_ALLOWED_ALGORITHMS", "RS256")
+    monkeypatch.setenv("TRACKING_JWT_JWKS_TIMEOUT_SECONDS", "2.5")
+    monkeypatch.setenv("TRACKING_JWT_JWKS_CACHE_TTL_SECONDS", "120")
+    settings = load_settings(environment=RuntimeEnvironment.LOCAL)
+    assert settings.jwt.issuer == "https://identity.example"
+    assert settings.jwt.audience == "tracking"
+    assert settings.jwt.jwks_url == "https://identity.example/jwks.json"
+    assert settings.jwt.allowed_algorithms == ("RS256",)
+    assert settings.jwt.jwks_timeout_seconds == 2.5
+    assert settings.jwt.jwks_cache_ttl_seconds == 120
+
+
+def test_staging_blocks_incomplete_jwt_configuration() -> None:
+    settings = load_settings(
+        environment=RuntimeEnvironment.STAGING,
+        jwt=JwtSettings(
+            issuer="https://identity.example",
+            audience="tracking",
+            jwks_url=None,
+        ),
+    )
+    with pytest.raises(ProductionStartupBlockedError, match="jwt_jwks_url"):
+        settings.assert_query_auth_gates()
+
+
+def test_staging_blocks_non_https_jwks_url() -> None:
+    settings = load_settings(
+        environment=RuntimeEnvironment.STAGING,
+        jwt=JwtSettings(
+            issuer="https://identity.example",
+            audience="tracking",
+            jwks_url="http://identity.example/jwks.json",
+        ),
+    )
+    with pytest.raises(ProductionStartupBlockedError, match="https"):
+        settings.assert_query_auth_gates()

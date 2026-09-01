@@ -7,10 +7,12 @@ requires-python = ">=3.12"
 dependencies = [
     "event-envelope",
     "fastapi>=0.115",
+    "httpx>=0.28",
     "messaging-conformance",
     "nats-py>=2.9",
     "psycopg[binary]>=3.2",
     "pydantic>=2.10",
+    "pyjwt[crypto]>=2.10",
     "pyyaml>=6.0",
     "sqlalchemy>=2.0",
     "uvicorn>=0.32",

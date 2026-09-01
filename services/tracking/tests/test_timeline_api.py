@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from tracking.application.coordinator import TimelineConsumerCoordinator
 from tracking.application.query import TimelineQueryService
-from tracking.config import RuntimeEnvironment, load_settings
+from tracking.config import JwtSettings, RuntimeEnvironment, load_settings
 from tracking.domain.types import Delivery
 from tracking.infrastructure.memory import MemoryTrackingStore
 from tracking.main import create_app
@@ -33,15 +33,41 @@ class FakeQueryAuthorizer:
         decision: TrackingAccessDecision = TrackingAccessDecision.allow(),
         unavailable: bool = False,
         production_ready: bool = True,
+        jwt_verifier_configured: bool | None = None,
+        jwks_dependency_available: bool | None = None,
+        shipment_access_policy_configured: bool | None = None,
     ) -> None:
         self._decision = decision
         self._unavailable = unavailable
         self._production_ready = production_ready
+        self._jwt_verifier_configured = (
+            production_ready if jwt_verifier_configured is None else jwt_verifier_configured
+        )
+        self._jwks_dependency_available = (
+            production_ready if jwks_dependency_available is None else jwks_dependency_available
+        )
+        self._shipment_access_policy_configured = (
+            production_ready
+            if shipment_access_policy_configured is None
+            else shipment_access_policy_configured
+        )
         self.seen_tokens: list[str] = []
 
     @property
     def is_production_ready(self) -> bool:
         return self._production_ready
+
+    @property
+    def jwt_verifier_configured(self) -> bool:
+        return self._jwt_verifier_configured
+
+    @property
+    def jwks_dependency_available(self) -> bool:
+        return self._jwks_dependency_available
+
+    @property
+    def shipment_access_policy_configured(self) -> bool:
+        return self._shipment_access_policy_configured
 
     async def authorize_timeline_read(
         self,
@@ -324,20 +350,30 @@ def test_token_absent_from_errors(store: MemoryTrackingStore) -> None:
 
 
 def test_readiness_requires_real_authorizer_configuration() -> None:
+    jwt_settings = JwtSettings(
+        issuer="https://identity.example",
+        audience="tracking",
+        jwks_url="https://identity.example/.well-known/jwks.json",
+        allowed_algorithms=("RS256",),
+    )
     settings = load_settings(
         environment=RuntimeEnvironment.PRODUCTION,
         adr_0010_credentials_configured=True,
+        jwt=jwt_settings,
     )
     app = create_app(
         settings,
         query_port=MemoryTrackingStore(),
+        jwks_available=False,
         nats_reachable=True,
         nats_binding_verified=True,
     )
     report = app.state.readiness_report
     assert report.ready is False
-    assert "query_authorizer_not_configured" in report.blockers
-    assert report.checks["query_authorizer_configured"] is False
+    assert "jwks_dependency_unavailable" in report.blockers
+    assert report.checks["jwt_verifier_configured"] is True
+    assert report.checks["jwks_dependency_available"] is False
+    assert report.checks["shipment_access_policy_configured"] is False
 
     ready_authorizer = FakeQueryAuthorizer(production_ready=True)
     ready_app = create_app(
@@ -349,3 +385,6 @@ def test_readiness_requires_real_authorizer_configuration() -> None:
     )
     ready_report = ready_app.state.readiness_report
     assert ready_report.checks["query_authorizer_configured"] is True
+    assert ready_report.checks["jwt_verifier_configured"] is True
+    assert ready_report.checks["jwks_dependency_available"] is True
+    assert ready_report.checks["shipment_access_policy_configured"] is True

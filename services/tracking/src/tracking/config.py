@@ -37,6 +37,27 @@ class PersistenceBackend(StrEnum):
     MEMORY = "memory"
 
 
+_DEFAULT_JWT_ALGORITHMS = ("RS256", "ES256")
+
+
+@dataclass(frozen=True, slots=True)
+class JwtSettings:
+    """JWT/JWKS query authorization settings."""
+
+    issuer: str | None = None
+    audience: str | None = None
+    jwks_url: str | None = None
+    allowed_algorithms: tuple[str, ...] = _DEFAULT_JWT_ALGORITHMS
+    jwks_timeout_seconds: float = 5.0
+    jwks_cache_ttl_seconds: int = 300
+
+    def is_complete(self) -> bool:
+        return bool(self.issuer and self.audience and self.jwks_url and self.allowed_algorithms)
+
+    def requires_https_jwks(self, environment: RuntimeEnvironment) -> bool:
+        return environment in {RuntimeEnvironment.STAGING, RuntimeEnvironment.PRODUCTION}
+
+
 @dataclass(frozen=True, slots=True)
 class TrackingSettings:
     """Tracking service settings. Secret values must come from environment only."""
@@ -65,6 +86,7 @@ class TrackingSettings:
     defer_delay_seconds: float = 5.0
     shutdown_timeout_seconds: float = 30.0
     adr_0010_credentials_configured: bool = False
+    jwt: JwtSettings = JwtSettings()
 
     def assert_production_gates(self) -> None:
         """Block production startup until ADR-0010 credentials are configured."""
@@ -75,6 +97,29 @@ class TrackingSettings:
             raise ProductionStartupBlockedError(msg)
         if self.persistence_backend is PersistenceBackend.MEMORY:
             msg = "Production startup blocked — in-memory persistence is forbidden"
+            raise ProductionStartupBlockedError(msg)
+
+    def assert_query_auth_gates(self) -> None:
+        """Block staging/production startup until JWT/JWKS query auth is fully configured."""
+        if self.environment not in {RuntimeEnvironment.STAGING, RuntimeEnvironment.PRODUCTION}:
+            return
+        missing: list[str] = []
+        if not self.jwt.issuer:
+            missing.append("jwt_issuer")
+        if not self.jwt.audience:
+            missing.append("jwt_audience")
+        if not self.jwt.jwks_url:
+            missing.append("jwt_jwks_url")
+        if not self.jwt.allowed_algorithms:
+            missing.append("jwt_allowed_algorithms")
+        if missing:
+            names = ", ".join(missing)
+            msg = f"Query auth startup blocked — unset gates: {names}"
+            raise ProductionStartupBlockedError(msg)
+        if self.jwt.requires_https_jwks(self.environment) and not self.jwt.jwks_url.startswith(
+            "https://"
+        ):
+            msg = "Query auth startup blocked — jwt_jwks_url must use https in staging/production"
             raise ProductionStartupBlockedError(msg)
 
 
@@ -90,6 +135,40 @@ def _optional_str(name: str) -> str | None:
     if raw is None or raw.strip() == "":
         return None
     return raw
+
+
+def _env_algorithms(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    values = tuple(part.strip().upper() for part in raw.split(",") if part.strip())
+    return values or default
+
+
+def _load_jwt_settings(overrides: dict[str, object]) -> JwtSettings:
+    return JwtSettings(
+        issuer=overrides.get("jwt_issuer", _optional_str("TRACKING_JWT_ISSUER")),
+        audience=overrides.get("jwt_audience", _optional_str("TRACKING_JWT_AUDIENCE")),
+        jwks_url=overrides.get("jwt_jwks_url", _optional_str("TRACKING_JWT_JWKS_URL")),
+        allowed_algorithms=tuple(
+            overrides.get(
+                "jwt_allowed_algorithms",
+                _env_algorithms("TRACKING_JWT_ALLOWED_ALGORITHMS", _DEFAULT_JWT_ALGORITHMS),
+            )
+        ),
+        jwks_timeout_seconds=float(
+            overrides.get(
+                "jwt_jwks_timeout_seconds",
+                _env_float("TRACKING_JWT_JWKS_TIMEOUT_SECONDS", 5.0),
+            )
+        ),
+        jwks_cache_ttl_seconds=int(
+            overrides.get(
+                "jwt_jwks_cache_ttl_seconds",
+                _env_int("TRACKING_JWT_JWKS_CACHE_TTL_SECONDS", 300),
+            )
+        ),
+    )
 
 
 def load_settings(**overrides: object) -> TrackingSettings:
@@ -198,5 +277,6 @@ def load_settings(**overrides: object) -> TrackingSettings:
                 _env_bool("TRACKING_ADR_0010_CREDENTIALS_CONFIGURED", default=False),
             )
         ),
+        "jwt": overrides.get("jwt", _load_jwt_settings(overrides)),
     }
     return TrackingSettings(**values)  # type: ignore[arg-type]

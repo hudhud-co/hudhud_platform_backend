@@ -23,6 +23,9 @@ def evaluate_readiness(
     engine: Engine | None,
     persistence_wired: bool,
     query_authorizer_configured: bool = False,
+    jwt_verifier_configured: bool = False,
+    jwks_dependency_available: bool = False,
+    shipment_access_policy_configured: bool = False,
     query_persistence_configured: bool = False,
     nats_reachable: bool = False,
     nats_binding_verified: bool = False,
@@ -59,6 +62,9 @@ def evaluate_readiness(
         "database_configured": database_configured,
         "database_reachable": database_reachable,
         "query_authorizer_configured": query_authorizer_configured,
+        "jwt_verifier_configured": jwt_verifier_configured,
+        "jwks_dependency_available": jwks_dependency_available,
+        "shipment_access_policy_configured": shipment_access_policy_configured,
         "query_persistence_configured": query_persistence_configured,
         "nats_configured": nats_configured,
         "nats_reachable": nats_reachable if settings.nats_enabled else True,
@@ -86,6 +92,12 @@ def evaluate_readiness(
         blockers.append("memory_persistence_forbidden_in_production")
     if query_gates_required and not checks["query_authorizer_configured"]:
         blockers.append("query_authorizer_not_configured")
+    if query_gates_required and not checks["jwt_verifier_configured"]:
+        blockers.append("jwt_verifier_not_configured")
+    if query_gates_required and not checks["jwks_dependency_available"]:
+        blockers.append("jwks_dependency_unavailable")
+    if query_gates_required and not checks["shipment_access_policy_configured"]:
+        blockers.append("shipment_access_policy_not_configured")
     if query_gates_required and not checks["query_persistence_configured"]:
         blockers.append("query_persistence_not_configured")
 
@@ -97,6 +109,9 @@ def evaluate_readiness(
         and checks["nats_ready"]
         and checks["memory_persistence_allowed"]
         and (not query_gates_required or checks["query_authorizer_configured"])
+        and (not query_gates_required or checks["jwt_verifier_configured"])
+        and (not query_gates_required or checks["jwks_dependency_available"])
+        and (not query_gates_required or checks["shipment_access_policy_configured"])
         and (not query_gates_required or checks["query_persistence_configured"])
     )
     return ReadinessReport(ready=ready, checks=checks, blockers=tuple(blockers))
