@@ -93,6 +93,17 @@ wave_7_eventing_evidence:
         - adr_0004_credentials_unresolved
         - adr_0010_staging_tls_acl_gates
 
+wave_8_runtime_evidence:
+  integration_date: 2026-09-01
+  production_ready: false
+  services:
+    tracking:
+      postgres_persistence: proven_local_disposable_lab
+      jetstream_pull_consumer: proven_local_disposable_lab_no_auth
+      blockers:
+        - adr_0010_staging_tls_acl_gates
+        - authenticated_http_query_api
+
 legacy_event_bridge:
   classification: transitional_technical_deployable
   bounded_context: false
@@ -374,14 +385,24 @@ bounded_contexts:
     display_name: Tracking
     legacy_owner: tracking
     legacy_module_path: app/modules/tracking
-    proposed_platform_owner: undecided
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
+    proposed_platform_owner: tracking
+    adr_reference: ADR-0002
+    adr_status: Accepted
+    transitional_deployable_candidate: platform_edge_p1
+    extraction_status: bootstrap_observation_projection
     policy_prerequisites: []
+    runtime_evidence:
+      postgres_persistence: proven_local_disposable_lab
+      jetstream_pull_consumer: proven_local_disposable_lab_no_auth
+      production_ready: false
     data_ownership:
       strategy: read_projection
-      legacy_tables: none — reads shipments/events
-    allowed_dependencies: [shipment]
+      legacy_tables: none — reads shipment_events via Bridge A1 only
+      notes: >
+        Display ordering is not commit ordering.
+        (occurred_at, source_pk/event_id) does not prove gap-free capture.
+        A1 does not create Tracking or Shipment authority.
+    allowed_dependencies: []
     public_api_ownership: undecided
     published_events: []
     consumed_events:

@@ -147,6 +147,17 @@ def test_legacy_event_bridge_is_not_an_ownership_bounded_context(
     assert bridge["retires_per_context"] is True
 
 
+def test_tracking_bootstrap_registered(boundaries: dict, ownership_matrix: dict) -> None:
+    tracking = boundaries["bounded_contexts"]["tracking"]
+    assert tracking["proposed_platform_owner"] == "tracking"
+    assert tracking["extraction_status"] == "bootstrap_observation_projection"
+    assert tracking["runtime_evidence"]["production_ready"] is False
+    assert "legacy_bridge.observation.shipment_timeline_entry" in tracking["consumed_events"]
+    ownership = ownership_matrix["ownership"]["tracking"]
+    assert ownership["database_owner"] == "tracking"
+    assert ownership["canonical_writer"] == "none"
+
+
 def test_messaging_conformance_is_allowlisted_and_technical(boundaries: dict) -> None:
     allowed = boundaries["shared_packages"]["allowed_categories"]
     assert "messaging_conformance" in allowed

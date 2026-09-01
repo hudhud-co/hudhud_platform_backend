@@ -182,8 +182,16 @@ ownership:
     readers: [tracking]
     api_owner: tracking
     event_publisher: none
-    database_owner: none
-    notes: read projection only
+    database_owner: tracking
+    consumed_events:
+      - legacy_bridge.observation.shipment_timeline_entry
+    runtime_evidence:
+      postgres_persistence: proven_local_disposable_lab
+      jetstream_pull_consumer: proven_local_disposable_lab_no_auth
+      production_ready: false
+    notes: >
+      Read projection only — A1 legacy observation, not Shipment lifecycle authority.
+      Display ordering is not commit ordering.
 
   control_tower:
     canonical_writer: none
