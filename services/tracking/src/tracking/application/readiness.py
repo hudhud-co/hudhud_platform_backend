@@ -22,6 +22,8 @@ def evaluate_readiness(
     settings: TrackingSettings,
     engine: Engine | None,
     persistence_wired: bool,
+    query_authorizer_configured: bool = False,
+    query_persistence_configured: bool = False,
     nats_reachable: bool = False,
     nats_binding_verified: bool = False,
 ) -> ReadinessReport:
@@ -46,11 +48,18 @@ def evaluate_readiness(
         nats_reachable and nats_binding_verified and nats_tls_ready
     )
 
+    query_gates_required = settings.environment in {
+        RuntimeEnvironment.PRODUCTION,
+        RuntimeEnvironment.STAGING,
+    }
+
     checks = {
         "production_gates": production_gates,
         "postgres_adapter_present": postgres_adapter_present,
         "database_configured": database_configured,
         "database_reachable": database_reachable,
+        "query_authorizer_configured": query_authorizer_configured,
+        "query_persistence_configured": query_persistence_configured,
         "nats_configured": nats_configured,
         "nats_reachable": nats_reachable if settings.nats_enabled else True,
         "nats_binding_verified": nats_binding_verified if settings.nats_enabled else True,
@@ -75,6 +84,10 @@ def evaluate_readiness(
         blockers.append("nats_tls_required_in_production")
     if memory_in_production:
         blockers.append("memory_persistence_forbidden_in_production")
+    if query_gates_required and not checks["query_authorizer_configured"]:
+        blockers.append("query_authorizer_not_configured")
+    if query_gates_required and not checks["query_persistence_configured"]:
+        blockers.append("query_persistence_not_configured")
 
     ready = (
         checks["production_gates"]
@@ -83,5 +96,7 @@ def evaluate_readiness(
         and checks["nats_configured"]
         and checks["nats_ready"]
         and checks["memory_persistence_allowed"]
+        and (not query_gates_required or checks["query_authorizer_configured"])
+        and (not query_gates_required or checks["query_persistence_configured"])
     )
     return ReadinessReport(ready=ready, checks=checks, blockers=tuple(blockers))

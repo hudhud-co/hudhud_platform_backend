@@ -46,11 +46,51 @@ Display ordering uses `(occurred_at, event_id)` and is **not** commit ordering.
 
 `Nats-Msg-Id` is optional transport provenance only. Inbox uniqueness is authoritative.
 
-## Query application layer
+## Query HTTP API
 
-Typed read ports (`get_by_event_id`, `list_by_shipment_id`, deterministic cursor
-pagination) are available for a future authenticated HTTP/gateway adapter. This Wave
-exposes `/health` and `/ready` only.
+```http
+GET /tracking/shipments/{shipment_id}/timeline
+Authorization: Bearer <token>
+```
+
+Query parameters: `limit` (bounded), optional opaque `cursor`.
+
+Response includes `shipment_id`, ordered `entries`, and `next_cursor` when another page
+exists. Ordering is **display order** (`occurred_at` + `event_id`), not authoritative
+commit ordering.
+
+### Safe response boundary
+
+HTTP responses expose only presentation fields:
+
+- `event_id`, `occurred_at`, `legacy_event_type`, `previous_status`, `new_status`
+
+Excluded from HTTP: source position/system/table/pk, Bridge mapper version, actor ID,
+raw metadata, JetStream metadata, inbox state, and processing/error information.
+
+### Authorization port
+
+Timeline reads require `Authorization: Bearer <token>`. Access is decided only by the
+service-owned `TrackingQueryAuthorizer` port — `X-User-Id`, `X-Role`, and similar
+identity headers never grant access.
+
+The default composition-root authorizer fails closed (all reads rejected). Production
+readiness remains blocked until a real authorization adapter is configured.
+
+**ADR-0004** (JWT/JWKS identity and service trust) is **not implemented** in this Wave.
+A production-ready JWT/JWKS authorizer adapter is a **production blocker**.
+
+| Condition | HTTP status |
+|-----------|-------------|
+| Missing/malformed bearer | `401` |
+| Authorizer rejects token | `401` |
+| Authenticated but not authorized for shipment | `403` |
+| Invalid shipment ID, cursor, or limit | `422` |
+| Authorizer or query dependency unavailable | `503` |
+
+Pagination uses a versioned, URL-safe opaque cursor scoped to the requested shipment.
+Malformed or mismatched cursors return `422`. Raw bearer tokens are never logged,
+returned, or stored.
 
 ## Runtime
 
@@ -79,8 +119,8 @@ this service's targeted tests.
 
 ## Remaining gates
 
+- ADR-0004 JWT/JWKS authorizer adapter for timeline query API
 - ADR-0010 service-to-service NATS credentials and TLS in production/staging
 - PostgreSQL migration runtime proof (disposable lab)
 - Secured JetStream consumer runtime proof (disposable lab)
 - Production/staging database credentials and network isolation
-- Authenticated HTTP/gateway query API

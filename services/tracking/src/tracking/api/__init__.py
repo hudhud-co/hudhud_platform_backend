@@ -1,1 +1,1 @@
-"""HTTP adapters — health only; no business API in this Wave."""
+"""HTTP adapters — health, readiness, and authenticated timeline query."""

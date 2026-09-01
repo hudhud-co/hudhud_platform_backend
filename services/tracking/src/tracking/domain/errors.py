@@ -35,3 +35,7 @@ class PoisonHandlerError(TrackingError):
         self.code = code
         self.detail = detail
         super().__init__(f"{code}: {detail}")
+
+
+class QueryDependencyUnavailableError(TrackingError):
+    """Timeline query dependency unavailable — HTTP adapter maps to 503."""

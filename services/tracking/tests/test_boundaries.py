@@ -36,6 +36,7 @@ def test_allowed_shared_packages_only() -> None:
     stdlib = {
         "abc",
         "asyncio",
+        "base64",
         "collections",
         "contextlib",
         "copy",
