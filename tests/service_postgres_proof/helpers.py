@@ -23,11 +23,18 @@ from .constants import (
     COMPOSE_PROFILE,
     COMPOSE_PROJECT,
     FORBIDDEN_URL_FRAGMENTS,
+    LAB_DATABASES,
     NETWORK_NAME,
     OWNER_DATABASE,
     OWNER_PASSWORD,
     OWNER_USER,
+    PICKUP_DATABASE,
+    PICKUP_ROLE,
+    PICKUP_ROLE_PASSWORD,
     POSTGRES_SERVICE,
+    SHIPMENT_DATABASE,
+    SHIPMENT_ROLE,
+    SHIPMENT_ROLE_PASSWORD,
     VOLUME_NAME,
 )
 
@@ -36,6 +43,8 @@ LAB_ROOT = REPO_ROOT / "infra" / "labs" / "service-postgres-proof"
 COMPOSE_FILE = LAB_ROOT / "compose.yaml"
 BRIDGE_SERVICE = REPO_ROOT / "services" / "legacy_event_bridge"
 AUDIT_SERVICE = REPO_ROOT / "services" / "audit"
+SHIPMENT_SERVICE = REPO_ROOT / "services" / "shipment"
+PICKUP_SERVICE = REPO_ROOT / "services" / "pickup"
 
 class _HostPortCache:
     port: int | None = None
@@ -142,6 +151,7 @@ def _wait_for_tcp_port(host: str, port: int, *, timeout_seconds: float = 30.0) -
 
 
 def _wait_for_lab_databases() -> None:
+    database_list = ", ".join(f"'{name}'" for name in sorted(LAB_DATABASES))
     for _ in range(40):
         ready = compose(
             "exec",
@@ -155,10 +165,10 @@ def _wait_for_lab_databases() -> None:
         )
         if ready.returncode == 0:
             probe = psql(
-                "SELECT COUNT(*) FROM pg_database WHERE datname IN ('bridge_db', 'audit_db');",
+                f"SELECT COUNT(*) FROM pg_database WHERE datname IN ({database_list});",
                 database=OWNER_DATABASE,
             )
-            if probe == "2":
+            if probe == str(len(LAB_DATABASES)):
                 return
         time.sleep(1)
     msg = "postgres lab databases not ready after timeout"
@@ -407,6 +417,16 @@ def fetch_indexes(database: str) -> set[str]:
     return {row.split("|", 1)[0] for row in rows}
 
 
+def fetch_foreign_key_count(database: str) -> int:
+    return int(
+        psql(
+            "SELECT COUNT(*) FROM information_schema.table_constraints "
+            "WHERE table_schema = 'public' AND constraint_type = 'FOREIGN KEY';",
+            database=database,
+        )
+    )
+
+
 def fetch_partial_index_predicates(database: str) -> dict[str, str]:
     rows = psql_rows(
         "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public';",
@@ -430,6 +450,18 @@ def run_audit_transaction_probe(database_url: str) -> dict[str, object]:
     assert_lab_database_url(database_url, expected_database=AUDIT_DATABASE)
     probe = Path(__file__).resolve().parent / "probes" / "audit_transactions.py"
     return _run_probe(probe, AUDIT_SERVICE, database_url)
+
+
+def run_shipment_transaction_probe(database_url: str) -> dict[str, object]:
+    assert_lab_database_url(database_url, expected_database=SHIPMENT_DATABASE)
+    probe = Path(__file__).resolve().parent / "probes" / "shipment_transactions.py"
+    return _run_probe(probe, SHIPMENT_SERVICE, database_url)
+
+
+def run_pickup_transaction_probe(database_url: str) -> dict[str, object]:
+    assert_lab_database_url(database_url, expected_database=PICKUP_DATABASE)
+    probe = Path(__file__).resolve().parent / "probes" / "pickup_transactions.py"
+    return _run_probe(probe, PICKUP_SERVICE, database_url)
 
 
 def _run_probe(probe: Path, service_dir: Path, database_url: str) -> dict[str, object]:
@@ -473,6 +505,36 @@ def audit_service_url(port: int | None = None) -> str:
         database=AUDIT_DATABASE,
         user=AUDIT_ROLE,
         password=AUDIT_ROLE_PASSWORD,
+        port=port or discover_host_port(),
+    )
+
+
+def shipment_owner_url(port: int | None = None) -> str:
+    return build_database_url(database=SHIPMENT_DATABASE, port=port or discover_host_port())
+
+
+def shipment_service_url(port: int | None = None) -> str:
+    return build_database_url(
+        database=SHIPMENT_DATABASE,
+        user=SHIPMENT_ROLE,
+        password=SHIPMENT_ROLE_PASSWORD,
+        port=port or discover_host_port(),
+    ).replace("postgresql+psycopg://", "postgresql+asyncpg://", 1)
+
+
+def shipment_alembic_url(port: int | None = None) -> str:
+    return shipment_owner_url(port=port)
+
+
+def pickup_owner_url(port: int | None = None) -> str:
+    return build_database_url(database=PICKUP_DATABASE, port=port or discover_host_port())
+
+
+def pickup_service_url(port: int | None = None) -> str:
+    return build_database_url(
+        database=PICKUP_DATABASE,
+        user=PICKUP_ROLE,
+        password=PICKUP_ROLE_PASSWORD,
         port=port or discover_host_port(),
     )
 

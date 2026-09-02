@@ -14,16 +14,35 @@ OWNER_DATABASE = "svc_pg_lab"
 
 BRIDGE_DATABASE = "bridge_db"
 AUDIT_DATABASE = "audit_db"
+SHIPMENT_DATABASE = "shipment_db"
+PICKUP_DATABASE = "pickup_db"
+
 BRIDGE_ROLE = "bridge_svc"
-BRIDGE_ROLE_PASSWORD = "bridge_svc_dev_only"
 AUDIT_ROLE = "audit_svc"
+SHIPMENT_ROLE = "shipment_svc"
+PICKUP_ROLE = "pickup_svc"
+
+BRIDGE_ROLE_PASSWORD = "bridge_svc_dev_only"
 AUDIT_ROLE_PASSWORD = "audit_svc_dev_only"
+SHIPMENT_ROLE_PASSWORD = "shipment_svc_dev_only"
+PICKUP_ROLE_PASSWORD = "pickup_svc_dev_only"
 
 BRIDGE_EXPECTED_HEAD = "w5a_bridge_pipeline_002"
 AUDIT_EXPECTED_HEAD = "w5b_audit_observation_001"
+SHIPMENT_EXPECTED_HEAD = "w15a_shipment_acceptance_001"
+PICKUP_EXPECTED_HEAD = "w15b_pickup_recovery_001"
+
+LAB_DATABASES = frozenset(
+    {
+        BRIDGE_DATABASE,
+        AUDIT_DATABASE,
+        SHIPMENT_DATABASE,
+        PICKUP_DATABASE,
+    }
+)
 
 ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost"})
-ALLOWED_DATABASES = frozenset({OWNER_DATABASE, BRIDGE_DATABASE, AUDIT_DATABASE})
+ALLOWED_DATABASES = frozenset({OWNER_DATABASE, *LAB_DATABASES})
 FORBIDDEN_URL_FRAGMENTS = (
     "prod",
     "staging",
@@ -45,5 +64,24 @@ AUDIT_TABLES = frozenset(
     {
         "audit_integration_inbox",
         "legacy_audit_observations",
+    }
+)
+
+SHIPMENT_TABLES = frozenset(
+    {
+        "order_intents",
+        "shipments",
+        "pickup_task_snapshots",
+        "shipment_events",
+        "acceptance_audit_logs",
+        "acceptance_decisions",
+    }
+)
+
+PICKUP_TABLES = frozenset(
+    {
+        "pickup_tasks",
+        "pickup_recovery_history",
+        "pickup_recovery_idempotency",
     }
 )

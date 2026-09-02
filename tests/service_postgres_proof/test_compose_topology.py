@@ -38,8 +38,12 @@ def test_init_sql_declares_isolated_databases_and_roles() -> None:
     init_sql = (LAB_ROOT / "init" / "01-databases-roles.sql").read_text(encoding="utf-8")
     assert "CREATE DATABASE bridge_db" in init_sql
     assert "CREATE DATABASE audit_db" in init_sql
+    assert "CREATE DATABASE shipment_db" in init_sql
+    assert "CREATE DATABASE pickup_db" in init_sql
     assert BRIDGE_ROLE in init_sql
     assert AUDIT_ROLE in init_sql
+    assert "shipment_svc" in init_sql
+    assert "pickup_svc" in init_sql
     assert "hudhud-backend" not in init_sql
 
 

@@ -132,9 +132,11 @@ ownership:
       implementation: bootstrap_acceptance_lifecycle_foundation
       scope: order_intent_through_acceptance_scan
       unit_fake_evidence: verified
-      postgres_persistence_runtime_proof: pending
-      http_api_runtime_proof: pending
-      jetstream_runtime_proof: pending
+      postgres_persistence: proven_local_disposable_lab
+      postgres_persistence_runtime_proof: proven_local_disposable_lab
+      transaction_rollback_constraints: proven_local_disposable_lab
+      http_api_runtime_proof: deferred
+      jetstream_runtime_proof: deferred
       production_ready: false
 
   pickup:
@@ -150,9 +152,11 @@ ownership:
       implementation: bootstrap_recovery_lifecycle_foundation
       scope: pickup_task_recovery_and_attempt_history
       unit_fake_evidence: verified
-      postgres_persistence_runtime_proof: pending
-      http_api_runtime_proof: pending
-      jetstream_runtime_proof: pending
+      postgres_persistence: proven_local_disposable_lab
+      postgres_persistence_runtime_proof: proven_local_disposable_lab
+      transaction_rollback_constraints: proven_local_disposable_lab
+      http_api_runtime_proof: deferred
+      jetstream_runtime_proof: deferred
       production_ready: false
     notes: >
       Owns PickupTask recovery and attempt history. Shipment eligibility consumed

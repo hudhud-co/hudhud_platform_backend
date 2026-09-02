@@ -39,12 +39,18 @@ from shipment.infrastructure.persistence.models import (
     ShipmentRow,
 )
 
+_sync_event_loop_holder: dict[str, asyncio.AbstractEventLoop | None] = {"loop": None}
+
 
 def _run_async(coro):  # noqa: ANN001, ANN201
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(coro)
+        loop = _sync_event_loop_holder["loop"]
+        if loop is None or loop.is_closed():
+            loop = asyncio.new_event_loop()
+            _sync_event_loop_holder["loop"] = loop
+        return loop.run_until_complete(coro)
     msg = "SqlAlchemyAcceptanceUnitOfWork sync methods cannot run inside a running event loop"
     raise RuntimeError(msg)
 
