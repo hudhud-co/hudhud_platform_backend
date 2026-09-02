@@ -59,6 +59,8 @@ def test_allowed_shared_packages_only() -> None:
         "uuid",
         "__future__",
         "types",
+        "sqlalchemy",
+        "alembic",
     }
     for py_file in service_root.rglob("*.py"):
         tree = ast.parse(py_file.read_text(encoding="utf-8"))

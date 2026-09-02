@@ -4,7 +4,7 @@ Independently managed HUDHUD Pickup service package. This Wave establishes the
 **PickupTask recovery lifecycle** domain foundation only. Pickup owns task recovery
 and attempt history; it does not own or mutate Shipment lifecycle/custody (ADR-0003).
 
-## Scope (W12)
+## Scope (W12 + W15-B)
 
 Recovery actions:
 
@@ -46,13 +46,18 @@ Cross-context boundary: Pickup reads Shipment eligibility facts through
 - `register_pickup_task` — seed initial attempt (tests/bootstrap).
 - `retry_pickup`, `reschedule_pickup`, `reassign_pickup`, `cancel_pickup` — recovery actions.
 
-Unit of work port: `RecoveryUnitOfWork`. Tests use `InMemoryRecoveryUnitOfWork`
-(copy-on-write rollback) and `InMemoryShipmentEligibilityAdapter`.
+Unit of work port: `RecoveryUnitOfWork`.
+
+- **W12 tests:** `InMemoryRecoveryUnitOfWork` (copy-on-write rollback) and
+  `InMemoryShipmentEligibilityAdapter`.
+- **W15-B persistence:** service-owned SQLAlchemy models, sync/async session
+  factories, Alembic migration, and `SqlAlchemyRecoveryUnitOfWork` with optimistic
+  concurrency, atomic recovery commits, and idempotency/lineage uniqueness constraints.
 
 ## Explicit non-goals (deferred)
 
 - Production Shipment HTTP/event integration
-- HTTP endpoints, PostgreSQL, Alembic, NATS/events
+- HTTP endpoints, NATS/events, Compose/CI wiring
 - Driver assignment algorithms, routing, scheduling engine
 - Hub inbound custody transfer
 - Notification, Control Tower, Delivery, Finance
@@ -68,10 +73,10 @@ uv run pytest -q
 uv run python ../../scripts/quality/verify_boundaries.py
 ```
 
-W12 evidence is **unit/in-memory only** — no Docker, network, NATS, PostgreSQL, or
+W12/W15-B evidence is **unit/fake only** — no Docker, network, NATS, live PostgreSQL, or
 legacy repository access in targeted tests.
 
 ## Production readiness
 
-**Not production-ready.** Runtime persistence, API surface, secured messaging, and
-production Shipment eligibility integration remain future Waves.
+**Not production-ready.** API surface, secured messaging, disposable-database migration
+proof, and production Shipment eligibility integration remain future Waves.

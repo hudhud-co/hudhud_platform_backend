@@ -1,13 +1,17 @@
 [project]
 name = "pickup"
 version = "0.1.0"
-description = "HUDHUD Pickup service — recovery lifecycle domain foundation (W12)"
+description = "HUDHUD Pickup service — recovery lifecycle with PostgreSQL persistence (W15-B)"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "psycopg[binary]>=3.2",
+    "sqlalchemy>=2.0",
+]
 
 [dependency-groups]
 dev = [
+    "alembic>=1.14",
     "pytest>=8.0",
     "pyyaml>=6.0",
     "ruff>=0.8",
@@ -36,6 +40,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["ARG001", "ARG002", "PLR0913"]
+"alembic/**" = ["ARG001"]
+"src/pickup/infrastructure/persistence/sqlalchemy_store.py" = ["PLR0913"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
