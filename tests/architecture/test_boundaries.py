@@ -177,6 +177,26 @@ def test_shipment_domain_foundation_bootstrap_registered(
     )
 
 
+def test_pickup_recovery_foundation_bootstrap_registered(
+    boundaries: dict,
+    ownership_matrix: dict,
+) -> None:
+    pickup = boundaries["bounded_contexts"]["pickup"]
+    assert pickup["proposed_platform_owner"] == "pickup"
+    assert pickup["extraction_status"] == "bootstrap_domain_foundation"
+    evidence = pickup["runtime_evidence"]
+    assert evidence["implementation"] == "bootstrap_recovery_lifecycle_foundation"
+    assert evidence["scope"] == "pickup_task_recovery_and_attempt_history"
+    assert evidence["production_ready"] is False
+    assert pickup["allowed_dependencies"] == []
+    ownership = ownership_matrix["ownership"]["pickup"]
+    assert ownership["canonical_writer"] == "pickup"
+    assert (
+        ownership["runtime_evidence"]["implementation"]
+        == "bootstrap_recovery_lifecycle_foundation"
+    )
+
+
 def test_messaging_conformance_is_allowlisted_and_technical(boundaries: dict) -> None:
     allowed = boundaries["shared_packages"]["allowed_categories"]
     assert "messaging_conformance" in allowed

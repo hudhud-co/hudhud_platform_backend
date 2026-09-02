@@ -330,13 +330,23 @@ bounded_contexts:
     legacy_module_path: app/modules/pickup, app/modules/pickup_scheduling
     proposed_platform_owner: pickup
     transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
+    extraction_status: bootstrap_domain_foundation
     policy_prerequisites: [shipment_sole_lifecycle_writer]
+    runtime_evidence:
+      implementation: bootstrap_recovery_lifecycle_foundation
+      scope: pickup_task_recovery_and_attempt_history
+      unit_fake_evidence: verified
+      postgres_persistence_runtime_proof: pending
+      http_api_runtime_proof: pending
+      jetstream_runtime_proof: pending
+      production_ready: false
     data_ownership:
       strategy: dedicated_database
       legacy_tables: [pickup_batches, pickup_tasks, pickup_handover, pickup_evidence, pickup_scheduling]
-      notes: Legacy directly mutates shipment status — must migrate to fact publication
-    allowed_dependencies: [shipment]
+      notes: >
+        Owns PickupTask recovery and attempt history. Consumes Shipment eligibility
+        snapshot through port only — does not own or mutate Shipment custody (ADR-0003).
+    allowed_dependencies: []
     public_api_ownership: pickup
     published_events: [pickup.fact.accepted, pickup.fact.handover_completed]
     consumed_events: []
