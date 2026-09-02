@@ -171,7 +171,10 @@ def test_shipment_domain_foundation_bootstrap_registered(
     assert evidence["production_ready"] is False
     ownership = ownership_matrix["ownership"]["shipment"]
     assert ownership["canonical_writer"] == "shipment"
-    assert ownership["runtime_evidence"]["implementation"] == "bootstrap_acceptance_lifecycle_foundation"
+    assert (
+        ownership["runtime_evidence"]["implementation"]
+        == "bootstrap_acceptance_lifecycle_foundation"
+    )
 
 
 def test_messaging_conformance_is_allowlisted_and_technical(boundaries: dict) -> None:
