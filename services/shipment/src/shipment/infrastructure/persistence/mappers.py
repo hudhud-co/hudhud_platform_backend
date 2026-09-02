@@ -1,0 +1,190 @@
+"""Map between domain entities and persistence rows."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from uuid import UUID, uuid4
+
+from shipment.domain.entities import (
+    AuditLogEntry,
+    OrderIntent,
+    PickupTaskSnapshot,
+    Shipment,
+    ShipmentEvent,
+)
+from shipment.domain.value_objects import (
+    CustodyType,
+    PickupTaskAcceptanceState,
+    PickupTaskStatus,
+    ShipmentEventType,
+    ShipmentStatus,
+    WaybillIdentity,
+)
+from shipment.infrastructure.persistence.models import (
+    AcceptanceAuditLogRow,
+    AcceptanceDecisionRow,
+    OrderIntentRow,
+    PickupTaskSnapshotRow,
+    ShipmentEventRow,
+    ShipmentRow,
+)
+
+
+def order_intent_to_row(order_intent: OrderIntent) -> OrderIntentRow:
+    return OrderIntentRow(
+        order_id=order_intent.order_id,
+        shipment_id=order_intent.shipment_id,
+        created_at=order_intent.created_at,
+    )
+
+
+def order_intent_from_row(row: OrderIntentRow) -> OrderIntent:
+    return OrderIntent(
+        order_id=row.order_id,
+        shipment_id=row.shipment_id,
+        created_at=row.created_at,
+    )
+
+
+def shipment_to_row(shipment: Shipment, *, version: int) -> ShipmentRow:
+    return ShipmentRow(
+        shipment_id=shipment.shipment_id,
+        order_id=shipment.order_id,
+        waybill_number=shipment.waybill_identity.waybill_number,
+        current_status=shipment.current_status.value,
+        order_created_at=shipment.order_created_at,
+        accepted_at=shipment.accepted_at,
+        sla_started_at=shipment.sla_started_at,
+        current_custody_type=(
+            shipment.current_custody_type.value
+            if shipment.current_custody_type is not None
+            else None
+        ),
+        current_custody_id=shipment.current_custody_id,
+        version=version,
+    )
+
+
+def shipment_from_row(row: ShipmentRow) -> tuple[Shipment, int]:
+    shipment = Shipment(
+        shipment_id=row.shipment_id,
+        order_id=row.order_id,
+        waybill_identity=WaybillIdentity(
+            waybill_number=row.waybill_number,
+            shipment_id=str(row.shipment_id),
+        ),
+        current_status=ShipmentStatus(row.current_status),
+        order_created_at=row.order_created_at,
+        accepted_at=row.accepted_at,
+        sla_started_at=row.sla_started_at,
+        current_custody_type=(
+            CustodyType(row.current_custody_type) if row.current_custody_type is not None else None
+        ),
+        current_custody_id=row.current_custody_id,
+    )
+    return shipment, row.version
+
+
+def pickup_task_to_row(pickup_task: PickupTaskSnapshot, *, version: int) -> PickupTaskSnapshotRow:
+    return PickupTaskSnapshotRow(
+        pickup_task_id=pickup_task.pickup_task_id,
+        shipment_id=pickup_task.shipment_id,
+        status=pickup_task.status.value,
+        assigned_driver_user_id=pickup_task.assigned_driver_user_id,
+        assigned_batch_id=pickup_task.assigned_batch_id,
+        has_pickup_condition_proof=pickup_task.has_pickup_condition_proof,
+        acceptance_state=(
+            pickup_task.acceptance_state.value if pickup_task.acceptance_state is not None else None
+        ),
+        version=version,
+    )
+
+
+def pickup_task_from_row(row: PickupTaskSnapshotRow) -> tuple[PickupTaskSnapshot, int]:
+    pickup_task = PickupTaskSnapshot(
+        pickup_task_id=row.pickup_task_id,
+        shipment_id=row.shipment_id,
+        status=PickupTaskStatus(row.status),
+        assigned_driver_user_id=row.assigned_driver_user_id,
+        assigned_batch_id=row.assigned_batch_id,
+        has_pickup_condition_proof=row.has_pickup_condition_proof,
+        acceptance_state=(
+            PickupTaskAcceptanceState(row.acceptance_state)
+            if row.acceptance_state is not None
+            else None
+        ),
+    )
+    return pickup_task, row.version
+
+
+def shipment_event_to_row(event: ShipmentEvent) -> ShipmentEventRow:
+    return ShipmentEventRow(
+        event_id=event.event_id,
+        shipment_id=event.shipment_id,
+        event_type=event.event_type.value,
+        previous_status=event.previous_status.value,
+        new_status=event.new_status.value,
+        occurred_at=event.occurred_at,
+    )
+
+
+def shipment_event_from_row(row: ShipmentEventRow) -> ShipmentEvent:
+    return ShipmentEvent(
+        event_id=row.event_id,
+        shipment_id=row.shipment_id,
+        event_type=ShipmentEventType(row.event_type),
+        previous_status=ShipmentStatus(row.previous_status),
+        new_status=ShipmentStatus(row.new_status),
+        occurred_at=row.occurred_at,
+    )
+
+
+def audit_log_to_row(entry: AuditLogEntry) -> AcceptanceAuditLogRow:
+    return AcceptanceAuditLogRow(
+        audit_id=entry.audit_id,
+        action=entry.action,
+        entity_type=entry.entity_type,
+        entity_id=entry.entity_id,
+        actor_id=entry.actor_id,
+        occurred_at=entry.occurred_at,
+        details=dict(entry.details),
+    )
+
+
+def audit_log_from_row(row: AcceptanceAuditLogRow) -> AuditLogEntry:
+    return AuditLogEntry(
+        audit_id=row.audit_id,
+        action=row.action,
+        entity_type=row.entity_type,
+        entity_id=row.entity_id,
+        actor_id=row.actor_id,
+        occurred_at=row.occurred_at,
+        details=dict(row.details),
+    )
+
+
+def acceptance_decision_from_audit(entry: AuditLogEntry) -> AcceptanceDecisionRow:
+    details = entry.details
+    exception_evidence = _parse_exception_evidence(details.get("exception_evidence_uris", ""))
+    scan_timestamp_raw = details.get("scan_timestamp")
+    if scan_timestamp_raw is None:
+        scan_timestamp = entry.occurred_at
+    else:
+        scan_timestamp = datetime.fromisoformat(scan_timestamp_raw)
+    return AcceptanceDecisionRow(
+        decision_id=uuid4(),
+        shipment_id=UUID(entry.entity_id),
+        pickup_task_id=UUID(details["pickup_task_id"]),
+        outcome=details["outcome"],
+        acting_driver_user_id=entry.actor_id,
+        scanned_identifier=details["scanned_identifier"],
+        scan_timestamp=scan_timestamp,
+        recorded_at=entry.occurred_at,
+        exception_evidence=exception_evidence,
+    )
+
+
+def _parse_exception_evidence(raw: str) -> list[dict[str, str | bool | None]]:
+    if not raw:
+        return []
+    return [{"storage_uri": uri.strip()} for uri in raw.split(",") if uri.strip()]

@@ -190,6 +190,16 @@ class AcceptanceLifecycleService:
             )
             self._uow.shipment_events.append_event(shipment_event)
 
+        audit_details: dict[str, str] = {
+            "outcome": command.outcome.value,
+            "pickup_task_id": str(pickup_task.pickup_task_id),
+            "scanned_identifier": command.scanned_identifier.strip(),
+            "scan_timestamp": command.scan_timestamp.isoformat(),
+        }
+        if command.exception_evidence:
+            audit_details["exception_evidence_uris"] = ",".join(
+                evidence.storage_uri for evidence in command.exception_evidence
+            )
         audit_log = AuditLogEntry(
             audit_id=uuid4(),
             action="SHIPMENT_ACCEPTANCE_SCAN",
@@ -197,11 +207,7 @@ class AcceptanceLifecycleService:
             entity_id=str(shipment.shipment_id),
             actor_id=command.acting_driver_user_id,
             occurred_at=recorded_at,
-            details={
-                "outcome": command.outcome.value,
-                "pickup_task_id": str(pickup_task.pickup_task_id),
-                "scanned_identifier": command.scanned_identifier.strip(),
-            },
+            details=audit_details,
         )
         self._uow.audit_logs.append_entry(audit_log)
         self._uow.pickup_tasks.save_pickup_task(pickup_task)

@@ -31,6 +31,24 @@ class AcceptanceAlreadyRecorded(ShipmentError):
         super().__init__(f"acceptance already recorded for shipment: {shipment_id}")
 
 
+class OptimisticConcurrencyConflict(ShipmentError):
+    """Aggregate version changed since load — retry or reject stale command."""
+
+    def __init__(
+        self,
+        *,
+        entity_type: str,
+        entity_id: str,
+        expected_version: int,
+    ) -> None:
+        self.entity_type = entity_type
+        self.entity_id = entity_id
+        self.expected_version = expected_version
+        super().__init__(
+            f"stale {entity_type} {entity_id}: expected version {expected_version}"
+        )
+
+
 class InlineMediaNotAllowed(ShipmentError):
     """Evidence must be an external reference; inline media bytes are forbidden."""
 

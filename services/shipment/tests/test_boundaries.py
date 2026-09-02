@@ -33,6 +33,7 @@ def test_no_cross_service_imports() -> None:
 def test_allowed_shared_packages_only() -> None:
     service_root = Path(__file__).resolve().parents[1] / "src"
     allowed = {"shipment"}
+    allowed_third_party = {"alembic", "sqlalchemy"}
     stdlib = {
         "abc",
         "asyncio",
@@ -59,17 +60,18 @@ def test_allowed_shared_packages_only() -> None:
         "__future__",
         "types",
     }
+    allowed_modules = allowed | allowed_third_party | stdlib
     for py_file in service_root.rglob("*.py"):
         tree = ast.parse(py_file.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     module = alias.name.split(".")[0]
-                    if module not in allowed and module not in stdlib:
+                    if module not in allowed_modules:
                         raise AssertionError(f"Unexpected import {alias.name} in {py_file}")
             elif isinstance(node, ast.ImportFrom) and node.module:
                 module = node.module.split(".")[0]
-                if module not in allowed and module not in stdlib:
+                if module not in allowed_modules:
                     raise AssertionError(f"Unexpected import {node.module} in {py_file}")
 
 

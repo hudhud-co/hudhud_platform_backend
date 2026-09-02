@@ -1,5 +1,10 @@
-"""In-memory adapters for tests and local domain proof."""
+"""Persistence adapters for Shipment acceptance lifecycle."""
 
-from shipment.infrastructure.memory import InMemoryShipmentRepository
+from shipment.infrastructure.memory import InMemoryAcceptanceUnitOfWork, InMemoryShipmentRepository
+from shipment.infrastructure.persistence.acceptance_uow import SqlAlchemyAcceptanceUnitOfWork
 
-__all__ = ["InMemoryShipmentRepository"]
+__all__ = [
+    "InMemoryAcceptanceUnitOfWork",
+    "InMemoryShipmentRepository",
+    "SqlAlchemyAcceptanceUnitOfWork",
+]
