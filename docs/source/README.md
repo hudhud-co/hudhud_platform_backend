@@ -12,6 +12,6 @@ W11 Shipment acceptance foundation implements only the sections cited in
 `services/shipment/README.md`. Later management shipment documents are not
 substitutes for this source.
 
-Place the PDF at this path when available for local review:
-
-`docs/source/hodhod_comprehensive_analysis_en_v1_4.pdf`
+The PDF is **not** checked into this repository. Obtain it through your team's
+document distribution channel when local review is required. Section references
+above remain the provenance anchor for W11 scope.

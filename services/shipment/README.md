@@ -10,34 +10,51 @@ lifecycle stages.
 
 | Document | Version | Sections implemented in W11 |
 |----------|---------|----------------------------|
-| `docs/source/hodhod_comprehensive_analysis_en_v1_4.pdf` — *Hodhod Comprehensive Product, Operations & Policy Analysis* | v1.4 (2026-05-31) | §2 Core Operating Principles; §3 Full Parcel Journey Model; §5 Pickup and Acceptance Scan; §6 Photo Evidence and Metadata Policy; §7 Photo Capture Checkpoints; §33 Confirmed Decisions Table; §34 Conceptual Entities and Domains |
+| `hodhod_comprehensive_analysis_en_v1_4.pdf` — *Hodhod Comprehensive Product, Operations & Policy Analysis* | v1.4 (2026-05-31) | §2 Core Operating Principles; §3 Full Parcel Journey Model; §5 Pickup and Acceptance Scan; §6 Photo Evidence and Metadata Policy; §7 Photo Capture Checkpoints; §33 Confirmed Decisions Table; §34 Conceptual Entities and Domains |
 
 Later management shipment documents are **not** substitutes for this source.
+See `docs/source/README.md` for provenance (PDF not in Git).
 
 ## Domain design
 
 ```text
 OrderIntent (intent only)
-    └── Shipment aggregate
-            ├── pre-acceptance: no Hodhod custody, no SLA clock
-            └── AcceptanceDecisionRecord (traceable internal record)
-                    ├── waybill/shipment identity
-                    ├── scan timestamp + responsible operator
-                    ├── packaging/seal assessment
-                    ├── optional approximate weight/dimensions
-                    ├── parcel-condition evidence references
-                    ├── exception evidence (accepted-with-exception)
-                    └── acceptance outcome
+    └── Shipment aggregate (current_status=CREATED until acceptance)
+            ├── PickupTaskSnapshot (service-local prerequisite input; Pickup adapter deferred)
+            ├── ShipmentEvent append (ACCEPTANCE_SCAN on successful acceptance)
+            └── AuditLogEntry append
 ```
 
-### Custody and SLA invariants
+### Phase 11 acceptance prerequisites
 
-| Event | Hodhod network entry | Custody start | SLA start |
-|-------|---------------------|---------------|-----------|
-| Order creation (intent) | No | No | No |
-| Acceptance — accepted | Yes | Scan timestamp | Scan timestamp |
-| Acceptance — accepted-with-exception | Yes (exception preserved) | Scan timestamp | Scan timestamp |
-| Acceptance — rejected | No | No | No |
+Acceptance is allowed only when all of the following hold:
+
+1. Pickup task status is `PROOF_CAPTURED`
+2. Pickup task has an assigned driver
+3. Pickup task has an assigned batch
+4. The acting driver is the assigned driver
+5. Shipment status is `CREATED`
+6. Pickup-condition proof exists
+7. The scanned shipment/waybill code matches the expected shipment identifier
+
+Each violated prerequisite raises an explicit domain error — no silent generic rejection.
+
+### Successful acceptance effects (atomic UoW)
+
+| Field / effect | Value |
+|----------------|-------|
+| `shipment.current_status` | `IN_CUSTODY` |
+| `shipment.accepted_at` | acceptance scan timestamp |
+| `shipment.sla_started_at` | acceptance scan timestamp |
+| `shipment.current_custody_type` | `DRIVER` |
+| `shipment.current_custody_id` | assigned driver user id |
+| Pickup task acceptance state | `ACCEPTED` or `ACCEPTED_WITH_EXCEPTION` |
+| ShipmentEvent | `ACCEPTANCE_SCAN`, `CREATED` → `IN_CUSTODY` |
+| AuditLog | append acceptance decision |
+
+Rejected scans (source §5) record pickup rejection and audit only — no custody, SLA,
+or `ACCEPTANCE_SCAN` event. Accepted-with-exception (source §5) requires exception
+evidence references and otherwise follows the successful acceptance path.
 
 ### Evidence quality
 
@@ -50,18 +67,21 @@ OrderIntent (intent only)
 
 `AcceptanceLifecycleService` exposes:
 
-- `create_order_intent` — creates `OrderIntent` + `Shipment` without custody/SLA.
-- `record_acceptance_scan` — records `AcceptanceDecisionRecord` and applies outcome rules.
+- `create_order_intent` — creates `OrderIntent` + `Shipment` (`CREATED`) without custody/SLA.
+- `register_pickup_task` — persists service-local Pickup prerequisite snapshot.
+- `record_acceptance_scan` — validates Phase 11 prerequisites and applies effects atomically.
 
-Repository port: `ShipmentRepository`. Tests use `InMemoryShipmentRepository`.
+Unit of work port: `AcceptanceUnitOfWork`. Tests use `InMemoryAcceptanceUnitOfWork`
+(copy-on-write rollback).
 
 ## Explicit non-goals (deferred)
 
+- **Production Pickup integration adapter** — live Pickup service/database/API reads
 - Delivery / Delivered and all post-acceptance lifecycle stages
-- Pickup assignment, hub/bag/manifest/seal operations beyond acceptance assessment
+- Hub/bag/manifest/seal/linehaul operations
 - Linehaul, payments/COD/settlement/refunds, returns
 - HTTP endpoints, PostgreSQL migrations, NATS/events, authentication
-- Cross-service calls and generic workflow frameworks
+- Cross-service distributed transaction claims
 
 ## Validation
 
@@ -79,5 +99,5 @@ legacy repository access in targeted tests.
 
 ## Production readiness
 
-**Not production-ready.** Runtime persistence, API surface, secured messaging, and
-post-acceptance lifecycle remain future Waves.
+**Not production-ready.** Runtime persistence, API surface, secured messaging, Pickup
+integration, and post-acceptance lifecycle remain future Waves.

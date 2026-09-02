@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
 from shipment.domain.value_objects import (
-    AcceptanceOutcome,
-    ApproximateParcelMetrics,
-    EvidenceReference,
-    PackagingSealAssessment,
+    CustodyType,
+    PickupTaskAcceptanceState,
+    PickupTaskStatus,
+    ShipmentEventType,
+    ShipmentStatus,
     WaybillIdentity,
 )
 
@@ -25,19 +26,16 @@ class OrderIntent:
 
 
 @dataclass(slots=True)
-class AcceptanceDecisionRecord:
-    """Traceable internal record of an acceptance decision (source §5, §33)."""
+class PickupTaskSnapshot:
+    """Service-local Pickup prerequisite input — production adapter deferred (Phase 11)."""
 
-    record_id: UUID
-    waybill_identity: WaybillIdentity
-    scan_timestamp: datetime
-    responsible_operator_id: str
-    packaging_seal_assessment: PackagingSealAssessment
-    approximate_metrics: ApproximateParcelMetrics | None
-    parcel_condition_evidence: tuple[EvidenceReference, ...]
-    exception_evidence: tuple[EvidenceReference, ...]
-    outcome: AcceptanceOutcome
-    recorded_at: datetime
+    pickup_task_id: UUID
+    shipment_id: UUID
+    status: PickupTaskStatus
+    assigned_driver_user_id: str | None
+    assigned_batch_id: UUID | None
+    has_pickup_condition_proof: bool
+    acceptance_state: PickupTaskAcceptanceState | None = None
 
 
 @dataclass(slots=True)
@@ -47,16 +45,42 @@ class Shipment:
     shipment_id: UUID
     order_id: UUID
     waybill_identity: WaybillIdentity
+    current_status: ShipmentStatus
     order_created_at: datetime
-    custody_started_at: datetime | None = None
+    accepted_at: datetime | None = None
     sla_started_at: datetime | None = None
-    in_hodhod_network: bool = False
-    acceptance_record: AcceptanceDecisionRecord | None = field(default=None)
+    current_custody_type: CustodyType | None = None
+    current_custody_id: str | None = None
 
     @property
     def custody_active(self) -> bool:
-        return self.custody_started_at is not None
+        return self.current_status is ShipmentStatus.IN_CUSTODY
 
     @property
     def sla_active(self) -> bool:
         return self.sla_started_at is not None
+
+
+@dataclass(frozen=True, slots=True)
+class ShipmentEvent:
+    """Immutable shipment lifecycle event append-only record."""
+
+    event_id: UUID
+    shipment_id: UUID
+    event_type: ShipmentEventType
+    previous_status: ShipmentStatus
+    new_status: ShipmentStatus
+    occurred_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class AuditLogEntry:
+    """Traceable audit record for acceptance decisions."""
+
+    audit_id: UUID
+    action: str
+    entity_type: str
+    entity_id: str
+    actor_id: str
+    occurred_at: datetime
+    details: dict[str, str]

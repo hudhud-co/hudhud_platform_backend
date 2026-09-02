@@ -1,21 +1,35 @@
 """Shipment domain model — order intent through acceptance scan."""
 
-from shipment.domain.entities import AcceptanceDecisionRecord, OrderIntent, Shipment
+from shipment.domain.entities import (
+    AuditLogEntry,
+    OrderIntent,
+    PickupTaskSnapshot,
+    Shipment,
+    ShipmentEvent,
+)
 from shipment.domain.value_objects import (
     AcceptanceOutcome,
-    ApproximateParcelMetrics,
+    CustodyType,
     EvidenceReference,
-    PackagingSealAssessment,
+    PickupTaskAcceptanceState,
+    PickupTaskStatus,
+    ShipmentEventType,
+    ShipmentStatus,
     WaybillIdentity,
 )
 
 __all__ = [
-    "AcceptanceDecisionRecord",
     "AcceptanceOutcome",
-    "ApproximateParcelMetrics",
+    "AuditLogEntry",
+    "CustodyType",
     "EvidenceReference",
     "OrderIntent",
-    "PackagingSealAssessment",
+    "PickupTaskAcceptanceState",
+    "PickupTaskSnapshot",
+    "PickupTaskStatus",
     "Shipment",
+    "ShipmentEvent",
+    "ShipmentEventType",
+    "ShipmentStatus",
     "WaybillIdentity",
 ]

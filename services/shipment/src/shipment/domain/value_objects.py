@@ -14,6 +14,40 @@ from shipment.domain.errors import InlineMediaNotAllowed
 _BASE64_LIKE = re.compile(r"^[A-Za-z0-9+/=\s]{256,}$")
 
 
+class ShipmentStatus(StrEnum):
+    """Canonical shipment lifecycle status at the acceptance boundary."""
+
+    CREATED = "CREATED"
+    IN_CUSTODY = "IN_CUSTODY"
+
+
+class CustodyType(StrEnum):
+    """Custody holder type at acceptance."""
+
+    DRIVER = "DRIVER"
+
+
+class PickupTaskStatus(StrEnum):
+    """Pickup task status prerequisite for acceptance."""
+
+    PENDING = "PENDING"
+    PROOF_CAPTURED = "PROOF_CAPTURED"
+
+
+class PickupTaskAcceptanceState(StrEnum):
+    """Pickup task acceptance outcome recorded with shipment acceptance."""
+
+    ACCEPTED = "ACCEPTED"
+    ACCEPTED_WITH_EXCEPTION = "ACCEPTED_WITH_EXCEPTION"
+    REJECTED = "REJECTED"
+
+
+class ShipmentEventType(StrEnum):
+    """Immutable shipment timeline event types at acceptance."""
+
+    ACCEPTANCE_SCAN = "ACCEPTANCE_SCAN"
+
+
 class AcceptanceOutcome(StrEnum):
     """Acceptance scan outcome — source §5 Pickup and Acceptance Scan."""
 
