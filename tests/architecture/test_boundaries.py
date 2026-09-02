@@ -158,6 +158,22 @@ def test_tracking_bootstrap_registered(boundaries: dict, ownership_matrix: dict)
     assert ownership["canonical_writer"] == "none"
 
 
+def test_shipment_domain_foundation_bootstrap_registered(
+    boundaries: dict,
+    ownership_matrix: dict,
+) -> None:
+    shipment = boundaries["bounded_contexts"]["shipment"]
+    assert shipment["proposed_platform_owner"] == "shipment"
+    assert shipment["extraction_status"] == "bootstrap_domain_foundation"
+    evidence = shipment["runtime_evidence"]
+    assert evidence["implementation"] == "bootstrap_acceptance_lifecycle_foundation"
+    assert evidence["scope"] == "order_intent_through_acceptance_scan"
+    assert evidence["production_ready"] is False
+    ownership = ownership_matrix["ownership"]["shipment"]
+    assert ownership["canonical_writer"] == "shipment"
+    assert ownership["runtime_evidence"]["implementation"] == "bootstrap_acceptance_lifecycle_foundation"
+
+
 def test_messaging_conformance_is_allowlisted_and_technical(boundaries: dict) -> None:
     allowed = boundaries["shared_packages"]["allowed_categories"]
     assert "messaging_conformance" in allowed

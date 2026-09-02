@@ -128,6 +128,14 @@ ownership:
     invariants:
       - sole_lifecycle_state_writer
       - no_direct_status_mutation_by_other_contexts
+    runtime_evidence:
+      implementation: bootstrap_acceptance_lifecycle_foundation
+      scope: order_intent_through_acceptance_scan
+      unit_fake_evidence: verified
+      postgres_persistence_runtime_proof: pending
+      http_api_runtime_proof: pending
+      jetstream_runtime_proof: pending
+      production_ready: false
 
   pickup:
     canonical_writer: pickup

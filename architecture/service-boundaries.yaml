@@ -304,8 +304,17 @@ bounded_contexts:
     adr_reference: ADR-0003
     adr_status: Accepted
     transitional_deployable_candidate: deferred_wave_3
-    extraction_status: pending_cutover
+    extraction_status: bootstrap_domain_foundation
     policy_prerequisites: [shipment_sole_lifecycle_writer]
+    runtime_evidence:
+      implementation: bootstrap_acceptance_lifecycle_foundation
+      scope: order_intent_through_acceptance_scan
+      source_authority: docs/source/hodhod_comprehensive_analysis_en_v1_4.pdf
+      unit_fake_evidence: verified
+      postgres_persistence_runtime_proof: pending
+      http_api_runtime_proof: pending
+      jetstream_runtime_proof: pending
+      production_ready: false
     data_ownership:
       strategy: dedicated_database
       legacy_tables: [shipments, shipment_events, delivery_evidence_attachments]
