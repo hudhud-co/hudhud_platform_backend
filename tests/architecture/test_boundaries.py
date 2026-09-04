@@ -201,16 +201,17 @@ def test_wave17_acceptance_boundary_foundation_registered(
     boundaries: dict,
     ownership_matrix: dict,
 ) -> None:
-    """W17 shared metadata: outbox/inbox SQLAlchemy proven locally; not production."""
+    """W17 shared metadata: outbox/inbox/JetStream proven locally; not production."""
     wave17 = boundaries["wave_17_runtime_evidence"]
     assert wave17["production_ready"] is False
-    assert wave17["lab"] == "infra/labs/service-postgres-proof"
+    assert wave17["lab"] == "infra/labs/pickup-acceptance-eventing-proof"
     assert wave17["classifications"]["contract_registered"] == "pickup.fact.accepted.v1"
     assert (
         wave17["classifications"]["implementation_status"]
         == "implementation_authorized_not_production_enabled"
     )
-    assert wave17["classifications"]["evidence_class"] == "local_disposable_postgres_lab"
+    assert wave17["classifications"]["evidence_class"] == "local_disposable_eventing_lab"
+    assert wave17["classifications"]["jetstream_runtime"] == "proven_local_disposable_lab"
     assert (
         wave17["classifications"]["http_acceptance_path"]
         == "compatibility_internal_not_second_production_writer"
@@ -219,9 +220,12 @@ def test_wave17_acceptance_boundary_foundation_registered(
     assert "pickup_outbox_producer_adapter_deferred" not in limitations
     assert "shipment_inbox_consumer_adapter_deferred" not in limitations
     assert "shipment_custody_migration_disposable_postgres_proof_pending" not in limitations
-    assert "no_nats_topology_changes_this_round" in limitations
-    assert "no_jetstream_runtime" in limitations
-    assert "nats_pull_worker_deferred" in limitations
+    assert "no_nats_topology_changes_this_round" not in limitations
+    assert "no_jetstream_runtime" not in limitations
+    assert "nats_pull_worker_deferred" not in limitations
+    assert "no_production_credentials" in limitations
+    assert "local_no_auth_disposable_lab_only" in limitations
+    assert "no_staging_tls_acl_evidence" in limitations
 
     shipment_w17 = wave17["services"]["shipment"]
     assert (
@@ -235,6 +239,11 @@ def test_wave17_acceptance_boundary_foundation_registered(
         == "proven_local_disposable_lab"
     )
     assert shipment_w17["http_acceptance_api"] == "compatibility_internal"
+    assert shipment_w17["jetstream_runtime_proof"] == "proven_local_disposable_lab"
+    assert (
+        shipment_w17["accepted_fact_worker_composition"]
+        == "postgres_sqlalchemy_fail_closed"
+    )
     assert shipment_w17["production_ready"] is False
 
     pickup_w17 = wave17["services"]["pickup"]
@@ -244,6 +253,7 @@ def test_wave17_acceptance_boundary_foundation_registered(
     )
     assert pickup_w17["recovery_eligibility_blocks_on"] == "PICKUP_DRIVER"
     assert pickup_w17["contract_aggregate_authority"] == "pickup_task"
+    assert pickup_w17["jetstream_runtime_proof"] == "proven_local_disposable_lab"
     assert pickup_w17["production_ready"] is False
 
     shipment = boundaries["bounded_contexts"]["shipment"]
@@ -254,6 +264,7 @@ def test_wave17_acceptance_boundary_foundation_registered(
     )
     assert shipment_evidence["custody_type_canonical"] == "PICKUP_DRIVER"
     assert shipment_evidence["http_acceptance_api"] == "compatibility_internal"
+    assert shipment_evidence["jetstream_runtime_proof"] == "proven_local_disposable_lab"
     assert shipment_evidence["production_ready"] is False
     assert "pickup.fact.accepted" in shipment["consumed_events"]
     assert shipment["data_ownership"]["strategy"] == "dedicated_database"
@@ -269,6 +280,7 @@ def test_wave17_acceptance_boundary_foundation_registered(
         == "registered_not_production_enabled"
     )
     assert pickup_evidence["recovery_eligibility_blocks_on"] == "PICKUP_DRIVER"
+    assert pickup_evidence["jetstream_runtime_proof"] == "proven_local_disposable_lab"
     assert pickup_evidence["production_ready"] is False
     assert "pickup.fact.accepted" in pickup["published_events"]
     assert pickup["allowed_dependencies"] == []

@@ -1,0 +1,78 @@
+"""Static composition-root tests for the Shipment pickup-accepted worker."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from shipment.config import PersistenceBackend, RuntimeEnvironment, load_settings
+from shipment.infrastructure.jetstream.deferred_transport import DeferredJetStreamTransport
+from shipment.infrastructure.transport import TransportNotConfiguredError
+from shipment.worker import WorkerStartupError, build_coordinator
+
+WORKER_SOURCE = (
+    Path(__file__).resolve().parents[1] / "src" / "shipment" / "worker.py"
+).read_text(encoding="utf-8")
+
+
+def test_worker_source_composes_postgres_accepted_fact_store() -> None:
+    assert "SqlAlchemyAcceptedFactStore" in WORKER_SOURCE
+    assert "build_engine" in WORKER_SOURCE
+    assert "assert_migrations_applied" in WORKER_SOURCE
+    assert "owned_engine.dispose" in WORKER_SOURCE
+    assert "accepted-fact store must be injected" not in WORKER_SOURCE
+    assert "InMemory" not in WORKER_SOURCE
+    assert "MemoryAcceptedFactStore" not in WORKER_SOURCE
+
+
+def test_worker_source_does_not_mutate_topology() -> None:
+    assert "add_consumer" not in WORKER_SOURCE
+    assert "add_stream" not in WORKER_SOURCE
+    assert "bind_existing_pull_consumer" in WORKER_SOURCE
+
+
+def test_build_coordinator_rejects_disabled_nats() -> None:
+    settings = load_settings(
+        environment=RuntimeEnvironment.LOCAL,
+        database_url="postgresql+psycopg://localhost/shipment",
+        nats_enabled=False,
+    )
+    with pytest.raises(TransportNotConfiguredError):
+        build_coordinator(settings, transport=DeferredJetStreamTransport())
+
+
+def test_build_coordinator_rejects_memory_persistence() -> None:
+    settings = load_settings(
+        environment=RuntimeEnvironment.TEST,
+        database_url="postgresql+psycopg://localhost/shipment",
+        persistence_backend=PersistenceBackend.MEMORY,
+        nats_enabled=True,
+        nats_url="nats://localhost:4222",
+    )
+    with pytest.raises(WorkerStartupError, match="postgres persistence"):
+        build_coordinator(settings, transport=DeferredJetStreamTransport())
+
+
+def test_build_coordinator_forbids_memory_in_staging() -> None:
+    settings = load_settings(
+        environment=RuntimeEnvironment.STAGING,
+        database_url="postgresql+psycopg://localhost/shipment",
+        persistence_backend=PersistenceBackend.MEMORY,
+        nats_enabled=True,
+        nats_url="nats://localhost:4222",
+    )
+    with pytest.raises(WorkerStartupError, match="staging/production"):
+        build_coordinator(settings, transport=DeferredJetStreamTransport())
+
+
+def test_build_coordinator_requires_database_url() -> None:
+    settings = load_settings(
+        environment=RuntimeEnvironment.LOCAL,
+        database_url=None,
+        persistence_backend=PersistenceBackend.POSTGRES,
+        nats_enabled=True,
+        nats_url="nats://localhost:4222",
+    )
+    with pytest.raises(WorkerStartupError, match="database URL"):
+        build_coordinator(settings, transport=DeferredJetStreamTransport())

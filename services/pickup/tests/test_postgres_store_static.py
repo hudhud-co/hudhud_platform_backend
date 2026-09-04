@@ -47,3 +47,14 @@ def test_session_factory_exports_async_and_sync_builders() -> None:
     assert "build_async_session_factory" in source
     assert "build_session_factory" in source
     assert "build_engine" in source
+    assert "assert_migrations_applied" in source
+
+
+def test_relay_main_composes_postgres_and_disposes_engine() -> None:
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "pickup" / "runtime" / "relay_main.py"
+    ).read_text(encoding="utf-8")
+    assert "SqlAlchemyOutboxRelayStore" in source
+    assert "assert_migrations_applied" in source
+    assert "engine.dispose" in source
+    assert "InMemory" not in source

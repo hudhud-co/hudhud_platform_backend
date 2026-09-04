@@ -59,6 +59,22 @@ def test_no_global_stream_durable_without_filter() -> None:
         assert entry["filter_subject"] != ">"
 
 
+def test_shipment_pickup_facts_durable_uses_exact_accepted_subject() -> None:
+    doc = load_topology_yaml("consumers.yaml")
+    entry = next(
+        item for item in doc["consumers"] if item["durable_name"] == "shipment_pickup_facts_v1"
+    )
+    assert entry["stream"] == "HUDHUD_PICKUP"
+    assert entry["filter_subject"] == "hudhud.pickup.pickup.fact.accepted.v1"
+    assert doc["defaults"]["ack_policy"] == "explicit"
+    durables = [
+        item["durable_name"]
+        for item in doc["consumers"]
+        if item["stream"] == "HUDHUD_PICKUP"
+    ]
+    assert durables == ["shipment_pickup_facts_v1"]
+
+
 def test_shipment_stream_has_multiple_independent_durables() -> None:
     doc = load_topology_yaml("consumers.yaml")
     shipment_durables = [

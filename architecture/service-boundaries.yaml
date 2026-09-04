@@ -165,22 +165,25 @@ wave_16_runtime_evidence:
 wave_17_runtime_evidence:
   integration_date: 2026-09-04
   production_ready: false
-  lab: infra/labs/service-postgres-proof
+  lab: infra/labs/pickup-acceptance-eventing-proof
   proof_scope: >
-    W17 Pickup transactional outbox and Shipment durable inbox PostgreSQL
-    persistence — pickup.fact.accepted v1 against one disposable PostgreSQL 16
-    container; no API containers and no NATS
+    W17 native Pickup acceptance pipeline — PickupAcceptanceService transactional
+    outbox, Pickup JetStream relay, HUDHUD_PICKUP / shipment_pickup_facts_v1,
+    Shipment pull worker with PostgreSQL accepted-fact composition, inbox apply,
+    and ACK after commit. One disposable PostgreSQL 16 + one JetStream container;
+    no API containers; local no-auth labelled disposable only.
   classifications:
     contract_registered: pickup.fact.accepted.v1
     implementation_status: implementation_authorized_not_production_enabled
-    evidence_class: local_disposable_postgres_lab
+    evidence_class: local_disposable_eventing_lab
     http_acceptance_path: compatibility_internal_not_second_production_writer
+    jetstream_runtime: proven_local_disposable_lab
   limitations:
-    - no_nats_topology_changes_this_round
-    - no_jetstream_runtime
-    - nats_pull_worker_deferred
     - no_production_credentials
+    - no_staging_tls_acl_evidence
+    - local_no_auth_disposable_lab_only
     - no_cross_service_database_access
+    - no_adr_0010_production_credential_proof
   services:
     shipment:
       pickup_fact_accepted_consumer: proven_local_disposable_sqlalchemy_inbox
@@ -188,13 +191,14 @@ wave_17_runtime_evidence:
       custody_data_migration: implemented_alembic_single_head
       custody_migration_disposable_postgres_proof: proven_local_disposable_lab
       http_acceptance_api: compatibility_internal
-      jetstream_runtime_proof: deferred
+      jetstream_runtime_proof: proven_local_disposable_lab
+      accepted_fact_worker_composition: postgres_sqlalchemy_fail_closed
       production_ready: false
     pickup:
       pickup_fact_accepted_producer: proven_local_disposable_sqlalchemy_outbox
       recovery_eligibility_blocks_on: PICKUP_DRIVER
       contract_aggregate_authority: pickup_task
-      jetstream_runtime_proof: deferred
+      jetstream_runtime_proof: proven_local_disposable_lab
       production_ready: false
 
 legacy_event_bridge:
@@ -412,16 +416,18 @@ bounded_contexts:
       custody_data_migration: implemented_alembic_single_head
       custody_migration_disposable_postgres_proof: proven_local_disposable_lab
       http_acceptance_api: compatibility_internal
-      jetstream_runtime_proof: deferred
+      jetstream_runtime_proof: proven_local_disposable_lab
+      accepted_fact_worker_composition: postgres_sqlalchemy_fail_closed
       production_ready: false
     data_ownership:
       strategy: dedicated_database
       legacy_tables: [shipments, shipment_events, delivery_evidence_attachments]
       notes: >
         Platform invariant — sole canonical writer of shipment lifecycle state
-        (ADR-0003). Native pickup.fact.accepted SQLAlchemy inbox is proven in the
-        disposable PostgreSQL lab (W17); W16 HTTP acceptance remains
-        compatibility/internal only. Live NATS pull worker remains deferred.
+        (ADR-0003). Native pickup.fact.accepted SQLAlchemy inbox and JetStream
+        pull worker are proven in a local disposable lab (W17). W16 HTTP
+        acceptance remains compatibility/internal only. Production credentials
+        and staging TLS/ACL remain deferred.
     allowed_dependencies: []
     public_api_ownership: shipment
     published_events: [shipment.fact.delivered, shipment.fact.lifecycle_changed]
@@ -450,7 +456,7 @@ bounded_contexts:
       pickup_fact_accepted_producer: proven_local_disposable_sqlalchemy_outbox
       pickup_fact_accepted_contract: registered_not_production_enabled
       recovery_eligibility_blocks_on: PICKUP_DRIVER
-      jetstream_runtime_proof: deferred
+      jetstream_runtime_proof: proven_local_disposable_lab
       production_ready: false
     data_ownership:
       strategy: dedicated_database
@@ -459,8 +465,8 @@ bounded_contexts:
         Owns PickupTask recovery and attempt history. Consumes Shipment eligibility
         snapshot through port only — does not own or mutate Shipment custody (ADR-0003).
         Producer of pickup.fact.accepted (aggregate PickupTask); transactional
-        outbox SQLAlchemy adapter proven in the disposable PostgreSQL lab (W17).
-        Live NATS outbox relay remains deferred.
+        outbox SQLAlchemy adapter and local disposable JetStream relay proven (W17).
+        Production/staging NATS credentials remain deferred.
     allowed_dependencies: []
     public_api_ownership: pickup
     published_events: [pickup.fact.accepted, pickup.fact.handover_completed]

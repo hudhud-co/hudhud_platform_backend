@@ -26,9 +26,9 @@ defaults:
 consumers:
   - stream: HUDHUD_PICKUP
     durable_name: shipment_pickup_facts_v1
-    filter_subject: hudhud.pickup.pickup.fact.>
+    filter_subject: hudhud.pickup.pickup.fact.accepted.v1
     description: >
-      [provisional] Shipment service inbox projection for pickup facts.
+      Shipment service inbox projection for pickup.fact.accepted v1.
       Distinct from other services consuming pickup stream subjects.
 
   - stream: HUDHUD_SHIPMENT

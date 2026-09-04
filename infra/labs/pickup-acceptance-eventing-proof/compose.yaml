@@ -1,0 +1,116 @@
+# HUDHUD Wave 17 — disposable Pickup→Shipment accepted-fact eventing proof lab.
+# Synthetic credentials only; NATS_AUTH_ENABLED=false is local disposable proof only.
+# Ephemeral loopback host ports; dedicated Compose project, network, and volumes.
+# Not production Compose. No API containers.
+
+name: hudhud-pickup-acceptance-eventing-proof-lab
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hudhud-pickup-acceptance-eventing-proof-postgres
+    profiles:
+      - pickup-acceptance-eventing-proof
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pickup_acc_lab_owner
+      POSTGRES_PASSWORD: pickup_acc_lab_owner_dev_only
+      POSTGRES_DB: pickup_acc_lab
+    command:
+      - postgres
+      - -c
+      - max_prepared_transactions=10
+    ports:
+      - target: 5432
+        host_ip: 127.0.0.1
+        published: 0
+        protocol: tcp
+    volumes:
+      - type: volume
+        source: hudhud_pickup_acceptance_eventing_proof_pgdata
+        target: /var/lib/postgresql/data
+      - type: bind
+        source: ./init
+        target: /docker-entrypoint-initdb.d
+        read_only: true
+    networks:
+      - hudhud_pickup_acceptance_eventing_proof
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pickup_acc_lab_owner -d pickup_acc_lab"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    labels:
+      hudhud.lab: pickup-acceptance-eventing-proof
+      hudhud.wave: "17"
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: hudhud-pickup-acceptance-eventing-proof-nats
+    profiles:
+      - pickup-acceptance-eventing-proof
+    restart: unless-stopped
+    environment:
+      JETSTREAM_STORE_DIR: /data/jetstream
+      NATS_AUTH_ENABLED: "false"
+    entrypoint: ["/bin/sh", "/etc/nats/entrypoint.sh"]
+    volumes:
+      - type: volume
+        source: hudhud_pickup_acceptance_eventing_proof_jetstream
+        target: /data/jetstream
+      - type: bind
+        source: ../../eventing/nats/entrypoint.sh
+        target: /etc/nats/entrypoint.sh
+        read_only: true
+    ports:
+      - target: 4222
+        host_ip: 127.0.0.1
+        published: 0
+        protocol: tcp
+    networks:
+      - hudhud_pickup_acceptance_eventing_proof
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    labels:
+      hudhud.lab: pickup-acceptance-eventing-proof
+      hudhud.nats.auth: "false-local-disposable-proof"
+
+  topology-bootstrap:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    container_name: hudhud-pickup-acceptance-eventing-proof-bootstrap
+    profiles:
+      - pickup-acceptance-eventing-proof
+    restart: "no"
+    working_dir: /repo
+    volumes:
+      - type: bind
+        source: ../../..
+        target: /repo
+    environment:
+      NATS_URL: nats://nats:4222
+      UV_CACHE_DIR: /tmp/uv-cache
+    command:
+      - /bin/sh
+      - -c
+      - uv run python infra/labs/pickup-acceptance-eventing-proof/scripts/bootstrap_pickup_topology.py
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - hudhud_pickup_acceptance_eventing_proof
+
+networks:
+  hudhud_pickup_acceptance_eventing_proof:
+    name: hudhud_pickup_acceptance_eventing_proof
+    driver: bridge
+
+volumes:
+  hudhud_pickup_acceptance_eventing_proof_pgdata:
+    name: hudhud_pickup_acceptance_eventing_proof_pgdata
+  hudhud_pickup_acceptance_eventing_proof_jetstream:
+    name: hudhud_pickup_acceptance_eventing_proof_jetstream

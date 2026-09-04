@@ -12,8 +12,10 @@ from pickup.config import load_settings
 from pickup.infrastructure.nats.client import build_live_nats_client
 from pickup.infrastructure.nats.publisher import JetStreamPublisherAdapter
 from pickup.infrastructure.persistence.session import (
+    assert_migrations_applied,
     build_engine,
     build_session_factory,
+    ping_database,
 )
 from pickup.infrastructure.persistence.sqlalchemy_store import SqlAlchemyOutboxRelayStore
 
@@ -31,11 +33,34 @@ def main() -> int:
     if not settings.database_url:
         logger.error("DATABASE_URL is required for the outbox relay")
         return 1
+    if not settings.relay_configuration_valid():
+        logger.error("pickup accepted-fact relay NATS configuration is invalid")
+        return 1
 
     engine = build_engine(settings.database_url)
+    if not ping_database(engine):
+        logger.error("pickup database is not reachable")
+        engine.dispose()
+        return 1
+    try:
+        assert_migrations_applied(engine)
+    except RuntimeError:
+        logger.error("pickup database migrations are unavailable")
+        engine.dispose()
+        return 1
+
     store = SqlAlchemyOutboxRelayStore(session_factory=build_session_factory(engine))
     nats_client = build_live_nats_client(settings)
-    nats_client.connect()
+    try:
+        nats_client.connect()
+    except Exception:
+        logger.error("pickup nats connection failed")
+        try:
+            nats_client.close()
+        except Exception:
+            logger.error("pickup nats close failed after connect error")
+        engine.dispose()
+        return 1
 
     nats_adapter = JetStreamPublisherAdapter(
         nats_client,
@@ -74,6 +99,7 @@ def main() -> int:
         worker.run_until_stopped()
     finally:
         logger.info("pickup accepted-fact outbox relay stopped")
+        engine.dispose()
     return 0
 
 

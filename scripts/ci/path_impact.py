@@ -267,6 +267,7 @@ def classify_path(
                     "service_postgres_proof",
                     "observation_eventing_proof",
                     "nats_security_proof",
+                    "pickup_acceptance_eventing_proof",
                 }:
                     category = (
                         ImpactCategory.CI_TOOLING

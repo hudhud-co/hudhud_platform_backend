@@ -102,7 +102,7 @@ Example durables (foundation templates):
 
 | Durable | Stream | Filter |
 |---------|--------|--------|
-| `shipment_pickup_facts_v1` | `HUDHUD_PICKUP` | `hudhud.pickup.pickup.fact.>` |
+| `shipment_pickup_facts_v1` | `HUDHUD_PICKUP` | `hudhud.pickup.pickup.fact.accepted.v1` |
 | `tracking_lifecycle_v1` | `HUDHUD_SHIPMENT` | `hudhud.shipment.shipment.fact.>` |
 | `finance_cod_collected_v1` | `HUDHUD_DELIVERY` | `hudhud.delivery.delivery.fact.cod_collected.v1` |
 | `finance_shipment_delivered_v1` | `HUDHUD_SHIPMENT` | `hudhud.shipment.shipment.fact.delivered.v1` |

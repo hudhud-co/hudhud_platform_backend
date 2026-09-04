@@ -144,7 +144,8 @@ ownership:
       custody_data_migration: implemented_alembic_single_head
       custody_migration_disposable_postgres_proof: proven_local_disposable_lab
       http_acceptance_api: compatibility_internal
-      jetstream_runtime_proof: deferred
+      jetstream_runtime_proof: proven_local_disposable_lab
+      accepted_fact_worker_composition: postgres_sqlalchemy_fail_closed
       production_ready: false
 
   pickup:
@@ -171,13 +172,14 @@ ownership:
       pickup_fact_accepted_producer: proven_local_disposable_sqlalchemy_outbox
       pickup_fact_accepted_contract: registered_not_production_enabled
       recovery_eligibility_blocks_on: PICKUP_DRIVER
-      jetstream_runtime_proof: deferred
+      jetstream_runtime_proof: proven_local_disposable_lab
       production_ready: false
     notes: >
       Owns PickupTask recovery and attempt history. Shipment eligibility consumed
       through port only — no Shipment custody mutation. Producer of
       pickup.fact.accepted (registered; transactional outbox SQLAlchemy adapter
-      proven in the disposable PostgreSQL lab). Live NATS outbox relay deferred.
+      and local disposable JetStream relay proven). Production/staging NATS
+      credentials remain deferred.
 
   hub:
     canonical_writer: hub

@@ -6,9 +6,9 @@ import asyncio
 import logging
 import signal
 from datetime import timedelta
-from typing import Protocol
 
 import nats
+from sqlalchemy.engine import Engine
 
 from shipment.application.accepted_fact_apply import NativePickupAcceptedApplyService
 from shipment.application.accepted_fact_coordinator import PickupAcceptedFactCoordinator
@@ -21,8 +21,14 @@ from shipment.infrastructure.jetstream.connection import (
 )
 from shipment.infrastructure.jetstream.deferred_transport import DeferredJetStreamTransport
 from shipment.infrastructure.jetstream.worker import PickupAcceptedPullWorker
+from shipment.infrastructure.persistence.accepted_fact_uow import SqlAlchemyAcceptedFactStore
+from shipment.infrastructure.persistence.session import (
+    assert_migrations_applied,
+    build_engine,
+    build_session_factory,
+    ping_database,
+)
 from shipment.infrastructure.transport import TransportNotConfiguredError
-from shipment.ports.accepted_fact import AcceptedFactUnitOfWork, InboxStorePort
 
 logger = logging.getLogger("shipment.worker")
 
@@ -31,21 +37,19 @@ class WorkerStartupError(RuntimeError):
     """Raised when worker dependencies fail validation."""
 
 
-class AcceptedFactStore(AcceptedFactUnitOfWork, InboxStorePort, Protocol):
-    """Combined UoW + inbox port required by the consumer composition root."""
-
-
 def build_coordinator(
     settings: ShipmentSettings,
     *,
     transport: DeferredJetStreamTransport,
-    store: AcceptedFactStore,
-) -> PickupAcceptedFactCoordinator:
+) -> tuple[PickupAcceptedFactCoordinator, Engine]:
     if not settings.nats_enabled:
         raise TransportNotConfiguredError("NATS transport is disabled")
     if settings.persistence_backend is PersistenceBackend.MEMORY:
-        if settings.environment is RuntimeEnvironment.PRODUCTION:
-            raise WorkerStartupError("in-memory persistence is forbidden in production")
+        if settings.environment in {
+            RuntimeEnvironment.STAGING,
+            RuntimeEnvironment.PRODUCTION,
+        }:
+            raise WorkerStartupError("in-memory persistence is forbidden in staging/production")
         msg = "worker requires postgres persistence; memory is test-only via coordinator tests"
         raise WorkerStartupError(msg)
 
@@ -53,8 +57,20 @@ def build_coordinator(
     if not settings.database_url:
         raise WorkerStartupError("database URL is not configured")
 
+    engine = build_engine(settings.database_url)
+    if not ping_database(engine):
+        engine.dispose()
+        raise WorkerStartupError("database is not reachable")
+    try:
+        assert_migrations_applied(engine)
+    except RuntimeError as exc:
+        engine.dispose()
+        raise WorkerStartupError("database migrations are unavailable") from exc
+
+    session_factory = build_session_factory(engine)
+    store = SqlAlchemyAcceptedFactStore(session_factory=session_factory)
     apply_service = NativePickupAcceptedApplyService(store)
-    return PickupAcceptedFactCoordinator(
+    coordinator = PickupAcceptedFactCoordinator(
         unit_of_work=store,
         inbox=store,
         transport=transport,
@@ -65,13 +81,13 @@ def build_coordinator(
         lease_duration=timedelta(seconds=settings.inbox_lease_seconds),
         max_attempts=settings.inbox_max_attempts,
     )
+    return coordinator, engine
 
 
 async def run_worker(
     settings: ShipmentSettings | None = None,
     *,
     coordinator: PickupAcceptedFactCoordinator | None = None,
-    store: AcceptedFactStore | None = None,
 ) -> None:
     resolved = settings or load_settings()
     loop = asyncio.get_running_loop()
@@ -80,12 +96,9 @@ async def run_worker(
         defer_delay_seconds=resolved.defer_delay_seconds,
     )
     deferred = DeferredJetStreamTransport()
+    owned_engine: Engine | None = None
     if coordinator is None:
-        if store is None:
-            raise WorkerStartupError(
-                "accepted-fact store must be injected at the composition root"
-            )
-        coordinator = build_coordinator(resolved, transport=deferred, store=store)
+        coordinator, owned_engine = build_coordinator(resolved, transport=deferred)
 
     connect_options = build_nats_connect_options(resolved)
     nc: nats.NATS | None = None
@@ -114,8 +127,21 @@ async def run_worker(
         raise
     finally:
         if nc is not None:
-            await nc.close()
+            await _close_nats(nc)
+        if owned_engine is not None:
+            owned_engine.dispose()
         logger.info("shipment_worker_stopped")
+
+
+async def _close_nats(nc: nats.NATS) -> None:
+    try:
+        if not nc.is_closed:
+            await nc.drain()
+    except Exception:
+        try:
+            await nc.close()
+        except Exception:
+            logger.error("shipment_nats_shutdown_failed", extra={"error_code": "NATS_CLOSE"})
 
 
 def _install_signal_handlers(worker: PickupAcceptedPullWorker) -> None:

@@ -39,3 +39,26 @@ def ping_database(engine: Engine) -> bool:
         return True
     except Exception:
         return False
+
+
+def assert_migrations_applied(engine: Engine) -> None:
+    """Fail closed when Alembic metadata is missing or empty."""
+    try:
+        with engine.connect() as connection:
+            table = connection.execute(
+                text("SELECT to_regclass('public.alembic_version')")
+            ).scalar()
+            if table is None:
+                msg = "database migrations are unavailable"
+                raise RuntimeError(msg)
+            revision = connection.execute(
+                text("SELECT version_num FROM alembic_version LIMIT 1")
+            ).scalar()
+            if not revision:
+                msg = "database migrations are unavailable"
+                raise RuntimeError(msg)
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        msg = "database migrations are unavailable"
+        raise RuntimeError(msg) from exc

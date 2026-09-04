@@ -8,7 +8,8 @@ and attempt history; it does not own or mutate Shipment lifecycle/custody (ADR-0
 `pickup.fact.accepted` v1 envelope into a Pickup-owned transactional outbox in
 the same unit of work. An optional JetStream outbox relay publishes only
 `hudhud.pickup.pickup.fact.accepted.v1` to stream `HUDHUD_PICKUP` (disabled by
-default; fake-NATS unit tests only — no live topology mutation).
+default). Local disposable JetStream relay proof exists; production/staging
+credentials remain deferred.
 
 ## Scope (W12 + W15-B + W16-B)
 
@@ -92,7 +93,7 @@ Unit of work port: `RecoveryUnitOfWork`.
 
 - Production Shipment HTTP/event eligibility adapter
 - Production identity/authorization adapter (JWT/mTLS)
-- NATS/events production/staging deployment and live topology mutation
+- NATS/events production/staging deployment and ADR-0010 credential/TLS proof
 - Driver assignment algorithms, routing, scheduling engine
 - Hub inbound custody transfer
 - Notification, Control Tower, Delivery, Finance
@@ -124,8 +125,10 @@ uv run python ../../scripts/quality/verify_boundaries.py
 
 Service-local tests are unit/fake. PostgreSQL/Alembic and disposable lab
 persistence proof exist (W15). Local disposable HTTP+PostgreSQL command-API
-proof lives in `tests/service_postgres_proof` (`workflow_dispatch` only). No NATS
-or legacy repository access in that lab.
+proof lives in `tests/service_postgres_proof` (`workflow_dispatch` only). Local
+disposable Pickup→Shipment JetStream pipeline proof lives in
+`tests/pickup_acceptance_eventing_proof` (`workflow_dispatch` only; local
+no-auth labelled lab — not ADR-0010 production credential proof).
 
 ## Production readiness
 

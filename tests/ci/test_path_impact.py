@@ -149,6 +149,12 @@ def test_observation_eventing_proof_classified_as_infrastructure() -> None:
     assert result.full_validation is True
 
 
+def test_pickup_acceptance_eventing_proof_classified_as_infrastructure() -> None:
+    result = _impact("M\ttests/pickup_acceptance_eventing_proof/test_compose_topology.py")
+    assert result.impact_flags["infrastructure"] is True
+    assert result.full_validation is True
+
+
 def test_nats_security_proof_classified_as_infrastructure() -> None:
     result = _impact("M\ttests/nats_security_proof/test_compose_topology.py")
     assert result.impact_flags["infrastructure"] is True

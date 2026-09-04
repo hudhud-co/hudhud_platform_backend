@@ -22,8 +22,11 @@ ACK/NAK/DEFER intent).
 **W17-I:** Bind-only JetStream pull worker for durable `shipment_pickup_facts_v1`
 on `HUDHUD_PICKUP` / `hudhud.pickup.pickup.fact.accepted.v1`. Fail-closed binding
 (stream, durable, filter, AckPolicy, server identity). No topology mutation.
-Production requires ADR-0010 credentials + TLS. Postgres accepted-fact store must
-be injected at the worker composition root.
+The worker composition root builds PostgreSQL SQLAlchemy accepted-fact persistence
+from `DATABASE_URL`, instantiates the coordinator, and fails closed when the
+database, migrations, or NATS binding are unavailable. In-memory persistence is
+forbidden in staging/production. Production requires ADR-0010 credentials + TLS.
+Local disposable no-auth proof is labelled and is not ADR-0010 evidence.
 
 ## Source authority
 
@@ -121,9 +124,9 @@ Configuration: `DATABASE_URL` (or `SHIPMENT_DATABASE_URL`), `SHIPMENT_ENVIRONMEN
 ## Explicit non-goals (deferred)
 
 - Production identity/JWT authorization adapter (beyond default-deny + test fake)
-- Postgres SQLAlchemy accepted-fact UoW composition for the worker entrypoint
 - Production Pickup integration adapter (HTTP dual-writer)
 - Shared topology / live NATS mutation (forbidden — bind-only)
+- Production/staging NATS credentials, TLS, and ACL evidence (ADR-0010)
 - Delivery / post-acceptance lifecycle stages
 - Hub/bag/manifest/seal/linehaul operations
 - Payments/COD/settlement/refunds, returns
@@ -142,7 +145,9 @@ uv run python ../../scripts/quality/verify_boundaries.py
 
 Service-local tests are unit/in-memory (and static adapter checks). Disposable
 PostgreSQL + FastAPI ASGI proof lives in `tests/service_postgres_proof`
-(`workflow_dispatch` only). No NATS or legacy repository access in that lab.
+(`workflow_dispatch` only). Local disposable Pickup→Shipment JetStream pipeline
+proof lives in `tests/pickup_acceptance_eventing_proof` (`workflow_dispatch` only;
+local no-auth labelled lab — not ADR-0010 production credential proof).
 
 ## Production readiness
 
