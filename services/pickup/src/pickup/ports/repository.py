@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from pickup.domain.entities import (
     PickupTask,
     RecoveryHistoryEntry,
 )
+from pickup.domain.publish import PublishResult
 
 
 class PickupTaskRepository(Protocol):
@@ -58,6 +60,49 @@ class OutboxRepository(Protocol):
     def list_pending(self) -> tuple[OutboxRecord, ...]: ...
 
     def list_for_aggregate(self, aggregate_id: UUID) -> tuple[OutboxRecord, ...]: ...
+
+
+class OutboxRelayStorePort(Protocol):
+    """Lease-based outbox relay store — claim commits before broker await."""
+
+    def recover_stale_processing(self, *, now: datetime) -> int: ...
+
+    def claim_batch(
+        self,
+        *,
+        owner: str,
+        batch_size: int,
+        lease_until: datetime,
+        now: datetime,
+    ) -> list[OutboxRecord]: ...
+
+    def apply_publish_decision(
+        self,
+        *,
+        outbox_id: UUID,
+        status: str,
+        clear_owner: bool,
+        clear_lease: bool,
+        published_at: datetime | None,
+        next_attempt_at: datetime | None,
+        last_error_code: str | None,
+        last_error_message: str | None,
+    ) -> None: ...
+
+    def get_by_event_id(self, event_id: UUID) -> OutboxRecord | None: ...
+
+
+class PublisherPort(Protocol):
+    """JetStream publisher boundary."""
+
+    def publish(
+        self,
+        *,
+        subject: str,
+        payload_json: dict,
+        transport_msg_id: str,
+    ) -> PublishResult:
+        """Return publish outcome with broker ACK status."""
 
 
 class RecoveryUnitOfWork(Protocol):

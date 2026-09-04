@@ -37,6 +37,8 @@ def test_allowed_shared_packages_only() -> None:
         "pickup",
         "event_envelope",
         "jsonschema",
+        "messaging_conformance",
+        "nats",
         "referencing",
         "yaml",
     }

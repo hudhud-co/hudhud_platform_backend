@@ -1,13 +1,15 @@
 [project]
 name = "pickup"
 version = "0.1.0"
-description = "HUDHUD Pickup service — recovery command HTTP API and acceptance outbox (W16-B / W17-E)"
+description = "HUDHUD Pickup service — recovery, acceptance outbox, and JetStream relay (W16-B / W17-E / W17-H)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "event-envelope",
     "fastapi>=0.115",
     "jsonschema>=4.23",
+    "messaging-conformance",
+    "nats-py>=2.9",
     "psycopg[binary]>=3.2",
     "pydantic>=2.10",
     "pyyaml>=6.0",
@@ -26,6 +28,7 @@ dev = [
 
 [tool.uv.sources]
 event-envelope = { path = "../../packages/event_envelope", editable = true }
+messaging-conformance = { path = "../../packages/messaging_conformance", editable = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -54,6 +57,10 @@ ignore = [
 "src/pickup/infrastructure/persistence/sqlalchemy_store.py" = ["PLR0913"]
 "src/pickup/infrastructure/authorizers/default_deny.py" = ["ARG002"]
 "src/pickup/infrastructure/unavailable_shipment_eligibility.py" = ["ARG002"]
+"src/pickup/config.py" = ["PLR0911", "PLR0912", "PLR0915"]
+"src/pickup/application/readiness.py" = ["PLR0911", "PLR0912"]
+"src/pickup/infrastructure/nats/client.py" = ["PLR0912", "BLE001"]
+"src/pickup/infrastructure/nats/publisher.py" = ["BLE001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 import threading
+from dataclasses import replace
+from datetime import datetime
 from uuid import UUID
 
 from pickup.domain.entities import (
@@ -59,6 +61,47 @@ class InMemoryPickupUnitOfWork:
     @property
     def outbox(self) -> _OutboxRepo:
         return _OutboxRepo(self)
+
+    def recover_stale_processing(self, *, now: datetime) -> int:
+        return self.outbox.recover_stale_processing(now=now)
+
+    def claim_batch(
+        self,
+        *,
+        owner: str,
+        batch_size: int,
+        lease_until: datetime,
+        now: datetime,
+    ) -> list[OutboxRecord]:
+        return self.outbox.claim_batch(
+            owner=owner,
+            batch_size=batch_size,
+            lease_until=lease_until,
+            now=now,
+        )
+
+    def apply_publish_decision(
+        self,
+        *,
+        outbox_id: UUID,
+        status: str,
+        clear_owner: bool,
+        clear_lease: bool,
+        published_at: datetime | None,
+        next_attempt_at: datetime | None,
+        last_error_code: str | None,
+        last_error_message: str | None,
+    ) -> None:
+        self.outbox.apply_publish_decision(
+            outbox_id=outbox_id,
+            status=status,
+            clear_owner=clear_owner,
+            clear_lease=clear_lease,
+            published_at=published_at,
+            next_attempt_at=next_attempt_at,
+            last_error_code=last_error_code,
+            last_error_message=last_error_message,
+        )
 
     def begin(self) -> None:
         self._lock.acquire()
@@ -253,4 +296,76 @@ class _OutboxRepo:
             copy.deepcopy(record)
             for record in self._store._working_outbox().values()
             if record.aggregate_id == aggregate_id
+        )
+
+    def recover_stale_processing(self, *, now: datetime) -> int:
+        recovered = 0
+        outbox = self._store._outbox
+        for row_id, row in list(outbox.items()):
+            if row.status is not OutboxStatus.PROCESSING:
+                continue
+            if row.processing_until and row.processing_until < now:
+                outbox[row_id] = replace(
+                    row,
+                    status=OutboxStatus.PENDING,
+                    processing_owner=None,
+                    processing_until=None,
+                    next_attempt_at=now,
+                    last_error_code="STALE_LEASE",
+                    last_error_message="stale_processing_lease",
+                )
+                recovered += 1
+        return recovered
+
+    def claim_batch(
+        self,
+        *,
+        owner: str,
+        batch_size: int,
+        lease_until: datetime,
+        now: datetime,
+    ) -> list[OutboxRecord]:
+        outbox = self._store._outbox
+        claimable = [
+            row
+            for row in outbox.values()
+            if row.status is OutboxStatus.PENDING and row.next_attempt_at <= now
+        ]
+        claimable.sort(key=lambda row: row.next_attempt_at)
+        claimed: list[OutboxRecord] = []
+        for row in claimable[:batch_size]:
+            updated = replace(
+                row,
+                status=OutboxStatus.PROCESSING,
+                attempt_count=row.attempt_count + 1,
+                processing_owner=owner,
+                processing_until=lease_until,
+            )
+            outbox[row.id] = updated
+            claimed.append(copy.deepcopy(updated))
+        return claimed
+
+    def apply_publish_decision(
+        self,
+        *,
+        outbox_id: UUID,
+        status: str,
+        clear_owner: bool,
+        clear_lease: bool,
+        published_at: datetime | None,
+        next_attempt_at: datetime | None,
+        last_error_code: str | None,
+        last_error_message: str | None,
+    ) -> None:
+        outbox = self._store._outbox
+        row = outbox[outbox_id]
+        outbox[outbox_id] = replace(
+            row,
+            status=OutboxStatus(status),
+            next_attempt_at=next_attempt_at or row.next_attempt_at,
+            processing_owner=None if clear_owner else row.processing_owner,
+            processing_until=None if clear_lease else row.processing_until,
+            published_at=published_at or row.published_at,
+            last_error_code=last_error_code,
+            last_error_message=last_error_message,
         )

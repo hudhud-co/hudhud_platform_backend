@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -627,3 +628,109 @@ def _outbox_from_row(row: IntegrationOutboxRow) -> OutboxRecord:
         last_error_message=row.last_error_message,
         created_at=row.created_at,  # type: ignore[arg-type]
     )
+
+
+@dataclass
+class SqlAlchemyOutboxRelayStore:
+    """Lease-based outbox relay store — claim commits before broker await."""
+
+    session_factory: sessionmaker[Session]
+
+    def recover_stale_processing(self, *, now: datetime) -> int:
+        with self.session_factory() as session:
+            result = session.execute(
+                update(IntegrationOutboxRow)
+                .where(
+                    IntegrationOutboxRow.status == OutboxStatus.PROCESSING.value,
+                    IntegrationOutboxRow.processing_until < now,
+                )
+                .values(
+                    status=OutboxStatus.PENDING.value,
+                    processing_owner=None,
+                    processing_until=None,
+                    next_attempt_at=now,
+                    last_error_code="STALE_LEASE",
+                    last_error_message="stale_processing_lease",
+                )
+            )
+            session.commit()
+            return result.rowcount or 0
+
+    def claim_batch(
+        self,
+        *,
+        owner: str,
+        batch_size: int,
+        lease_until: datetime,
+        now: datetime,
+    ) -> list[OutboxRecord]:
+        with self.session_factory() as session:
+            candidate_ids = (
+                session.execute(
+                    select(IntegrationOutboxRow.id)
+                    .where(
+                        IntegrationOutboxRow.status == OutboxStatus.PENDING.value,
+                        IntegrationOutboxRow.next_attempt_at <= now,
+                    )
+                    .order_by(IntegrationOutboxRow.next_attempt_at)
+                    .limit(batch_size)
+                    .with_for_update(skip_locked=True)
+                )
+                .scalars()
+                .all()
+            )
+            if not candidate_ids:
+                return []
+            session.execute(
+                update(IntegrationOutboxRow)
+                .where(IntegrationOutboxRow.id.in_(candidate_ids))
+                .values(
+                    status=OutboxStatus.PROCESSING.value,
+                    processing_owner=owner,
+                    processing_until=lease_until,
+                    attempt_count=IntegrationOutboxRow.attempt_count + 1,
+                )
+            )
+            rows = session.execute(
+                select(IntegrationOutboxRow).where(IntegrationOutboxRow.id.in_(candidate_ids))
+            ).scalars()
+            claimed = [_outbox_from_row(row) for row in rows]
+            session.commit()
+            return claimed
+
+    def apply_publish_decision(
+        self,
+        *,
+        outbox_id: UUID,
+        status: str,
+        clear_owner: bool,
+        clear_lease: bool,
+        published_at: datetime | None,
+        next_attempt_at: datetime | None,
+        last_error_code: str | None,
+        last_error_message: str | None,
+    ) -> None:
+        with self.session_factory() as session:
+            row = session.get(IntegrationOutboxRow, outbox_id)
+            if row is None:
+                msg = f"outbox row missing: {outbox_id}"
+                raise KeyError(msg)
+            row.status = status
+            if published_at is not None:
+                row.published_at = published_at
+            if next_attempt_at is not None:
+                row.next_attempt_at = next_attempt_at
+            row.last_error_code = last_error_code
+            row.last_error_message = last_error_message
+            if clear_owner:
+                row.processing_owner = None
+            if clear_lease:
+                row.processing_until = None
+            session.commit()
+
+    def get_by_event_id(self, event_id: UUID) -> OutboxRecord | None:
+        with self.session_factory() as session:
+            row = session.execute(
+                select(IntegrationOutboxRow).where(IntegrationOutboxRow.event_id == event_id)
+            ).scalar_one_or_none()
+            return _outbox_from_row(row) if row is not None else None

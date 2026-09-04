@@ -3,10 +3,12 @@
 Independently managed HUDHUD Pickup service package. Pickup owns task recovery
 and attempt history; it does not own or mutate Shipment lifecycle/custody (ADR-0003).
 
-**W17-E:** Application-level acceptance records custody-starting outcomes
+**W17-E / W17-H:** Application-level acceptance records custody-starting outcomes
 (`ACCEPTED` / `ACCEPTED_WITH_EXCEPTION`) and inserts a complete
 `pickup.fact.accepted` v1 envelope into a Pickup-owned transactional outbox in
-the same unit of work. NATS relay remains deferred.
+the same unit of work. An optional JetStream outbox relay publishes only
+`hudhud.pickup.pickup.fact.accepted.v1` to stream `HUDHUD_PICKUP` (disabled by
+default; fake-NATS unit tests only — no live topology mutation).
 
 ## Scope (W12 + W15-B + W16-B)
 
@@ -90,10 +92,24 @@ Unit of work port: `RecoveryUnitOfWork`.
 
 - Production Shipment HTTP/event eligibility adapter
 - Production identity/authorization adapter (JWT/mTLS)
-- NATS/events and production/staging deployment
+- NATS/events production/staging deployment and live topology mutation
 - Driver assignment algorithms, routing, scheduling engine
 - Hub inbound custody transfer
 - Notification, Control Tower, Delivery, Finance
+
+## Accepted-fact relay (W17-H)
+
+Entry point: `python -m pickup.runtime.relay_main` (signal-safe drain/close).
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| `PICKUP_RELAY_ENABLED` | `false` | Relay off until explicitly enabled |
+| `PICKUP_NATS_DEV_NO_AUTH` | `false` | Local/test escape hatch only |
+| `PICKUP_ADR_0010_CREDENTIALS_CONFIGURED` | `false` | Required with TLS + credentials in production |
+| `PICKUP_PRODUCTION_READY` | `false` | Must remain false |
+
+Publish contract: subject `hudhud.pickup.pickup.fact.accepted.v1`, stream
+`HUDHUD_PICKUP`, `Nats-Msg-Id` = stable outbox `event_id`.
 
 ## Validation
 
@@ -114,5 +130,6 @@ or legacy repository access in that lab.
 ## Production readiness
 
 **Not production-ready.** Default authorization and Shipment eligibility adapters
-remain fail-closed / deferred. Secured messaging and production deployment remain
-future Waves.
+remain fail-closed / deferred. Relay is disabled by default; ADR-0010 staging/
+production NATS identity evidence remains open. Secured messaging and production
+deployment remain future Waves.
