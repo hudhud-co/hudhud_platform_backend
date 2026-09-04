@@ -1,4 +1,4 @@
-"""PostgreSQL recovery unit-of-work adapter with optimistic concurrency."""
+"""PostgreSQL Pickup unit-of-work adapter with optimistic concurrency."""
 
 from __future__ import annotations
 
@@ -8,10 +8,23 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from pickup.domain.entities import IdempotencyRecord, PickupTask, RecoveryHistoryEntry
+from pickup.domain.entities import (
+    AcceptanceIdempotencyRecord,
+    IdempotencyRecord,
+    OutboxRecord,
+    PickupTask,
+    RecoveryHistoryEntry,
+)
 from pickup.domain.errors import StalePickupTaskVersion
-from pickup.domain.value_objects import PickupTaskAcceptanceState, PickupTaskStatus, RecoveryAction
+from pickup.domain.value_objects import (
+    OutboxStatus,
+    PickupTaskAcceptanceState,
+    PickupTaskStatus,
+    RecoveryAction,
+)
 from pickup.infrastructure.persistence.models import (
+    AcceptanceIdempotencyRow,
+    IntegrationOutboxRow,
     PickupTaskRow,
     RecoveryHistoryRow,
     RecoveryIdempotencyRow,
@@ -19,14 +32,16 @@ from pickup.infrastructure.persistence.models import (
 
 
 @dataclass
-class SqlAlchemyRecoveryUnitOfWork:
-    """Transactional recovery boundary — one PostgreSQL transaction for all effects."""
+class SqlAlchemyPickupUnitOfWork:
+    """Transactional Pickup boundary — recovery and acceptance effects."""
 
     session_factory: sessionmaker[Session]
     _session: Session | None = None
     _pending_tasks: dict[UUID, tuple[PickupTask, int | None]] | None = None
     _pending_history: list[RecoveryHistoryEntry] | None = None
     _pending_idempotency: dict[str, IdempotencyRecord] | None = None
+    _pending_acceptance_idempotency: dict[str, AcceptanceIdempotencyRecord] | None = None
+    _pending_outbox: list[OutboxRecord] | None = None
 
     @property
     def pickup_tasks(self) -> _PickupTaskRepo:
@@ -40,11 +55,21 @@ class SqlAlchemyRecoveryUnitOfWork:
     def idempotency(self) -> _IdempotencyRepo:
         return _IdempotencyRepo(self)
 
+    @property
+    def acceptance_idempotency(self) -> _AcceptanceIdempotencyRepo:
+        return _AcceptanceIdempotencyRepo(self)
+
+    @property
+    def outbox(self) -> _OutboxRepo:
+        return _OutboxRepo(self)
+
     def begin(self) -> None:
         self._session = self.session_factory()
         self._pending_tasks = {}
         self._pending_history = []
         self._pending_idempotency = {}
+        self._pending_acceptance_idempotency = {}
+        self._pending_outbox = []
 
     def commit(self) -> None:
         if self._session is None:
@@ -54,6 +79,8 @@ class SqlAlchemyRecoveryUnitOfWork:
         assert self._pending_tasks is not None
         assert self._pending_history is not None
         assert self._pending_idempotency is not None
+        assert self._pending_acceptance_idempotency is not None
+        assert self._pending_outbox is not None
 
         for entity, previous_version in self._pending_tasks.values():
             if previous_version is None:
@@ -80,21 +107,29 @@ class SqlAlchemyRecoveryUnitOfWork:
         for record in self._pending_idempotency.values():
             session.add(_idempotency_to_row(record))
 
+        for record in self._pending_acceptance_idempotency.values():
+            session.add(_acceptance_idempotency_to_row(record))
+
+        for record in self._pending_outbox:
+            session.add(_outbox_to_row(record))
+
         session.commit()
         self._session.close()
-        self._session = None
-        self._pending_tasks = None
-        self._pending_history = None
-        self._pending_idempotency = None
+        self._clear_tx()
 
     def rollback(self) -> None:
         if self._session is not None:
             self._session.rollback()
             self._session.close()
+        self._clear_tx()
+
+    def _clear_tx(self) -> None:
         self._session = None
         self._pending_tasks = None
         self._pending_history = None
         self._pending_idempotency = None
+        self._pending_acceptance_idempotency = None
+        self._pending_outbox = None
 
     def _in_transaction(self) -> bool:
         return self._session is not None
@@ -116,6 +151,18 @@ class SqlAlchemyRecoveryUnitOfWork:
             msg = "idempotency mutation outside transaction"
             raise RuntimeError(msg)
         return self._pending_idempotency
+
+    def _working_acceptance_idempotency(self) -> dict[str, AcceptanceIdempotencyRecord]:
+        if self._pending_acceptance_idempotency is None:
+            msg = "acceptance idempotency mutation outside transaction"
+            raise RuntimeError(msg)
+        return self._pending_acceptance_idempotency
+
+    def _working_outbox(self) -> list[OutboxRecord]:
+        if self._pending_outbox is None:
+            msg = "outbox mutation outside transaction"
+            raise RuntimeError(msg)
+        return self._pending_outbox
 
     def _load_task_version(self, pickup_task_id: UUID) -> int | None:
         pending = self._pending_tasks
@@ -151,8 +198,12 @@ class SqlAlchemyRecoveryUnitOfWork:
             session.commit()
 
 
+# Backward-compatible alias for composition root / recovery wiring.
+SqlAlchemyRecoveryUnitOfWork = SqlAlchemyPickupUnitOfWork
+
+
 class _PickupTaskRepo:
-    def __init__(self, store: SqlAlchemyRecoveryUnitOfWork) -> None:
+    def __init__(self, store: SqlAlchemyPickupUnitOfWork) -> None:
         self._store = store
 
     def save_pickup_task(self, pickup_task: PickupTask) -> None:
@@ -200,7 +251,7 @@ class _PickupTaskRepo:
 
 
 class _RecoveryHistoryRepo:
-    def __init__(self, store: SqlAlchemyRecoveryUnitOfWork) -> None:
+    def __init__(self, store: SqlAlchemyPickupUnitOfWork) -> None:
         self._store = store
 
     def append_entry(self, entry: RecoveryHistoryEntry) -> None:
@@ -236,7 +287,7 @@ class _RecoveryHistoryRepo:
 
 
 class _IdempotencyRepo:
-    def __init__(self, store: SqlAlchemyRecoveryUnitOfWork) -> None:
+    def __init__(self, store: SqlAlchemyPickupUnitOfWork) -> None:
         self._store = store
 
     def save_record(self, record: IdempotencyRecord) -> None:
@@ -258,6 +309,106 @@ class _IdempotencyRepo:
             return _idempotency_from_row(row) if row is not None else None
 
 
+class _AcceptanceIdempotencyRepo:
+    def __init__(self, store: SqlAlchemyPickupUnitOfWork) -> None:
+        self._store = store
+
+    def save_record(self, record: AcceptanceIdempotencyRecord) -> None:
+        if self._store._in_transaction():
+            self._store._working_acceptance_idempotency()[record.idempotency_key] = record
+            return
+        msg = "acceptance idempotency save outside transaction"
+        raise RuntimeError(msg)
+
+    def get_record(self, idempotency_key: str) -> AcceptanceIdempotencyRecord | None:
+        pending = self._store._pending_acceptance_idempotency
+        if pending is not None and idempotency_key in pending:
+            return pending[idempotency_key]
+        if self._store._session is not None:
+            row = self._store._session.get(AcceptanceIdempotencyRow, idempotency_key)
+            return _acceptance_idempotency_from_row(row) if row is not None else None
+        with self._store.session_factory() as session:
+            row = session.get(AcceptanceIdempotencyRow, idempotency_key)
+            return _acceptance_idempotency_from_row(row) if row is not None else None
+
+
+class _OutboxRepo:
+    def __init__(self, store: SqlAlchemyPickupUnitOfWork) -> None:
+        self._store = store
+
+    def insert(self, record: OutboxRecord) -> None:
+        if self._store._in_transaction():
+            self._store._working_outbox().append(record)
+            return
+        msg = "outbox insert outside transaction"
+        raise RuntimeError(msg)
+
+    def get_by_event_id(self, event_id: UUID) -> OutboxRecord | None:
+        pending = self._store._pending_outbox
+        if pending is not None:
+            for record in pending:
+                if record.event_id == event_id:
+                    return record
+        if self._store._session is not None:
+            row = self._store._session.execute(
+                select(IntegrationOutboxRow).where(IntegrationOutboxRow.event_id == event_id)
+            ).scalar_one_or_none()
+            return _outbox_from_row(row) if row is not None else None
+        with self._store.session_factory() as session:
+            row = session.execute(
+                select(IntegrationOutboxRow).where(IntegrationOutboxRow.event_id == event_id)
+            ).scalar_one_or_none()
+            return _outbox_from_row(row) if row is not None else None
+
+    def list_pending(self) -> tuple[OutboxRecord, ...]:
+        records: list[OutboxRecord] = []
+        if self._store._session is not None:
+            rows = self._store._session.execute(
+                select(IntegrationOutboxRow).where(
+                    IntegrationOutboxRow.status == OutboxStatus.PENDING.value
+                )
+            ).scalars()
+            records.extend(_outbox_from_row(row) for row in rows)
+            pending = self._store._pending_outbox
+            if pending is not None:
+                records.extend(
+                    record for record in pending if record.status is OutboxStatus.PENDING
+                )
+        else:
+            with self._store.session_factory() as session:
+                rows = session.execute(
+                    select(IntegrationOutboxRow).where(
+                        IntegrationOutboxRow.status == OutboxStatus.PENDING.value
+                    )
+                ).scalars()
+                records.extend(_outbox_from_row(row) for row in rows)
+        return tuple(records)
+
+    def list_for_aggregate(self, aggregate_id: UUID) -> tuple[OutboxRecord, ...]:
+        records: list[OutboxRecord] = []
+        if self._store._session is not None:
+            rows = self._store._session.execute(
+                select(IntegrationOutboxRow).where(
+                    IntegrationOutboxRow.aggregate_id == aggregate_id
+                )
+            ).scalars()
+            records.extend(_outbox_from_row(row) for row in rows)
+            pending = self._store._pending_outbox
+            if pending is not None:
+                records.extend(
+                    record for record in pending if record.aggregate_id == aggregate_id
+                )
+        else:
+            with self._store.session_factory() as session:
+                rows = session.execute(
+                    select(IntegrationOutboxRow).where(
+                        IntegrationOutboxRow.aggregate_id == aggregate_id
+                    )
+                ).scalars()
+                records.extend(_outbox_from_row(row) for row in rows)
+        return tuple(records)
+
+
 def _copy_task(task: PickupTask) -> PickupTask:
     return PickupTask(
         pickup_task_id=task.pickup_task_id,
@@ -272,6 +423,9 @@ def _copy_task(task: PickupTask) -> PickupTask:
         scheduled_window_start=task.scheduled_window_start,
         scheduled_window_end=task.scheduled_window_end,
         acceptance_state=task.acceptance_state,
+        has_pickup_condition_proof=task.has_pickup_condition_proof,
+        accepted_at=task.accepted_at,
+        accepted_by_driver_user_id=task.accepted_by_driver_user_id,
         recovery_reason=task.recovery_reason,
         created_at=task.created_at,
         recovered_at=task.recovered_at,
@@ -294,6 +448,9 @@ def _task_to_row(task: PickupTask) -> PickupTaskRow:
         scheduled_window_start=task.scheduled_window_start,
         scheduled_window_end=task.scheduled_window_end,
         acceptance_state=task.acceptance_state.value if task.acceptance_state else None,
+        has_pickup_condition_proof=task.has_pickup_condition_proof,
+        accepted_at=task.accepted_at,
+        accepted_by_driver_user_id=task.accepted_by_driver_user_id,
         recovery_reason=task.recovery_reason,
         created_at=task.created_at,
         recovered_at=task.recovered_at,
@@ -315,6 +472,9 @@ def _task_update_values(task: PickupTask) -> dict[str, object]:
         "scheduled_window_start": task.scheduled_window_start,
         "scheduled_window_end": task.scheduled_window_end,
         "acceptance_state": task.acceptance_state.value if task.acceptance_state else None,
+        "has_pickup_condition_proof": task.has_pickup_condition_proof,
+        "accepted_at": task.accepted_at,
+        "accepted_by_driver_user_id": task.accepted_by_driver_user_id,
         "recovery_reason": task.recovery_reason,
         "created_at": task.created_at,
         "recovered_at": task.recovered_at,
@@ -340,6 +500,9 @@ def _task_from_row(row: PickupTaskRow) -> PickupTask:
         scheduled_window_start=row.scheduled_window_start,  # type: ignore[arg-type]
         scheduled_window_end=row.scheduled_window_end,  # type: ignore[arg-type]
         acceptance_state=acceptance,
+        has_pickup_condition_proof=bool(row.has_pickup_condition_proof),
+        accepted_at=row.accepted_at,  # type: ignore[arg-type]
+        accepted_by_driver_user_id=row.accepted_by_driver_user_id,
         recovery_reason=row.recovery_reason,
         created_at=row.created_at,  # type: ignore[arg-type]
         recovered_at=row.recovered_at,  # type: ignore[arg-type]
@@ -393,4 +556,74 @@ def _idempotency_from_row(row: RecoveryIdempotencyRow) -> IdempotencyRecord:
         original_task_id=row.original_task_id,  # type: ignore[arg-type]
         result_task_id=row.result_task_id,  # type: ignore[arg-type]
         recorded_at=row.recorded_at,  # type: ignore[arg-type]
+    )
+
+
+def _acceptance_idempotency_to_row(
+    record: AcceptanceIdempotencyRecord,
+) -> AcceptanceIdempotencyRow:
+    return AcceptanceIdempotencyRow(
+        idempotency_key=record.idempotency_key,
+        command_fingerprint=record.command_fingerprint,
+        pickup_task_id=record.pickup_task_id,
+        event_id=record.event_id,
+        recorded_at=record.recorded_at,
+    )
+
+
+def _acceptance_idempotency_from_row(
+    row: AcceptanceIdempotencyRow,
+) -> AcceptanceIdempotencyRecord:
+    return AcceptanceIdempotencyRecord(
+        idempotency_key=row.idempotency_key,
+        command_fingerprint=row.command_fingerprint,
+        pickup_task_id=row.pickup_task_id,  # type: ignore[arg-type]
+        event_id=row.event_id,  # type: ignore[arg-type]
+        recorded_at=row.recorded_at,  # type: ignore[arg-type]
+    )
+
+
+def _outbox_to_row(record: OutboxRecord) -> IntegrationOutboxRow:
+    return IntegrationOutboxRow(
+        id=record.id,
+        event_id=record.event_id,
+        subject=record.subject,
+        event_type=record.event_type,
+        event_version=record.event_version,
+        aggregate_id=record.aggregate_id,
+        aggregate_version=record.aggregate_version,
+        payload_json=record.payload_json,
+        status=record.status.value,
+        attempt_count=record.attempt_count,
+        max_attempts=record.max_attempts,
+        next_attempt_at=record.next_attempt_at,
+        processing_owner=record.processing_owner,
+        processing_until=record.processing_until,
+        published_at=record.published_at,
+        last_error_code=record.last_error_code,
+        last_error_message=record.last_error_message,
+        created_at=record.created_at,
+    )
+
+
+def _outbox_from_row(row: IntegrationOutboxRow) -> OutboxRecord:
+    return OutboxRecord(
+        id=row.id,  # type: ignore[arg-type]
+        event_id=row.event_id,  # type: ignore[arg-type]
+        subject=row.subject,
+        event_type=row.event_type,
+        event_version=row.event_version,
+        aggregate_id=row.aggregate_id,  # type: ignore[arg-type]
+        aggregate_version=row.aggregate_version,
+        payload_json=dict(row.payload_json),
+        status=OutboxStatus(row.status),
+        attempt_count=row.attempt_count,
+        max_attempts=row.max_attempts,
+        next_attempt_at=row.next_attempt_at,  # type: ignore[arg-type]
+        processing_owner=row.processing_owner,
+        processing_until=row.processing_until,  # type: ignore[arg-type]
+        published_at=row.published_at,  # type: ignore[arg-type]
+        last_error_code=row.last_error_code,
+        last_error_message=row.last_error_message,
+        created_at=row.created_at,  # type: ignore[arg-type]
     )

@@ -1,4 +1,4 @@
-"""Value objects for Pickup recovery lifecycle."""
+"""Value objects for Pickup recovery and acceptance lifecycle."""
 
 from __future__ import annotations
 
@@ -22,6 +22,22 @@ class PickupTaskAcceptanceState(StrEnum):
     ACCEPTED = "ACCEPTED"
     ACCEPTED_WITH_EXCEPTION = "ACCEPTED_WITH_EXCEPTION"
     REJECTED = "REJECTED"
+
+
+class AcceptanceOutcome(StrEnum):
+    """Custody-starting acceptance outcomes that may emit pickup.fact.accepted."""
+
+    ACCEPTED = "ACCEPTED"
+    ACCEPTED_WITH_EXCEPTION = "ACCEPTED_WITH_EXCEPTION"
+
+
+class OutboxStatus(StrEnum):
+    """Integration outbox row lifecycle (ADR-0008)."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    PUBLISHED = "published"
+    QUARANTINED = "quarantined"
 
 
 class RecoveryAction(StrEnum):
@@ -52,3 +68,13 @@ class ScheduledWindow:
 
     start: datetime
     end: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceMediaRef:
+    """External evidence pointer — never inline bytes."""
+
+    ref_type: str
+    bucket: str
+    key: str
+    content_type: str | None = None

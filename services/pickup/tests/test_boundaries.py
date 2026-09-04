@@ -33,7 +33,13 @@ def test_no_cross_service_imports() -> None:
 
 def test_allowed_shared_packages_only() -> None:
     service_root = Path(__file__).resolve().parents[1] / "src"
-    allowed = {"pickup"}
+    allowed = {
+        "pickup",
+        "event_envelope",
+        "jsonschema",
+        "referencing",
+        "yaml",
+    }
     stdlib = {
         "abc",
         "asyncio",
@@ -54,6 +60,7 @@ def test_allowed_shared_packages_only() -> None:
         "signal",
         "ssl",
         "sys",
+        "threading",
         "time",
         "typing",
         "uuid",

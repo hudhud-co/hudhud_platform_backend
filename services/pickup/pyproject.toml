@@ -1,13 +1,17 @@
 [project]
 name = "pickup"
 version = "0.1.0"
-description = "HUDHUD Pickup service — recovery command HTTP API (W16-B)"
+description = "HUDHUD Pickup service — recovery command HTTP API and acceptance outbox (W16-B / W17-E)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "event-envelope",
     "fastapi>=0.115",
+    "jsonschema>=4.23",
     "psycopg[binary]>=3.2",
     "pydantic>=2.10",
+    "pyyaml>=6.0",
+    "referencing>=0.35",
     "sqlalchemy>=2.0",
     "uvicorn>=0.32",
 ]
@@ -17,9 +21,11 @@ dev = [
     "alembic>=1.14",
     "httpx>=0.28",
     "pytest>=8.0",
-    "pyyaml>=6.0",
     "ruff>=0.8",
 ]
+
+[tool.uv.sources]
+event-envelope = { path = "../../packages/event_envelope", editable = true }
 
 [build-system]
 requires = ["hatchling"]

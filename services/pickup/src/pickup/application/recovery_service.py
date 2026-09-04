@@ -37,6 +37,7 @@ class RegisterPickupTaskCommand:
     assigned_batch_id: UUID
     scheduled_window: ScheduledWindow | None = None
     status: PickupTaskStatus = PickupTaskStatus.PROOF_CAPTURED
+    has_pickup_condition_proof: bool = False
     created_at: datetime | None = None
 
 
@@ -96,6 +97,9 @@ class PickupRecoveryService:
             scheduled_window_start=window_start,
             scheduled_window_end=window_end,
             acceptance_state=None,
+            has_pickup_condition_proof=command.has_pickup_condition_proof,
+            accepted_at=None,
+            accepted_by_driver_user_id=None,
             recovery_reason=None,
             created_at=created_at,
             recovered_at=None,
@@ -315,6 +319,9 @@ class PickupRecoveryService:
             scheduled_window_start=window_start,
             scheduled_window_end=window_end,
             acceptance_state=None,
+            has_pickup_condition_proof=False,
+            accepted_at=None,
+            accepted_by_driver_user_id=None,
             recovery_reason=command.reason,
             created_at=command.occurred_at,
             recovered_at=None,
