@@ -20,10 +20,10 @@ from pickup.domain.errors import (
     StalePickupTaskVersion,
 )
 from pickup.domain.value_objects import (
+    CustodyType,
     PickupTaskStatus,
     RecoveryAction,
     ScheduledWindow,
-    ShipmentStatus,
 )
 from pickup.ports.repository import RecoveryUnitOfWork
 from pickup.ports.shipment_eligibility import ShipmentEligibilityPort
@@ -264,17 +264,17 @@ class PickupRecoveryService:
                 status=task.status.value,
             )
 
+        # Fail closed when Shipment eligibility evidence is unavailable.
         snapshot = self._shipment_eligibility.get_eligibility(task.shipment_id)
         if snapshot is None:
             raise CustodyAlreadyStarted(
                 shipment_id=str(task.shipment_id),
                 shipment_status="UNKNOWN",
             )
-        if (
-            snapshot.custody_started
-            or snapshot.shipment_status is ShipmentStatus.IN_CUSTODY
-            or snapshot.custody_owner_present
-        ):
+        # Source-aligned rule (ADR-0003 W17-A / Legacy): block only on
+        # PICKUP_DRIVER custody. Do not block on IN_CUSTODY status,
+        # custody_started, or custody_id alone.
+        if snapshot.custody_type is CustodyType.PICKUP_DRIVER:
             raise CustodyAlreadyStarted(
                 shipment_id=str(task.shipment_id),
                 shipment_status=snapshot.shipment_status.value,

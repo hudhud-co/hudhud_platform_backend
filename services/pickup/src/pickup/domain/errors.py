@@ -27,13 +27,13 @@ class PickupTaskAlreadyAccepted(PickupError):
 
 
 class CustodyAlreadyStarted(PickupError):
-    """Recovery is blocked once Shipment custody has started."""
+    """Recovery is blocked when Shipment custody type is PICKUP_DRIVER."""
 
     def __init__(self, *, shipment_id: str, shipment_status: str) -> None:
         self.shipment_id = shipment_id
         self.shipment_status = shipment_status
         super().__init__(
-            f"shipment {shipment_id} custody already started (status={shipment_status})"
+            f"shipment {shipment_id} is in PICKUP_DRIVER custody (status={shipment_status})"
         )
 
 

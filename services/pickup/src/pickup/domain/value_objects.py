@@ -41,9 +41,9 @@ class ShipmentStatus(StrEnum):
 
 
 class CustodyType(StrEnum):
-    """Custody holder type — aligned with Shipment W11 terminology."""
+    """Custody holder type — canonical target terminology is PICKUP_DRIVER (ADR-0003 W17-A)."""
 
-    DRIVER = "DRIVER"
+    PICKUP_DRIVER = "PICKUP_DRIVER"
 
 
 @dataclass(frozen=True, slots=True)

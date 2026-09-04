@@ -12,7 +12,9 @@ from pickup.application.recovery_service import PickupRecoveryService, RegisterP
 from pickup.config import RuntimeEnvironment, load_settings
 from pickup.domain.sanitize import sanitize_error_message
 from pickup.domain.value_objects import (
+    CustodyType,
     PickupTaskAcceptanceState,
+    PickupTaskStatus,
     ScheduledWindow,
     ShipmentStatus,
 )
@@ -311,3 +313,133 @@ def test_invalid_reschedule_maps_to_422() -> None:
     assert response.status_code == 422
     detail: Any = response.json()["detail"]
     assert detail["code"] == "invalid_reschedule_input"
+
+
+def _seed_task_with_snapshot(
+    store: InMemoryRecoveryUnitOfWork,
+    eligibility: InMemoryShipmentEligibilityAdapter,
+    snapshot: ShipmentEligibilitySnapshot,
+    *,
+    driver_id: str = "driver-42",
+    window: ScheduledWindow | None = None,
+) -> UUID:
+    service = PickupRecoveryService(store, eligibility)
+    task_id = uuid4()
+    eligibility.seed(snapshot)
+    service.register_pickup_task(
+        RegisterPickupTaskCommand(
+            pickup_task_id=task_id,
+            shipment_id=snapshot.shipment_id,
+            assigned_driver_user_id=driver_id,
+            assigned_batch_id=uuid4(),
+            scheduled_window=window or _window(),
+            created_at=_now(),
+        )
+    )
+    return task_id
+
+
+def test_api_pickup_driver_custody_blocks_all_actions_without_mutation() -> None:
+    client, store, eligibility, _ = _build_client()
+    shipment_id = uuid4()
+    snapshot = ShipmentEligibilitySnapshot(
+        shipment_id=shipment_id,
+        shipment_status=ShipmentStatus.IN_CUSTODY,
+        custody_started=True,
+        custody_type=CustodyType.PICKUP_DRIVER,
+        custody_id="driver-42",
+    )
+
+    actions: list[tuple[str, str, dict[str, Any]]] = [
+        ("retry", "api-block-retry", {"reason": "blocked"}),
+        (
+            "reschedule",
+            "api-block-reschedule",
+            {
+                "reason": "blocked",
+                "scheduled_window": {
+                    "start": (_now() + timedelta(hours=24)).isoformat(),
+                    "end": (_now() + timedelta(hours=26)).isoformat(),
+                },
+            },
+        ),
+        (
+            "reassign",
+            "api-block-reassign",
+            {"reason": "blocked", "new_driver_user_id": "driver-new"},
+        ),
+        ("cancel", "api-block-cancel", {"reason": "blocked"}),
+    ]
+
+    for action, idem_key, body in actions:
+        task_id = _seed_task_with_snapshot(store, eligibility, snapshot)
+        before = store.pickup_tasks.get_pickup_task(task_id)
+        assert before is not None
+        response = client.post(
+            f"/pickup/tasks/{task_id}/{action}",
+            headers=_auth_headers(idem_key),
+            json=body,
+        )
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "custody_already_started"
+        after = store.pickup_tasks.get_pickup_task(task_id)
+        assert after is not None
+        assert after.status is PickupTaskStatus.PROOF_CAPTURED
+        assert after.version == before.version
+        assert after.superseded_by_task_id is None
+        assert store.idempotency.get_record(idem_key) is None
+        assert eligibility.get_eligibility(shipment_id) == snapshot
+
+
+def test_api_non_pickup_driver_fields_do_not_block_recovery() -> None:
+    client, store, eligibility, _ = _build_client()
+    shipment_id = uuid4()
+    task_id = _seed_task_with_snapshot(
+        store,
+        eligibility,
+        ShipmentEligibilitySnapshot(
+            shipment_id=shipment_id,
+            shipment_status=ShipmentStatus.IN_CUSTODY,
+            custody_started=True,
+            custody_type=None,
+            custody_id="cust-present",
+        ),
+    )
+
+    response = client.post(
+        f"/pickup/tasks/{task_id}/retry",
+        headers=_auth_headers("api-allow-non-pickup-driver"),
+        json={"reason": "allowed"},
+    )
+    assert response.status_code == 200
+    assert response.json()["action"] == "RETRY"
+    assert response.json()["original_task"]["status"] == "SUPERSEDED"
+
+
+def test_api_missing_shipment_eligibility_fails_closed() -> None:
+    client, store, eligibility, _ = _build_client()
+    service = PickupRecoveryService(store, eligibility)
+    task_id = uuid4()
+    shipment_id = uuid4()
+    service.register_pickup_task(
+        RegisterPickupTaskCommand(
+            pickup_task_id=task_id,
+            shipment_id=shipment_id,
+            assigned_driver_user_id="driver-42",
+            assigned_batch_id=uuid4(),
+            scheduled_window=_window(),
+            created_at=_now(),
+        )
+    )
+
+    response = client.post(
+        f"/pickup/tasks/{task_id}/retry",
+        headers=_auth_headers("api-fail-closed"),
+        json={"reason": "missing evidence"},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "custody_already_started"
+    stored = store.pickup_tasks.get_pickup_task(task_id)
+    assert stored is not None
+    assert stored.status is PickupTaskStatus.PROOF_CAPTURED
+    assert store.idempotency.get_record("api-fail-closed") is None

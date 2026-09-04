@@ -11,7 +11,13 @@ from pickup.domain.value_objects import CustodyType, ShipmentStatus
 
 @dataclass(frozen=True, slots=True)
 class ShipmentEligibilitySnapshot:
-    """Minimal Shipment facts required for recovery eligibility checks."""
+    """Minimal Shipment facts for recovery eligibility checks.
+
+    Recovery authorization input: ``custody_type`` only — block when it is
+    ``PICKUP_DRIVER``. ``shipment_status``, ``custody_started``, and
+    ``custody_id`` are retained for adapter/backward compatibility and are
+    **not** recovery authorization inputs.
+    """
 
     shipment_id: UUID
     shipment_status: ShipmentStatus
@@ -21,6 +27,7 @@ class ShipmentEligibilitySnapshot:
 
     @property
     def custody_owner_present(self) -> bool:
+        """Compatibility helper — not a recovery authorization input."""
         return self.custody_id is not None
 
 

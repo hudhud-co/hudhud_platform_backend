@@ -245,8 +245,8 @@ def test_accepted_task_cannot_be_recovered() -> None:
         )
 
 
-def test_custody_started_shipment_cannot_be_recovered() -> None:
-    service, _store, eligibility = _service()
+def test_pickup_driver_custody_blocks_recovery_without_mutation() -> None:
+    service, store, eligibility = _service()
     shipment_id = uuid4()
     task_id = uuid4()
     eligibility.seed(
@@ -254,7 +254,7 @@ def test_custody_started_shipment_cannot_be_recovered() -> None:
             shipment_id=shipment_id,
             shipment_status=ShipmentStatus.IN_CUSTODY,
             custody_started=True,
-            custody_type=CustodyType.DRIVER,
+            custody_type=CustodyType.PICKUP_DRIVER,
             custody_id="driver-42",
         )
     )
@@ -267,16 +267,193 @@ def test_custody_started_shipment_cannot_be_recovered() -> None:
             created_at=_now(),
         )
     )
+    before = store.pickup_tasks.get_pickup_task(task.pickup_task_id)
+    assert before is not None
+    before_status = before.status
+    before_version = before.version
+    snapshot_before = eligibility.get_eligibility(shipment_id)
 
     with pytest.raises(CustodyAlreadyStarted):
         service.retry_pickup(
             RecoveryCommand(
                 pickup_task_id=task.pickup_task_id,
-                idempotency_key="retry-custody",
+                idempotency_key="retry-pickup-driver",
                 reason="should fail",
                 occurred_at=_now(),
             )
         )
+
+    after = store.pickup_tasks.get_pickup_task(task.pickup_task_id)
+    assert after is not None
+    assert after.status is before_status
+    assert after.version == before_version
+    assert after.superseded_by_task_id is None
+    assert len(store.pickup_tasks.list_tasks_for_shipment(shipment_id)) == 1
+    assert not store.recovery_history.list_entries_for_task(task.pickup_task_id)
+    assert store.idempotency.get_record("retry-pickup-driver") is None
+    assert eligibility.get_eligibility(shipment_id) == snapshot_before
+
+
+@pytest.mark.parametrize(
+    ("shipment_status", "custody_started", "custody_id"),
+    [
+        (ShipmentStatus.IN_CUSTODY, True, "cust-1"),
+        (ShipmentStatus.IN_CUSTODY, False, None),
+        (ShipmentStatus.CREATED, True, "cust-2"),
+        (ShipmentStatus.CREATED, False, "cust-3"),
+    ],
+)
+def test_non_pickup_driver_snapshot_fields_do_not_block_recovery(
+    shipment_status: ShipmentStatus,
+    custody_started: bool,
+    custody_id: str | None,
+) -> None:
+    """IN_CUSTODY, custody_started, and custody_id alone are not authorization inputs."""
+    service, store, eligibility = _service()
+    shipment_id = uuid4()
+    task_id = uuid4()
+    eligibility.seed(
+        ShipmentEligibilitySnapshot(
+            shipment_id=shipment_id,
+            shipment_status=shipment_status,
+            custody_started=custody_started,
+            custody_type=None,
+            custody_id=custody_id,
+        )
+    )
+    task = service.register_pickup_task(
+        RegisterPickupTaskCommand(
+            pickup_task_id=task_id,
+            shipment_id=shipment_id,
+            assigned_driver_user_id="driver-42",
+            assigned_batch_id=uuid4(),
+            created_at=_now(),
+        )
+    )
+
+    result = service.retry_pickup(
+        RecoveryCommand(
+            pickup_task_id=task.pickup_task_id,
+            idempotency_key=f"retry-allow-{shipment_status.value}-{custody_started}-{custody_id}",
+            reason="allowed",
+            occurred_at=_now(),
+        )
+    )
+
+    assert result.replacement_task is not None
+    assert result.original_task.status is PickupTaskStatus.SUPERSEDED
+    assert len(store.pickup_tasks.list_tasks_for_shipment(shipment_id)) == 2
+
+
+def test_missing_shipment_eligibility_fails_closed() -> None:
+    service, store, eligibility = _service()
+    task_id = uuid4()
+    shipment_id = uuid4()
+    # Intentionally do not seed eligibility — shipment evidence unavailable.
+    task = service.register_pickup_task(
+        RegisterPickupTaskCommand(
+            pickup_task_id=task_id,
+            shipment_id=shipment_id,
+            assigned_driver_user_id="driver-42",
+            assigned_batch_id=uuid4(),
+            created_at=_now(),
+        )
+    )
+
+    with pytest.raises(CustodyAlreadyStarted) as exc_info:
+        service.retry_pickup(
+            RecoveryCommand(
+                pickup_task_id=task.pickup_task_id,
+                idempotency_key="retry-missing-eligibility",
+                reason="should fail closed",
+                occurred_at=_now(),
+            )
+        )
+
+    assert exc_info.value.shipment_status == "UNKNOWN"
+    stored = store.pickup_tasks.get_pickup_task(task.pickup_task_id)
+    assert stored is not None
+    assert stored.status is PickupTaskStatus.PROOF_CAPTURED
+    assert store.idempotency.get_record("retry-missing-eligibility") is None
+
+
+def test_pickup_driver_custody_blocks_all_recovery_actions() -> None:
+    service, store, eligibility = _service()
+    shipment_id = uuid4()
+    eligibility.seed(
+        ShipmentEligibilitySnapshot(
+            shipment_id=shipment_id,
+            shipment_status=ShipmentStatus.CREATED,
+            custody_started=False,
+            custody_type=CustodyType.PICKUP_DRIVER,
+            custody_id=None,
+        )
+    )
+
+    def _register() -> PickupTask:
+        return service.register_pickup_task(
+            RegisterPickupTaskCommand(
+                pickup_task_id=uuid4(),
+                shipment_id=shipment_id,
+                assigned_driver_user_id="driver-42",
+                assigned_batch_id=uuid4(),
+                scheduled_window=_window(),
+                created_at=_now(),
+            )
+        )
+
+    retry_task = _register()
+    with pytest.raises(CustodyAlreadyStarted):
+        service.retry_pickup(
+            RecoveryCommand(
+                pickup_task_id=retry_task.pickup_task_id,
+                idempotency_key="block-retry",
+                reason="blocked",
+                occurred_at=_now(),
+            )
+        )
+
+    reschedule_task = _register()
+    with pytest.raises(CustodyAlreadyStarted):
+        service.reschedule_pickup(
+            RescheduleRecoveryCommand(
+                pickup_task_id=reschedule_task.pickup_task_id,
+                idempotency_key="block-reschedule",
+                reason="blocked",
+                occurred_at=_now(),
+                scheduled_window=_window(hours_offset=24),
+            )
+        )
+
+    reassign_task = _register()
+    with pytest.raises(CustodyAlreadyStarted):
+        service.reassign_pickup(
+            ReassignRecoveryCommand(
+                pickup_task_id=reassign_task.pickup_task_id,
+                idempotency_key="block-reassign",
+                reason="blocked",
+                occurred_at=_now(),
+                new_driver_user_id="driver-new",
+            )
+        )
+
+    cancel_task = _register()
+    with pytest.raises(CustodyAlreadyStarted):
+        service.cancel_pickup(
+            RecoveryCommand(
+                pickup_task_id=cancel_task.pickup_task_id,
+                idempotency_key="block-cancel",
+                reason="blocked",
+                occurred_at=_now(),
+            )
+        )
+
+    for task in (retry_task, reschedule_task, reassign_task, cancel_task):
+        stored = store.pickup_tasks.get_pickup_task(task.pickup_task_id)
+        assert stored is not None
+        assert stored.status is PickupTaskStatus.PROOF_CAPTURED
+        assert stored.superseded_by_task_id is None
+        assert not store.recovery_history.list_entries_for_task(task.pickup_task_id)
 
 
 def test_recovery_never_changes_shipment_snapshot() -> None:
