@@ -44,6 +44,9 @@ def evaluate_readiness(
             not relay_active or settings.adr_0010_credentials_configured
         )
 
+    cutover_blockers = settings.relay_cutover_gate_blockers()
+    cutover_ok = not cutover_blockers
+
     checks = {
         "production_gates": production_gates_ok,
         "postgres_adapter_present": persistence_wired,
@@ -53,6 +56,7 @@ def evaluate_readiness(
         "shipment_eligibility_configured": shipment_eligibility_configured,
         "memory_persistence_allowed": not memory_in_production,
         "relay_configuration_valid": settings.relay_configuration_valid(),
+        "relay_cutover_gates_satisfied": cutover_ok,
         "nats_reachable": nats_check,
         "nats_publisher_active": relay_active,
         "production_ready_false": not settings.production_ready,
@@ -74,6 +78,8 @@ def evaluate_readiness(
         blockers.append("shipment_eligibility_adapter_deferred")
     if relay_active and not checks["relay_configuration_valid"]:
         blockers.append("relay_configuration_invalid")
+    if relay_active and not cutover_ok:
+        blockers.extend(cutover_blockers)
     if relay_active and not checks["nats_reachable"]:
         blockers.append("nats_unreachable")
     if not relay_active:
@@ -90,6 +96,7 @@ def evaluate_readiness(
         and checks["shipment_eligibility_configured"]
         and checks["memory_persistence_allowed"]
         and checks["relay_configuration_valid"]
+        and checks["relay_cutover_gates_satisfied"]
         and checks["production_ready_false"]
         and (not relay_active or checks["nats_reachable"])
     )

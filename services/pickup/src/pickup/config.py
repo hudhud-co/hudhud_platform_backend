@@ -100,6 +100,12 @@ class PickupSettings:
 
     adr_0010_credentials_configured: bool = False
 
+    # Staging/production relay cutover evidence (configuration gates only —
+    # a True boolean is not proof that external revocation occurred).
+    shipment_acceptance_ingestion_mode_native_confirmed: bool = False
+    shipment_compatibility_http_acceptance_disabled: bool = False
+    legacy_pickup_acceptance_writer_revocation_externally_confirmed: bool = False
+
     relay_enabled: bool = False
     relay_owner_id: str = "pickup-relay"
     relay_batch_size: int = 50
@@ -131,14 +137,37 @@ class PickupSettings:
             raise ProductionStartupBlockedError(msg)
         if not self.database_url:
             missing.append("DATABASE_URL")
-        if self.relay_enabled and not self.adr_0010_credentials_configured:
-            missing.append("adr_0010_credentials_configured")
+        if self.relay_enabled:
+            missing.extend(self.relay_cutover_gate_blockers())
         if self.production_ready:
             missing.append("production_ready_must_remain_false")
         if missing:
             joined = ", ".join(missing)
             msg = f"Production startup blocked — unset gates: {joined}"
             raise ProductionStartupBlockedError(msg)
+
+    def relay_cutover_gate_blockers(self) -> list[str]:
+        """Honest blockers for staging/production relay cutover configuration."""
+        if not self.relay_enabled:
+            return []
+        if self.environment not in {
+            RuntimeEnvironment.STAGING,
+            RuntimeEnvironment.PRODUCTION,
+        }:
+            return []
+        blockers: list[str] = []
+        if not self.shipment_acceptance_ingestion_mode_native_confirmed:
+            blockers.append("shipment_native_pickup_fact_mode_not_confirmed")
+        if not self.shipment_compatibility_http_acceptance_disabled:
+            blockers.append("shipment_compatibility_http_acceptance_not_disabled")
+        if not self.legacy_pickup_acceptance_writer_revocation_externally_confirmed:
+            blockers.append("legacy_writer_revocation_not_externally_confirmed")
+        if not self.adr_0010_credentials_configured:
+            blockers.append("adr_0010_credentials_gate_missing")
+        return blockers
+
+    def relay_cutover_gates_satisfied(self) -> bool:
+        return not self.relay_cutover_gate_blockers()
 
     def relay_configuration_valid(self) -> bool:
         """Return True when relay NATS settings are internally consistent."""
@@ -158,6 +187,11 @@ class PickupSettings:
                 self.adr_0010_credentials_configured
                 and self.nats_tls_enabled
                 and has_credentials
+                and self.relay_cutover_gates_satisfied()
+            )
+        if self.environment is RuntimeEnvironment.STAGING:
+            return self.relay_cutover_gates_satisfied() and (
+                has_credentials or self.nats_dev_no_auth
             )
         return has_credentials
 
@@ -215,6 +249,27 @@ def load_settings(**overrides: object) -> PickupSettings:
             _override_or(
                 "adr_0010_credentials_configured",
                 "PICKUP_ADR_0010_CREDENTIALS_CONFIGURED",
+                False,
+            )
+        ),
+        shipment_acceptance_ingestion_mode_native_confirmed=bool(
+            _override_or(
+                "shipment_acceptance_ingestion_mode_native_confirmed",
+                "PICKUP_SHIPMENT_ACCEPTANCE_INGESTION_MODE_NATIVE_CONFIRMED",
+                False,
+            )
+        ),
+        shipment_compatibility_http_acceptance_disabled=bool(
+            _override_or(
+                "shipment_compatibility_http_acceptance_disabled",
+                "PICKUP_SHIPMENT_COMPATIBILITY_HTTP_ACCEPTANCE_DISABLED",
+                False,
+            )
+        ),
+        legacy_pickup_acceptance_writer_revocation_externally_confirmed=bool(
+            _override_or(
+                "legacy_pickup_acceptance_writer_revocation_externally_confirmed",
+                "PICKUP_LEGACY_PICKUP_ACCEPTANCE_WRITER_REVOCATION_EXTERNALLY_CONFIRMED",
                 False,
             )
         ),

@@ -33,6 +33,13 @@ def main() -> int:
     if not settings.database_url:
         logger.error("DATABASE_URL is required for the outbox relay")
         return 1
+    cutover_blockers = settings.relay_cutover_gate_blockers()
+    if cutover_blockers:
+        logger.error(
+            "pickup accepted-fact relay cutover gates unmet: %s",
+            ", ".join(cutover_blockers),
+        )
+        return 1
     if not settings.relay_configuration_valid():
         logger.error("pickup accepted-fact relay NATS configuration is invalid")
         return 1

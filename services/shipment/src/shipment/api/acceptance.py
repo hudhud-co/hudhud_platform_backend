@@ -11,6 +11,7 @@ from shipment.api.dependencies import (
     get_acceptance_authorizer,
     get_acceptance_service,
     require_bearer_token,
+    require_compatibility_http_acceptance,
     require_idempotency_key,
 )
 from shipment.api.errors import http_exception_for_domain_error
@@ -38,12 +39,17 @@ router = APIRouter(prefix="/v1/shipments", tags=["acceptance"])
 async def record_acceptance_scan(
     shipment_id: UUID,
     body: AcceptanceScanRequest,
+    _: Annotated[None, Depends(require_compatibility_http_acceptance)],
     bearer_token: Annotated[str, Depends(require_bearer_token)],
     idempotency_key: Annotated[str, Depends(require_idempotency_key)],
     service: Annotated[AcceptanceLifecycleService, Depends(get_acceptance_service)],
     authorizer: Annotated[AcceptanceAuthorizer, Depends(get_acceptance_authorizer)],
 ) -> AcceptanceScanResponse:
-    """Record an acceptance scan after authorization and DB commit."""
+    """Record an acceptance scan after authorization and DB commit.
+
+    Compatibility HTTP path only — blocked before authorization/UoW when mode
+    is native_pickup_fact, disabled, or unset.
+    """
     try:
         decision = await authorizer.authorize_acceptance_scan(
             bearer_token=bearer_token,

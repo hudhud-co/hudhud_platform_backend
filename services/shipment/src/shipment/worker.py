@@ -42,6 +42,11 @@ def build_coordinator(
     *,
     transport: DeferredJetStreamTransport,
 ) -> tuple[PickupAcceptedFactCoordinator, Engine]:
+    mode_blockers = settings.native_worker_startup_blockers()
+    if mode_blockers:
+        raise WorkerStartupError(
+            "native pickup-fact worker blocked: " + ", ".join(mode_blockers)
+        )
     if not settings.nats_enabled:
         raise TransportNotConfiguredError("NATS transport is disabled")
     if settings.persistence_backend is PersistenceBackend.MEMORY:

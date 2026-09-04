@@ -76,6 +76,7 @@ def test_ready_requires_authorization_adapter_in_staging() -> None:
     settings = load_settings(
         environment=RuntimeEnvironment.STAGING,
         database_url="postgresql+asyncpg://localhost/shipment",
+        acceptance_ingestion_mode="compatibility_http",
     )
     app = create_app(
         settings,

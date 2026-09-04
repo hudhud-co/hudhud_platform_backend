@@ -21,6 +21,18 @@ class PersistenceBackend(StrEnum):
     MEMORY = "memory"
 
 
+class AcceptanceIngestionMode(StrEnum):
+    """Closed enum — sole control for Pickup acceptance ingestion path.
+
+    Exactly one mode is active. Do not represent this with independent booleans
+    that could enable W16 HTTP and W17 native fact ingestion together.
+    """
+
+    COMPATIBILITY_HTTP = "compatibility_http"
+    NATIVE_PICKUP_FACT = "native_pickup_fact"
+    DISABLED = "disabled"
+
+
 class ProductionStartupBlockedError(RuntimeError):
     """Raised when production configuration gates are not satisfied."""
 
@@ -54,6 +66,19 @@ def _optional_str(*names: str) -> str | None:
     return None
 
 
+def parse_acceptance_ingestion_mode(raw: object) -> AcceptanceIngestionMode:
+    """Parse a closed-enum mode value; reject unknown strings."""
+    if isinstance(raw, AcceptanceIngestionMode):
+        return raw
+    text = str(raw).strip()
+    try:
+        return AcceptanceIngestionMode(text)
+    except ValueError as exc:
+        allowed = ", ".join(mode.value for mode in AcceptanceIngestionMode)
+        msg = f"invalid acceptance_ingestion_mode {text!r}; allowed: {allowed}"
+        raise ValueError(msg) from exc
+
+
 @dataclass(frozen=True, slots=True)
 class ShipmentSettings:
     """Shipment service settings. Secret values must come from environment only."""
@@ -62,6 +87,9 @@ class ShipmentSettings:
     service_name: str = "shipment"
     database_url: str | None = None
     persistence_backend: PersistenceBackend = PersistenceBackend.POSTGRES
+    acceptance_ingestion_mode: AcceptanceIngestionMode | None = None
+    acceptance_cutover_evidence_confirmed: bool = False
+    legacy_pickup_acceptance_writer_revocation_externally_confirmed: bool = False
     consumer_name: str = PICKUP_ACCEPTED_DURABLE_CONSUMER
     handler_version: str = "0.1.0"
     processing_owner: str = "shipment-worker"
@@ -85,20 +113,100 @@ class ShipmentSettings:
     fetch_retry_backoff_seconds: float = 1.0
     adr_0010_credentials_configured: bool = False
 
+    def http_acceptance_enabled(self) -> bool:
+        return self.acceptance_ingestion_mode is AcceptanceIngestionMode.COMPATIBILITY_HTTP
+
+    def native_pickup_fact_enabled(self) -> bool:
+        return self.acceptance_ingestion_mode is AcceptanceIngestionMode.NATIVE_PICKUP_FACT
+
+    def acceptance_ingestion_disabled(self) -> bool:
+        return self.acceptance_ingestion_mode is AcceptanceIngestionMode.DISABLED
+
+    def exact_durable_binding_configured(self) -> bool:
+        return self.consumer_name == PICKUP_ACCEPTED_DURABLE_CONSUMER
+
+    def native_worker_startup_blockers(self) -> tuple[str, ...]:
+        """Secret-safe blockers preventing native pickup-fact worker start."""
+        mode = self.acceptance_ingestion_mode
+        if mode is None:
+            return ("acceptance_ingestion_mode_missing",)
+        if mode is AcceptanceIngestionMode.COMPATIBILITY_HTTP:
+            return ("native_worker_blocked_by_compatibility_http_mode",)
+        if mode is AcceptanceIngestionMode.DISABLED:
+            return ("acceptance_ingestion_disabled",)
+        if mode is not AcceptanceIngestionMode.NATIVE_PICKUP_FACT:
+            return ("acceptance_ingestion_mode_invalid",)
+
+        blockers: list[str] = []
+        if not self.nats_enabled:
+            blockers.append("nats_disabled_for_native_ingestion")
+        if not self.exact_durable_binding_configured():
+            blockers.append("native_durable_binding_missing")
+        if self.persistence_backend is PersistenceBackend.MEMORY:
+            blockers.append("native_memory_persistence_forbidden")
+        if not self.database_url:
+            blockers.append("native_database_unavailable")
+        if self.environment in {
+            RuntimeEnvironment.STAGING,
+            RuntimeEnvironment.PRODUCTION,
+        }:
+            if not self.adr_0010_credentials_configured:
+                blockers.append("adr_0010_credentials_gate_missing")
+            if not self.nats_tls_enabled:
+                blockers.append("adr_0010_tls_gate_missing")
+            if not self.acceptance_cutover_evidence_confirmed:
+                blockers.append("cutover_evidence_gate_missing")
+            if not self.legacy_pickup_acceptance_writer_revocation_externally_confirmed:
+                blockers.append("legacy_writer_revocation_not_externally_confirmed")
+        return tuple(blockers)
+
     def assert_production_gates(self) -> None:
-        if self.environment is not RuntimeEnvironment.PRODUCTION:
+        if self.environment not in {
+            RuntimeEnvironment.STAGING,
+            RuntimeEnvironment.PRODUCTION,
+        }:
             return
         missing: list[str] = []
-        if not self.database_url:
-            missing.append("DATABASE_URL")
-        if not self.adr_0010_credentials_configured:
-            missing.append("adr_0010_credentials_configured")
+        if self.acceptance_ingestion_mode is None:
+            missing.append("acceptance_ingestion_mode")
+        if self.environment is RuntimeEnvironment.PRODUCTION:
+            if not self.database_url:
+                missing.append("DATABASE_URL")
+            if not self.adr_0010_credentials_configured:
+                missing.append("adr_0010_credentials_configured")
         if missing:
-            msg = f"Production startup blocked — unset gates: {', '.join(missing)}"
+            msg = (
+                f"{self.environment.value} startup blocked — unset gates: "
+                f"{', '.join(missing)}"
+            )
             raise ProductionStartupBlockedError(msg)
-        if self.persistence_backend is PersistenceBackend.MEMORY:
+        if (
+            self.environment is RuntimeEnvironment.PRODUCTION
+            and self.persistence_backend is PersistenceBackend.MEMORY
+        ):
             msg = "Production startup blocked — in-memory persistence is forbidden"
             raise ProductionStartupBlockedError(msg)
+
+
+def _resolve_acceptance_ingestion_mode(
+    *,
+    environment: RuntimeEnvironment,
+    overrides: dict[str, object],
+) -> AcceptanceIngestionMode | None:
+    """Local/test default to compatibility_http; staging/production fail closed."""
+    if "acceptance_ingestion_mode" in overrides:
+        raw = overrides["acceptance_ingestion_mode"]
+        if raw is None:
+            return None
+        return parse_acceptance_ingestion_mode(raw)
+
+    env_raw = os.environ.get("SHIPMENT_ACCEPTANCE_INGESTION_MODE")
+    if env_raw is not None and env_raw.strip() != "":
+        return parse_acceptance_ingestion_mode(env_raw)
+
+    if environment in {RuntimeEnvironment.LOCAL, RuntimeEnvironment.TEST}:
+        return AcceptanceIngestionMode.COMPATIBILITY_HTTP
+    return None
 
 
 def load_settings(**overrides: object) -> ShipmentSettings:
@@ -140,6 +248,28 @@ def load_settings(**overrides: object) -> ShipmentSettings:
         ),
         "database_url": resolved_url,
         "persistence_backend": persistence_backend,
+        "acceptance_ingestion_mode": _resolve_acceptance_ingestion_mode(
+            environment=environment,
+            overrides=overrides,
+        ),
+        "acceptance_cutover_evidence_confirmed": bool(
+            overrides.get(
+                "acceptance_cutover_evidence_confirmed",
+                _env_bool(
+                    "SHIPMENT_ACCEPTANCE_CUTOVER_EVIDENCE_CONFIRMED",
+                    default=False,
+                ),
+            )
+        ),
+        "legacy_pickup_acceptance_writer_revocation_externally_confirmed": bool(
+            overrides.get(
+                "legacy_pickup_acceptance_writer_revocation_externally_confirmed",
+                _env_bool(
+                    "SHIPMENT_LEGACY_PICKUP_ACCEPTANCE_WRITER_REVOCATION_EXTERNALLY_CONFIRMED",
+                    default=False,
+                ),
+            )
+        ),
         "consumer_name": str(
             overrides.get(
                 "consumer_name",

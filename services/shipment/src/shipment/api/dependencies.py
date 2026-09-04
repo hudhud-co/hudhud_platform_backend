@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import Header, HTTPException, Request
 
 from shipment.application.acceptance_service import AcceptanceLifecycleService
+from shipment.config import AcceptanceIngestionMode, ShipmentSettings
 from shipment.ports.authorization import AcceptanceAuthorizer
 
 
@@ -31,6 +32,36 @@ def get_acceptance_authorizer(request: Request) -> AcceptanceAuthorizer:
     if authorizer is None:
         raise HTTPException(status_code=503, detail="authorization unavailable")
     return authorizer
+
+
+def require_compatibility_http_acceptance(request: Request) -> None:
+    """Reject W16 HTTP acceptance before authorization/domain/UoW when not enabled.
+
+    Does not log request body, bearer token, idempotency key, or scanned identifier.
+    """
+    settings = getattr(request.app.state, "settings", None)
+    if not isinstance(settings, ShipmentSettings):
+        raise HTTPException(status_code=503, detail="acceptance ingestion unavailable")
+    mode = settings.acceptance_ingestion_mode
+    if mode is AcceptanceIngestionMode.COMPATIBILITY_HTTP:
+        return
+    if mode is AcceptanceIngestionMode.NATIVE_PICKUP_FACT:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "compatibility HTTP acceptance disabled; "
+                "native pickup.fact.accepted mode is active"
+            ),
+        )
+    if mode is AcceptanceIngestionMode.DISABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="acceptance ingestion is disabled",
+        )
+    raise HTTPException(
+        status_code=503,
+        detail="acceptance ingestion mode is not configured",
+    )
 
 
 def require_bearer_token(
