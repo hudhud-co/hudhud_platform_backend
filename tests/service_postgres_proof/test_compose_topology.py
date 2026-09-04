@@ -135,6 +135,17 @@ def test_database_url_guard_accepts_loopback_lab_urls() -> None:
         assert fragment not in url or fragment == "legacy"
 
 
+def test_compose_has_no_nats_or_api_containers() -> None:
+    compose_text = COMPOSE_FILE.read_text(encoding="utf-8")
+    assert "nats" not in compose_text.lower()
+    if not docker_available():
+        pytest.skip("docker CLI not available")
+    result = compose("config")
+    assert result.returncode == 0, result.stderr
+    rendered = yaml.safe_load(result.stdout)
+    assert set(rendered["services"]) == {"postgres"}
+
+
 def test_compose_uses_postgres_16_alpine_image() -> None:
     if not docker_available():
         pytest.skip("docker CLI not available")

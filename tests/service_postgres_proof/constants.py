@@ -29,8 +29,10 @@ PICKUP_ROLE_PASSWORD = "pickup_svc_dev_only"
 
 BRIDGE_EXPECTED_HEAD = "w5a_bridge_pipeline_002"
 AUDIT_EXPECTED_HEAD = "w5b_audit_observation_001"
-SHIPMENT_EXPECTED_HEAD = "w16a_acceptance_idempotency_001"
-PICKUP_EXPECTED_HEAD = "w15b_pickup_recovery_001"
+SHIPMENT_EXPECTED_HEAD = "w17f_accepted_inbox_001"
+PICKUP_EXPECTED_HEAD = "w17e_pickup_accepted_outbox_001"
+
+SHIPMENT_PRE_CUSTODY_REVISION = "w16a_acceptance_idempotency_001"
 
 LAB_DATABASES = frozenset(
     {
@@ -76,6 +78,7 @@ SHIPMENT_TABLES = frozenset(
         "acceptance_audit_logs",
         "acceptance_decisions",
         "acceptance_idempotency",
+        "shipment_integration_inbox",
     }
 )
 
@@ -84,5 +87,7 @@ PICKUP_TABLES = frozenset(
         "pickup_tasks",
         "pickup_recovery_history",
         "pickup_recovery_idempotency",
+        "pickup_acceptance_idempotency",
+        "pickup_integration_outbox",
     }
 )

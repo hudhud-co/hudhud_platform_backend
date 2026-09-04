@@ -165,34 +165,33 @@ wave_16_runtime_evidence:
 wave_17_runtime_evidence:
   integration_date: 2026-09-04
   production_ready: false
+  lab: infra/labs/service-postgres-proof
   proof_scope: >
-    W17 acceptance-boundary foundation — ADR reconciliation, pickup.fact.accepted
-    contract registration, Pickup recovery eligibility alignment, Shipment
-    PICKUP_DRIVER custody alignment
+    W17 Pickup transactional outbox and Shipment durable inbox PostgreSQL
+    persistence — pickup.fact.accepted v1 against one disposable PostgreSQL 16
+    container; no API containers and no NATS
   classifications:
     contract_registered: pickup.fact.accepted.v1
     implementation_status: implementation_authorized_not_production_enabled
-    evidence_class: local_unit_static_only
+    evidence_class: local_disposable_postgres_lab
     http_acceptance_path: compatibility_internal_not_second_production_writer
   limitations:
-    - pickup_outbox_producer_adapter_deferred
-    - shipment_inbox_consumer_adapter_deferred
     - no_nats_topology_changes_this_round
     - no_jetstream_runtime
-    - shipment_custody_migration_disposable_postgres_proof_pending
+    - nats_pull_worker_deferred
     - no_production_credentials
     - no_cross_service_database_access
   services:
     shipment:
-      pickup_fact_accepted_consumer: deferred
+      pickup_fact_accepted_consumer: proven_local_disposable_sqlalchemy_inbox
       custody_type_canonical: PICKUP_DRIVER
       custody_data_migration: implemented_alembic_single_head
-      custody_migration_disposable_postgres_proof: pending
+      custody_migration_disposable_postgres_proof: proven_local_disposable_lab
       http_acceptance_api: compatibility_internal
       jetstream_runtime_proof: deferred
       production_ready: false
     pickup:
-      pickup_fact_accepted_producer: deferred
+      pickup_fact_accepted_producer: proven_local_disposable_sqlalchemy_outbox
       recovery_eligibility_blocks_on: PICKUP_DRIVER
       contract_aggregate_authority: pickup_task
       jetstream_runtime_proof: deferred
@@ -408,10 +407,10 @@ bounded_contexts:
       http_api_runtime_proof: proven_local_disposable_lab
       default_production_authorization: fail_closed
       production_identity_adapter: deferred
-      pickup_fact_accepted_consumer: deferred
+      pickup_fact_accepted_consumer: proven_local_disposable_sqlalchemy_inbox
       custody_type_canonical: PICKUP_DRIVER
       custody_data_migration: implemented_alembic_single_head
-      custody_migration_disposable_postgres_proof: pending
+      custody_migration_disposable_postgres_proof: proven_local_disposable_lab
       http_acceptance_api: compatibility_internal
       jetstream_runtime_proof: deferred
       production_ready: false
@@ -420,8 +419,9 @@ bounded_contexts:
       legacy_tables: [shipments, shipment_events, delivery_evidence_attachments]
       notes: >
         Platform invariant — sole canonical writer of shipment lifecycle state
-        (ADR-0003). Native pickup.fact.accepted consumer deferred; W16 HTTP
-        acceptance remains compatibility/internal only (W17-A).
+        (ADR-0003). Native pickup.fact.accepted SQLAlchemy inbox is proven in the
+        disposable PostgreSQL lab (W17); W16 HTTP acceptance remains
+        compatibility/internal only. Live NATS pull worker remains deferred.
     allowed_dependencies: []
     public_api_ownership: shipment
     published_events: [shipment.fact.delivered, shipment.fact.lifecycle_changed]
@@ -447,7 +447,7 @@ bounded_contexts:
       default_production_authorization: fail_closed
       production_identity_adapter: deferred
       production_shipment_eligibility_adapter: deferred
-      pickup_fact_accepted_producer: deferred
+      pickup_fact_accepted_producer: proven_local_disposable_sqlalchemy_outbox
       pickup_fact_accepted_contract: registered_not_production_enabled
       recovery_eligibility_blocks_on: PICKUP_DRIVER
       jetstream_runtime_proof: deferred
@@ -458,7 +458,9 @@ bounded_contexts:
       notes: >
         Owns PickupTask recovery and attempt history. Consumes Shipment eligibility
         snapshot through port only — does not own or mutate Shipment custody (ADR-0003).
-        Producer of pickup.fact.accepted (aggregate PickupTask); outbox adapter deferred.
+        Producer of pickup.fact.accepted (aggregate PickupTask); transactional
+        outbox SQLAlchemy adapter proven in the disposable PostgreSQL lab (W17).
+        Live NATS outbox relay remains deferred.
     allowed_dependencies: []
     public_api_ownership: pickup
     published_events: [pickup.fact.accepted, pickup.fact.handover_completed]

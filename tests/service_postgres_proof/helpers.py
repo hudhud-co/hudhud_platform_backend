@@ -335,14 +335,14 @@ def alembic_heads(service_dir: Path, database_url: str) -> list[str]:
     return [part for part in output.split(",") if part]
 
 
-def alembic_upgrade_head(service_dir: Path, database_url: str) -> None:
+def alembic_upgrade(service_dir: Path, database_url: str, target: str = "head") -> None:
     assert_lab_database_url(database_url, expected_database=_database_from_url(database_url))
     script = (
         "from alembic.config import Config\n"
         "from alembic import command\n"
         "cfg = Config('alembic.ini')\n"
         f"cfg.set_main_option('sqlalchemy.url', {database_url!r})\n"
-        "command.upgrade(cfg, 'head')\n"
+        f"command.upgrade(cfg, {target!r})\n"
     )
     result = subprocess.run(
         ["uv", "run", "python", "-c", script],
@@ -354,7 +354,11 @@ def alembic_upgrade_head(service_dir: Path, database_url: str) -> None:
     )
     if result.returncode != 0:
         msg = result.stderr.strip() or result.stdout.strip()
-        raise RuntimeError(f"alembic upgrade head failed: {msg}")
+        raise RuntimeError(f"alembic upgrade {target} failed: {msg}")
+
+
+def alembic_upgrade_head(service_dir: Path, database_url: str) -> None:
+    alembic_upgrade(service_dir, database_url, "head")
 
 
 def alembic_current_revision(service_dir: Path, database_url: str) -> str:
@@ -474,6 +478,18 @@ def run_pickup_http_probe(database_url: str) -> dict[str, object]:
     assert_lab_database_url(database_url, expected_database=PICKUP_DATABASE)
     probe = Path(__file__).resolve().parent / "probes" / "pickup_http.py"
     return _run_probe(probe, PICKUP_SERVICE, database_url)
+
+
+def run_pickup_accepted_outbox_probe(database_url: str) -> dict[str, object]:
+    assert_lab_database_url(database_url, expected_database=PICKUP_DATABASE)
+    probe = Path(__file__).resolve().parent / "probes" / "pickup_accepted_outbox.py"
+    return _run_probe(probe, PICKUP_SERVICE, database_url)
+
+
+def run_shipment_accepted_inbox_probe(database_url: str) -> dict[str, object]:
+    assert_lab_database_url(database_url, expected_database=SHIPMENT_DATABASE)
+    probe = Path(__file__).resolve().parent / "probes" / "shipment_accepted_inbox.py"
+    return _run_probe(probe, SHIPMENT_SERVICE, database_url)
 
 
 def _run_probe(probe: Path, service_dir: Path, database_url: str) -> dict[str, object]:

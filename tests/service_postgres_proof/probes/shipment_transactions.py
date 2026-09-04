@@ -185,7 +185,7 @@ async def _probe_acceptance_rollback(database_url: str, now: datetime) -> bool:
         loaded_shipment.current_status = ShipmentStatus.IN_CUSTODY
         loaded_shipment.accepted_at = now
         loaded_shipment.sla_started_at = now
-        loaded_shipment.current_custody_type = CustodyType.DRIVER
+        loaded_shipment.current_custody_type = CustodyType.PICKUP_DRIVER
         loaded_shipment.current_custody_id = "driver-rollback"
         await uow.shipment_events.append_event(
             ShipmentEvent(

@@ -201,42 +201,57 @@ def test_wave17_acceptance_boundary_foundation_registered(
     boundaries: dict,
     ownership_matrix: dict,
 ) -> None:
-    """W17 shared metadata: contract registered; adapters deferred; not production."""
+    """W17 shared metadata: outbox/inbox SQLAlchemy proven locally; not production."""
     wave17 = boundaries["wave_17_runtime_evidence"]
     assert wave17["production_ready"] is False
+    assert wave17["lab"] == "infra/labs/service-postgres-proof"
     assert wave17["classifications"]["contract_registered"] == "pickup.fact.accepted.v1"
     assert (
         wave17["classifications"]["implementation_status"]
         == "implementation_authorized_not_production_enabled"
     )
-    assert wave17["classifications"]["evidence_class"] == "local_unit_static_only"
+    assert wave17["classifications"]["evidence_class"] == "local_disposable_postgres_lab"
     assert (
         wave17["classifications"]["http_acceptance_path"]
         == "compatibility_internal_not_second_production_writer"
     )
     limitations = set(wave17["limitations"])
-    assert "pickup_outbox_producer_adapter_deferred" in limitations
-    assert "shipment_inbox_consumer_adapter_deferred" in limitations
-    assert "shipment_custody_migration_disposable_postgres_proof_pending" in limitations
+    assert "pickup_outbox_producer_adapter_deferred" not in limitations
+    assert "shipment_inbox_consumer_adapter_deferred" not in limitations
+    assert "shipment_custody_migration_disposable_postgres_proof_pending" not in limitations
     assert "no_nats_topology_changes_this_round" in limitations
+    assert "no_jetstream_runtime" in limitations
+    assert "nats_pull_worker_deferred" in limitations
 
     shipment_w17 = wave17["services"]["shipment"]
-    assert shipment_w17["pickup_fact_accepted_consumer"] == "deferred"
+    assert (
+        shipment_w17["pickup_fact_accepted_consumer"]
+        == "proven_local_disposable_sqlalchemy_inbox"
+    )
     assert shipment_w17["custody_type_canonical"] == "PICKUP_DRIVER"
     assert shipment_w17["custody_data_migration"] == "implemented_alembic_single_head"
-    assert shipment_w17["custody_migration_disposable_postgres_proof"] == "pending"
+    assert (
+        shipment_w17["custody_migration_disposable_postgres_proof"]
+        == "proven_local_disposable_lab"
+    )
     assert shipment_w17["http_acceptance_api"] == "compatibility_internal"
     assert shipment_w17["production_ready"] is False
 
     pickup_w17 = wave17["services"]["pickup"]
-    assert pickup_w17["pickup_fact_accepted_producer"] == "deferred"
+    assert (
+        pickup_w17["pickup_fact_accepted_producer"]
+        == "proven_local_disposable_sqlalchemy_outbox"
+    )
     assert pickup_w17["recovery_eligibility_blocks_on"] == "PICKUP_DRIVER"
     assert pickup_w17["contract_aggregate_authority"] == "pickup_task"
     assert pickup_w17["production_ready"] is False
 
     shipment = boundaries["bounded_contexts"]["shipment"]
     shipment_evidence = shipment["runtime_evidence"]
-    assert shipment_evidence["pickup_fact_accepted_consumer"] == "deferred"
+    assert (
+        shipment_evidence["pickup_fact_accepted_consumer"]
+        == "proven_local_disposable_sqlalchemy_inbox"
+    )
     assert shipment_evidence["custody_type_canonical"] == "PICKUP_DRIVER"
     assert shipment_evidence["http_acceptance_api"] == "compatibility_internal"
     assert shipment_evidence["production_ready"] is False
@@ -245,7 +260,10 @@ def test_wave17_acceptance_boundary_foundation_registered(
 
     pickup = boundaries["bounded_contexts"]["pickup"]
     pickup_evidence = pickup["runtime_evidence"]
-    assert pickup_evidence["pickup_fact_accepted_producer"] == "deferred"
+    assert (
+        pickup_evidence["pickup_fact_accepted_producer"]
+        == "proven_local_disposable_sqlalchemy_outbox"
+    )
     assert (
         pickup_evidence["pickup_fact_accepted_contract"]
         == "registered_not_production_enabled"
@@ -258,12 +276,18 @@ def test_wave17_acceptance_boundary_foundation_registered(
     ownership_shipment = ownership_matrix["ownership"]["shipment"]
     assert ownership_shipment["canonical_writer"] == "shipment"
     assert "sole_lifecycle_state_writer" in ownership_shipment["invariants"]
-    assert ownership_shipment["runtime_evidence"]["pickup_fact_accepted_consumer"] == "deferred"
+    assert (
+        ownership_shipment["runtime_evidence"]["pickup_fact_accepted_consumer"]
+        == "proven_local_disposable_sqlalchemy_inbox"
+    )
     assert ownership_shipment["runtime_evidence"]["production_ready"] is False
 
     ownership_pickup = ownership_matrix["ownership"]["pickup"]
     assert ownership_pickup["canonical_writer"] == "pickup"
-    assert ownership_pickup["runtime_evidence"]["pickup_fact_accepted_producer"] == "deferred"
+    assert (
+        ownership_pickup["runtime_evidence"]["pickup_fact_accepted_producer"]
+        == "proven_local_disposable_sqlalchemy_outbox"
+    )
     assert (
         ownership_pickup["runtime_evidence"]["pickup_fact_accepted_contract"]
         == "registered_not_production_enabled"

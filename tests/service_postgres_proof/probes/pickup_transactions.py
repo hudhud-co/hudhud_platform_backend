@@ -165,12 +165,13 @@ def _probe_lineage_uniqueness(database_url: str, shipment_id: object, now: datet
                     "pickup_task_id, shipment_id, assigned_driver_user_id, assigned_batch_id, "
                     "status, attempt_number, root_attempt_id, parent_attempt_id, "
                     "superseded_by_task_id, scheduled_window_start, scheduled_window_end, "
-                    "acceptance_state, recovery_reason, created_at, recovered_at, "
+                    "acceptance_state, has_pickup_condition_proof, accepted_at, "
+                    "accepted_by_driver_user_id, recovery_reason, created_at, recovered_at, "
                     "cancelled_at, version"
                     ") VALUES ("
                     ":pickup_task_id, :shipment_id, 'driver-lineage', :assigned_batch_id, "
                     "'PENDING', 1, :root_attempt_id, NULL, "
-                    "NULL, NULL, NULL, NULL, NULL, :created_at, NULL, NULL, 1"
+                    "NULL, NULL, NULL, NULL, false, NULL, NULL, NULL, :created_at, NULL, NULL, 1"
                     ")"
                 ),
                 {
@@ -244,6 +245,9 @@ def _probe_recovery_rollback(
             scheduled_window_start=None,
             scheduled_window_end=None,
             acceptance_state=None,
+            has_pickup_condition_proof=False,
+            accepted_at=None,
+            accepted_by_driver_user_id=None,
             recovery_reason="rollback probe",
             created_at=now,
             recovered_at=None,

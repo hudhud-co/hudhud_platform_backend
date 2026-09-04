@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 
 from .constants import (
     PICKUP_DATABASE,
     SHIPMENT_DATABASE,
     SHIPMENT_EXPECTED_HEAD,
+    SHIPMENT_PRE_CUSTODY_REVISION,
     SHIPMENT_ROLE,
     SHIPMENT_TABLES,
 )
 from .helpers import (
     SHIPMENT_SERVICE,
     alembic_current_revision,
+    alembic_upgrade,
     alembic_upgrade_head,
     assert_single_head,
     compose_restart_postgres,
@@ -26,6 +30,7 @@ from .helpers import (
     list_public_tables,
     psql,
     psql_expect_failure,
+    run_shipment_accepted_inbox_probe,
     run_shipment_http_probe,
     run_shipment_transaction_probe,
     shipment_alembic_url,
@@ -50,9 +55,36 @@ def test_shipment_starts_from_empty_database(postgres_proof_stack: int) -> None:
 def test_shipment_alembic_upgrade_head_and_single_head(postgres_proof_stack: int) -> None:
     owner_url = shipment_alembic_url()
     assert_single_head(SHIPMENT_SERVICE, owner_url, SHIPMENT_EXPECTED_HEAD)
+    alembic_upgrade(SHIPMENT_SERVICE, owner_url, SHIPMENT_PRE_CUSTODY_REVISION)
+    assert alembic_current_revision(SHIPMENT_SERVICE, owner_url) == SHIPMENT_PRE_CUSTODY_REVISION
+
+    driver_shipment_id = uuid4()
+    psql(
+        "INSERT INTO shipments ("
+        "shipment_id, order_id, waybill_number, current_status, order_created_at, "
+        "accepted_at, sla_started_at, current_custody_type, current_custody_id, version"
+        ") VALUES ("
+        f"'{driver_shipment_id}', '{uuid4()}', 'WB-DRIVER-MIG-001', 'IN_CUSTODY', "
+        "TIMESTAMPTZ '2026-09-04 10:00:00+00', TIMESTAMPTZ '2026-09-04 11:00:00+00', "
+        "TIMESTAMPTZ '2026-09-04 11:00:00+00', 'DRIVER', 'driver-legacy', 1"
+        ");",
+        database=SHIPMENT_DATABASE,
+        tuples_only=False,
+    )
+    before = psql(
+        f"SELECT current_custody_type FROM shipments WHERE shipment_id = '{driver_shipment_id}';",
+        database=SHIPMENT_DATABASE,
+    )
+    assert before == "DRIVER"
+
     alembic_upgrade_head(SHIPMENT_SERVICE, owner_url)
     assert list_public_tables(SHIPMENT_DATABASE) == SHIPMENT_TABLES
     assert alembic_current_revision(SHIPMENT_SERVICE, owner_url) == SHIPMENT_EXPECTED_HEAD
+    after = psql(
+        f"SELECT current_custody_type FROM shipments WHERE shipment_id = '{driver_shipment_id}';",
+        database=SHIPMENT_DATABASE,
+    )
+    assert after == "PICKUP_DRIVER"
 
 
 def test_shipment_schema_constraints_and_types(postgres_proof_stack: int) -> None:
@@ -73,12 +105,14 @@ def test_shipment_schema_constraints_and_types(postgres_proof_stack: int) -> Non
     assert "uq_acceptance_decisions_pickup_task_id" in uniques
     assert "uq_shipment_events_shipment_event_type" in uniques
     assert "uq_shipments_waybill_number" in uniques
+    assert "uq_shipment_inbox_consumer_event" in uniques
 
     indexes = fetch_indexes(SHIPMENT_DATABASE)
     assert "ix_shipments_order_id" in indexes
     assert "ix_pickup_task_snapshots_shipment_id" in indexes
     assert "ix_shipment_events_shipment_id" in indexes
     assert "ix_acceptance_audit_logs_entity" in indexes
+    assert "ix_shipment_inbox_consumer_status" in indexes
 
     assert fetch_foreign_key_count(SHIPMENT_DATABASE) == 0
 
@@ -146,3 +180,19 @@ def test_shipment_http_acceptance_against_postgres(postgres_proof_stack: int) ->
     assert result["identity_headers_ignored"] is True
     assert result["health_liveness"] is True
     assert result["ready_reports_blockers"] is True
+
+
+def test_shipment_accepted_inbox_transactions(postgres_proof_stack: int) -> None:
+    owner_url = shipment_alembic_url()
+    alembic_upgrade_head(SHIPMENT_SERVICE, owner_url)
+    assert alembic_current_revision(SHIPMENT_SERVICE, owner_url) == SHIPMENT_EXPECTED_HEAD
+    grant_service_role_privileges(database=SHIPMENT_DATABASE, role=SHIPMENT_ROLE)
+
+    result = run_shipment_accepted_inbox_probe(shipment_service_url())
+    assert result["atomic_apply"] is True
+    assert result["independent_version"] is True
+    assert result["processed_duplicate"] is True
+    assert result["http_conflict_quarantine"] is True
+    assert result["invalid_contract_quarantine"] is True
+    assert result["rollback_without_partial"] is True
+    assert result["isolation_enforced"] is True

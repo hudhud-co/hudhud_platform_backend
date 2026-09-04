@@ -51,7 +51,7 @@ def _seed_task(
                 ShipmentStatus.IN_CUSTODY if custody_started else ShipmentStatus.CREATED
             ),
             custody_started=custody_started,
-            custody_type=CustodyType.DRIVER if custody_started else None,
+            custody_type=CustodyType.PICKUP_DRIVER if custody_started else None,
             custody_id="driver-42" if custody_started else None,
         )
     )

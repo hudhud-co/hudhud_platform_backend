@@ -19,6 +19,8 @@ def test_sqlalchemy_store_declares_recovery_tables() -> None:
     assert "RecoveryIdempotencyRow" in source
     assert "SqlAlchemyRecoveryUnitOfWork" in source
     assert "StalePickupTaskVersion" in source
+    assert "IntegrationOutboxRow" in source
+    assert "AcceptanceIdempotencyRow" in source
 
 
 def test_migration_declares_lineage_and_idempotency_uniqueness() -> None:

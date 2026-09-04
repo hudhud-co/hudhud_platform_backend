@@ -5,7 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from messaging_conformance.enums import InboxStatus
+
 from shipment.domain.entities import (
+    AcceptanceDecisionRecord,
     AcceptanceIdempotencyRecord,
     AuditLogEntry,
     OrderIntent,
@@ -13,8 +16,11 @@ from shipment.domain.entities import (
     Shipment,
     ShipmentEvent,
 )
+from shipment.domain.types import InboxRow
 from shipment.domain.value_objects import (
+    AcceptanceOutcome,
     CustodyType,
+    EvidenceReference,
     PickupTaskAcceptanceState,
     PickupTaskStatus,
     ShipmentEventType,
@@ -25,6 +31,7 @@ from shipment.infrastructure.persistence.models import (
     AcceptanceAuditLogRow,
     AcceptanceDecisionRow,
     AcceptanceIdempotencyRow,
+    IntegrationInboxRow,
     OrderIntentRow,
     PickupTaskSnapshotRow,
     ShipmentEventRow,
@@ -211,3 +218,80 @@ def acceptance_idempotency_from_row(row: AcceptanceIdempotencyRow) -> Acceptance
         pickup_task_id=row.pickup_task_id,
         recorded_at=row.recorded_at,
     )
+
+
+def decision_to_row(decision: AcceptanceDecisionRecord) -> AcceptanceDecisionRow:
+    return AcceptanceDecisionRow(
+        decision_id=decision.decision_id,
+        shipment_id=decision.shipment_id,
+        pickup_task_id=decision.pickup_task_id,
+        outcome=decision.outcome.value,
+        acting_driver_user_id=decision.acting_driver_user_id,
+        scanned_identifier=decision.scanned_identifier,
+        scan_timestamp=decision.scan_timestamp,
+        recorded_at=decision.recorded_at,
+        exception_evidence=_evidence_to_json(decision.exception_evidence),
+    )
+
+
+def decision_from_row(row: AcceptanceDecisionRow) -> AcceptanceDecisionRecord:
+    return AcceptanceDecisionRecord(
+        decision_id=row.decision_id,  # type: ignore[arg-type]
+        shipment_id=row.shipment_id,  # type: ignore[arg-type]
+        pickup_task_id=row.pickup_task_id,  # type: ignore[arg-type]
+        outcome=AcceptanceOutcome(row.outcome),
+        acting_driver_user_id=row.acting_driver_user_id,
+        scanned_identifier=row.scanned_identifier,
+        scan_timestamp=row.scan_timestamp,  # type: ignore[arg-type]
+        recorded_at=row.recorded_at,  # type: ignore[arg-type]
+        exception_evidence=_evidence_from_json(row.exception_evidence),
+    )
+
+
+def inbox_from_row(row: IntegrationInboxRow) -> InboxRow:
+    return InboxRow(
+        id=row.id,  # type: ignore[arg-type]
+        consumer_name=row.consumer_name,
+        event_id=row.event_id,  # type: ignore[arg-type]
+        event_type=row.event_type,
+        event_version=row.event_version,
+        status=InboxStatus(row.status),
+        processing_owner=row.processing_owner,
+        processing_lease_until=row.processing_lease_until,  # type: ignore[arg-type]
+        handler_version=row.handler_version,
+        attempt_count=row.attempt_count,
+        first_received_at=row.first_received_at,  # type: ignore[arg-type]
+        last_received_at=row.last_received_at,  # type: ignore[arg-type]
+        processed_at=row.processed_at,  # type: ignore[arg-type]
+        quarantined_at=row.quarantined_at,  # type: ignore[arg-type]
+        last_error_code=row.last_error_code,
+        last_error_message=row.last_error_message,
+        jetstream_stream=row.jetstream_stream,
+        jetstream_seq=row.jetstream_seq,
+        correlation_id=row.correlation_id,  # type: ignore[arg-type]
+        nats_msg_id=row.nats_msg_id,
+        processing_started_at=row.processing_started_at,  # type: ignore[arg-type]
+        aggregate_type=row.aggregate_type,
+        aggregate_id=row.aggregate_id,  # type: ignore[arg-type]
+        aggregate_version=row.aggregate_version,
+    )
+
+
+def _evidence_to_json(
+    evidence: tuple[EvidenceReference, ...],
+) -> list[dict[str, str | bool | None]]:
+    return [{"storage_uri": item.storage_uri} for item in evidence]
+
+
+def _evidence_from_json(
+    raw: list[dict[str, str | bool | None]] | None,
+) -> tuple[EvidenceReference, ...]:
+    if not raw:
+        return ()
+    refs: list[EvidenceReference] = []
+    for item in raw:
+        storage_uri = item.get("storage_uri")
+        if not isinstance(storage_uri, str) or not storage_uri.strip():
+            continue
+        refs.append(EvidenceReference.from_reference(storage_uri))
+    return tuple(refs)

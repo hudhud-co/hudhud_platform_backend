@@ -139,10 +139,10 @@ ownership:
       http_api_runtime_proof: proven_local_disposable_lab
       default_production_authorization: fail_closed
       production_identity_adapter: deferred
-      pickup_fact_accepted_consumer: deferred
+      pickup_fact_accepted_consumer: proven_local_disposable_sqlalchemy_inbox
       custody_type_canonical: PICKUP_DRIVER
       custody_data_migration: implemented_alembic_single_head
-      custody_migration_disposable_postgres_proof: pending
+      custody_migration_disposable_postgres_proof: proven_local_disposable_lab
       http_acceptance_api: compatibility_internal
       jetstream_runtime_proof: deferred
       production_ready: false
@@ -168,7 +168,7 @@ ownership:
       default_production_authorization: fail_closed
       production_identity_adapter: deferred
       production_shipment_eligibility_adapter: deferred
-      pickup_fact_accepted_producer: deferred
+      pickup_fact_accepted_producer: proven_local_disposable_sqlalchemy_outbox
       pickup_fact_accepted_contract: registered_not_production_enabled
       recovery_eligibility_blocks_on: PICKUP_DRIVER
       jetstream_runtime_proof: deferred
@@ -176,7 +176,8 @@ ownership:
     notes: >
       Owns PickupTask recovery and attempt history. Shipment eligibility consumed
       through port only — no Shipment custody mutation. Producer of
-      pickup.fact.accepted (registered; outbox adapter deferred).
+      pickup.fact.accepted (registered; transactional outbox SQLAlchemy adapter
+      proven in the disposable PostgreSQL lab). Live NATS outbox relay deferred.
 
   hub:
     canonical_writer: hub

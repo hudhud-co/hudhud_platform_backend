@@ -10,11 +10,16 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm import Session, sessionmaker
 
 
 def build_engine(database_url: str) -> Engine:
-    """Sync engine for Alembic migrations and health probes."""
+    """Sync engine for Alembic migrations, accepted-fact UoW, and health probes."""
     return create_engine(database_url, pool_pre_ping=True, future=True)
+
+
+def build_session_factory(engine: Engine) -> sessionmaker[Session]:
+    return sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
 def build_async_engine(database_url: str) -> AsyncEngine:

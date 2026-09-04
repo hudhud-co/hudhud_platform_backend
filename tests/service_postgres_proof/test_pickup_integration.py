@@ -27,6 +27,7 @@ from .helpers import (
     pickup_service_url,
     psql,
     psql_expect_failure,
+    run_pickup_accepted_outbox_probe,
     run_pickup_http_probe,
     run_pickup_transaction_probe,
     table_count,
@@ -59,7 +60,7 @@ def test_pickup_schema_constraints_and_types(postgres_proof_stack: int) -> None:
     alembic_upgrade_head(PICKUP_SERVICE, owner_url)
 
     task_timestamps = fetch_timestamp_columns(PICKUP_DATABASE, "pickup_tasks")
-    assert {"created_at", "recovered_at", "cancelled_at"}.issubset(task_timestamps)
+    assert {"created_at", "recovered_at", "cancelled_at", "accepted_at"}.issubset(task_timestamps)
     history_timestamps = fetch_timestamp_columns(PICKUP_DATABASE, "pickup_recovery_history")
     assert "occurred_at" in history_timestamps
     idempotency_timestamps = fetch_timestamp_columns(PICKUP_DATABASE, "pickup_recovery_idempotency")
@@ -68,11 +69,15 @@ def test_pickup_schema_constraints_and_types(postgres_proof_stack: int) -> None:
     uniques = fetch_unique_constraints(PICKUP_DATABASE)
     assert "uq_pickup_tasks_root_attempt_number" in uniques
     assert "uq_pickup_recovery_history_idempotency_key" in uniques
+    assert "uq_pickup_outbox_event_id" in uniques
+    assert "uq_pickup_outbox_aggregate_version" in uniques
+    assert "uq_pickup_outbox_event_type_aggregate" in uniques
 
     indexes = fetch_indexes(PICKUP_DATABASE)
     assert "ix_pickup_tasks_shipment_id" in indexes
     assert "ix_pickup_tasks_root_attempt_id" in indexes
     assert "ix_pickup_recovery_history_pickup_task_id" in indexes
+    assert "ix_pickup_outbox_pending" in indexes
 
     assert fetch_foreign_key_count(PICKUP_DATABASE) == 0
 
@@ -143,3 +148,22 @@ def test_pickup_http_recovery_against_postgres(postgres_proof_stack: int) -> Non
     assert result["identity_headers_ignored"] is True
     assert result["health_liveness"] is True
     assert result["ready_reports_blockers"] is True
+
+
+def test_pickup_accepted_outbox_transactions(postgres_proof_stack: int) -> None:
+    owner_url = pickup_owner_url()
+    alembic_upgrade_head(PICKUP_SERVICE, owner_url)
+    assert alembic_current_revision(PICKUP_SERVICE, owner_url) == PICKUP_EXPECTED_HEAD
+    grant_service_role_privileges(database=PICKUP_DATABASE, role=PICKUP_ROLE)
+
+    result = run_pickup_accepted_outbox_probe(pickup_service_url())
+    assert result["atomic_commit"] is True
+    assert result["version_agrees"] is True
+    assert result["envelope_valid"] is True
+    assert result["idempotent_same_event"] is True
+    assert result["no_second_row"] is True
+    assert result["conflicting_key_no_mutation"] is True
+    assert result["rollback_unchanged"] is True
+    assert result["uniqueness_rejected"] is True
+    assert result["exception_media_refs"] is True
+    assert result["rejected_creates_no_fact"] is True

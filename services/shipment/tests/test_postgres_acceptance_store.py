@@ -41,6 +41,19 @@ def test_async_session_factory_is_exported() -> None:
     assert "create_async_engine" in source
 
 
+def test_session_factory_exports_sync_builder_for_accepted_fact_store() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "shipment"
+        / "infrastructure"
+        / "persistence"
+        / "session.py"
+    ).read_text(encoding="utf-8")
+    assert "build_session_factory" in source
+    assert "build_engine" in source
+
+
 def test_acceptance_uow_declares_transaction_boundary() -> None:
     source = (
         Path(__file__).resolve().parents[1]
@@ -56,6 +69,27 @@ def test_acceptance_uow_declares_transaction_boundary() -> None:
     assert "async def begin" in source
     assert "run_until_complete" not in source
     assert "_run_async" not in source
+    assert "asyncio.run" not in source
+
+
+def test_accepted_fact_store_declares_sync_inbox_and_domain_boundary() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "shipment"
+        / "infrastructure"
+        / "persistence"
+        / "accepted_fact_uow.py"
+    ).read_text(encoding="utf-8")
+    assert "SqlAlchemyAcceptedFactStore" in source
+    assert "try_insert_received" in source
+    assert "mark_processed" in source
+    assert "mark_quarantined" in source
+    assert "IntegrationInboxRow" in source
+    assert "AcceptanceDecisionRow" in source
+    assert "def begin" in source
+    assert "async def" not in source
+    assert "run_until_complete" not in source
     assert "asyncio.run" not in source
 
 
