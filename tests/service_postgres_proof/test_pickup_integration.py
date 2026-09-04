@@ -27,6 +27,7 @@ from .helpers import (
     pickup_service_url,
     psql,
     psql_expect_failure,
+    run_pickup_http_probe,
     run_pickup_transaction_probe,
     table_count,
 )
@@ -124,3 +125,21 @@ def test_pickup_recovery_transactions(postgres_proof_stack: int) -> None:
     assert result["stale_write_rejected"] is True
     assert result["lineage_duplicate_blocked"] is True
     assert result["rollback_without_partial"] is True
+
+
+def test_pickup_http_recovery_against_postgres(postgres_proof_stack: int) -> None:
+    owner_url = pickup_owner_url()
+    alembic_upgrade_head(PICKUP_SERVICE, owner_url)
+    assert alembic_current_revision(PICKUP_SERVICE, owner_url) == PICKUP_EXPECTED_HEAD
+    grant_service_role_privileges(database=PICKUP_DATABASE, role=PICKUP_ROLE)
+
+    result = run_pickup_http_probe(pickup_service_url())
+    assert result["retry_supersession_persisted"] is True
+    assert result["idempotent_replay"] is True
+    assert result["conflicting_key"] is True
+    assert result["cancel_without_replacement"] is True
+    assert result["custody_no_mutation"] is True
+    assert result["unauthenticated_401"] is True
+    assert result["identity_headers_ignored"] is True
+    assert result["health_liveness"] is True
+    assert result["ready_reports_blockers"] is True

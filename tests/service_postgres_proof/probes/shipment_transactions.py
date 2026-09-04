@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -32,11 +33,10 @@ from shipment.infrastructure.persistence.session import (
 from sqlalchemy import create_engine, text
 
 
-def main() -> int:
+async def _run() -> dict[str, object]:
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
-        print("DATABASE_URL is required", file=sys.stderr)
-        return 1
+        raise RuntimeError("DATABASE_URL is required")
 
     engine = build_async_engine(database_url)
     uow = SqlAlchemyAcceptanceUnitOfWork(build_async_session_factory(engine))
@@ -44,7 +44,7 @@ def main() -> int:
 
     now = datetime.now(UTC)
     order_id = uuid4()
-    _, shipment = service.create_order_intent(
+    _, shipment = await service.create_order_intent(
         CreateOrderIntentCommand(
             order_id=order_id,
             waybill_number="WB-PROBE-001",
@@ -53,7 +53,7 @@ def main() -> int:
     )
     pickup_task_id = uuid4()
     batch_id = uuid4()
-    service.register_pickup_task(
+    await service.register_pickup_task(
         RegisterPickupTaskCommand(
             pickup_task_id=pickup_task_id,
             shipment_id=shipment.shipment_id,
@@ -67,7 +67,7 @@ def main() -> int:
         EvidenceReference.from_reference("s3://proof-lab/exception-note-001.jpg"),
         EvidenceReference.from_reference("s3://proof-lab/exception-note-002.jpg"),
     )
-    acceptance = service.record_acceptance_scan(
+    acceptance = await service.record_acceptance_scan(
         RecordAcceptanceScanCommand(
             shipment_id=shipment.shipment_id,
             pickup_task_id=pickup_task_id,
@@ -75,6 +75,7 @@ def main() -> int:
             scanned_identifier="WB-PROBE-001",
             scan_timestamp=now,
             outcome=AcceptanceOutcome.ACCEPTED_WITH_EXCEPTION,
+            idempotency_key="probe-acceptance-001",
             exception_evidence=evidence,
             recorded_at=now,
         )
@@ -92,7 +93,7 @@ def main() -> int:
 
     duplicate_rejected = False
     try:
-        service.record_acceptance_scan(
+        await service.record_acceptance_scan(
             RecordAcceptanceScanCommand(
                 shipment_id=shipment.shipment_id,
                 pickup_task_id=pickup_task_id,
@@ -100,22 +101,31 @@ def main() -> int:
                 scanned_identifier="WB-PROBE-001",
                 scan_timestamp=now,
                 outcome=AcceptanceOutcome.ACCEPTED,
+                idempotency_key="probe-acceptance-duplicate",
             )
         )
     except AcceptanceAlreadyRecorded:
         duplicate_rejected = True
 
-    rollback_without_partial = _probe_acceptance_rollback(database_url, now)
+    rollback_without_partial = await _probe_acceptance_rollback(database_url, now)
+    stale_write_rejected = await _probe_optimistic_concurrency(database_url, now)
 
-    stale_write_rejected = _probe_optimistic_concurrency(database_url, now)
-
-    payload = {
+    await engine.dispose()
+    return {
         "acceptance_committed": True,
         "evidence_uri_only": evidence_uri_only,
         "duplicate_rejected": duplicate_rejected,
         "rollback_without_partial": rollback_without_partial,
         "stale_write_rejected": stale_write_rejected,
     }
+
+
+def main() -> int:
+    try:
+        payload = asyncio.run(_run())
+    except Exception as exc:  # noqa: BLE001 — probe entrypoint reports failure
+        print(str(exc), file=sys.stderr)
+        return 1
     print(json.dumps(payload))
     return 0
 
@@ -142,13 +152,13 @@ def _fetch_exception_evidence(database_url: str, shipment_id: object) -> list[di
     return value
 
 
-def _probe_acceptance_rollback(database_url: str, now: datetime) -> bool:
+async def _probe_acceptance_rollback(database_url: str, now: datetime) -> bool:
     engine = build_async_engine(database_url)
     uow = SqlAlchemyAcceptanceUnitOfWork(build_async_session_factory(engine))
     service = AcceptanceLifecycleService(uow)
 
     order_id = uuid4()
-    _, shipment = service.create_order_intent(
+    _, shipment = await service.create_order_intent(
         CreateOrderIntentCommand(
             order_id=order_id,
             waybill_number="WB-ROLLBACK-001",
@@ -156,7 +166,7 @@ def _probe_acceptance_rollback(database_url: str, now: datetime) -> bool:
         )
     )
     rollback_pickup_task_id = uuid4()
-    service.register_pickup_task(
+    await service.register_pickup_task(
         RegisterPickupTaskCommand(
             pickup_task_id=rollback_pickup_task_id,
             shipment_id=shipment.shipment_id,
@@ -166,10 +176,10 @@ def _probe_acceptance_rollback(database_url: str, now: datetime) -> bool:
         )
     )
 
-    uow.begin()
+    await uow.begin()
     try:
-        loaded_shipment = uow.shipments.get_shipment(shipment.shipment_id)
-        loaded_pickup = uow.pickup_tasks.get_pickup_task(rollback_pickup_task_id)
+        loaded_shipment = await uow.shipments.get_shipment(shipment.shipment_id)
+        loaded_pickup = await uow.pickup_tasks.get_pickup_task(rollback_pickup_task_id)
         assert loaded_shipment is not None and loaded_pickup is not None
         loaded_pickup.acceptance_state = PickupTaskAcceptanceState.ACCEPTED
         loaded_shipment.current_status = ShipmentStatus.IN_CUSTODY
@@ -177,7 +187,7 @@ def _probe_acceptance_rollback(database_url: str, now: datetime) -> bool:
         loaded_shipment.sla_started_at = now
         loaded_shipment.current_custody_type = CustodyType.DRIVER
         loaded_shipment.current_custody_id = "driver-rollback"
-        uow.shipment_events.append_event(
+        await uow.shipment_events.append_event(
             ShipmentEvent(
                 event_id=uuid4(),
                 shipment_id=shipment.shipment_id,
@@ -187,7 +197,7 @@ def _probe_acceptance_rollback(database_url: str, now: datetime) -> bool:
                 occurred_at=now,
             )
         )
-        uow.audit_logs.append_entry(
+        await uow.audit_logs.append_entry(
             AuditLogEntry(
                 audit_id=uuid4(),
                 action="SHIPMENT_ACCEPTANCE_SCAN",
@@ -203,10 +213,10 @@ def _probe_acceptance_rollback(database_url: str, now: datetime) -> bool:
                 },
             )
         )
-        uow.pickup_tasks.save_pickup_task(loaded_pickup)
-        uow.shipments.save_shipment(loaded_shipment)
+        await uow.pickup_tasks.save_pickup_task(loaded_pickup)
+        await uow.shipments.save_shipment(loaded_shipment)
     finally:
-        uow.rollback()
+        await uow.rollback()
 
     sync_engine = create_engine(_sync_url(database_url), future=True)
     with sync_engine.connect() as connection:
@@ -227,6 +237,7 @@ def _probe_acceptance_rollback(database_url: str, now: datetime) -> bool:
             {"shipment_id": shipment.shipment_id},
         ).scalar_one()
     sync_engine.dispose()
+    await engine.dispose()
 
     return (
         shipment_status == ShipmentStatus.CREATED.value
@@ -236,13 +247,13 @@ def _probe_acceptance_rollback(database_url: str, now: datetime) -> bool:
     )
 
 
-def _probe_optimistic_concurrency(database_url: str, now: datetime) -> bool:
+async def _probe_optimistic_concurrency(database_url: str, now: datetime) -> bool:
     engine = build_async_engine(database_url)
     uow = SqlAlchemyAcceptanceUnitOfWork(build_async_session_factory(engine))
     service = AcceptanceLifecycleService(uow)
 
     order_id = uuid4()
-    _, shipment = service.create_order_intent(
+    _, shipment = await service.create_order_intent(
         CreateOrderIntentCommand(
             order_id=order_id,
             waybill_number="WB-STALE-001",
@@ -250,9 +261,9 @@ def _probe_optimistic_concurrency(database_url: str, now: datetime) -> bool:
         )
     )
 
-    uow.begin()
+    await uow.begin()
     try:
-        loaded = uow.shipments.get_shipment(shipment.shipment_id)
+        loaded = await uow.shipments.get_shipment(shipment.shipment_id)
         assert loaded is not None
 
         sync_engine = create_engine(_sync_url(database_url), future=True)
@@ -268,13 +279,15 @@ def _probe_optimistic_concurrency(database_url: str, now: datetime) -> bool:
         sync_engine.dispose()
 
         loaded.current_custody_id = "stale-writer"
-        uow.shipments.save_shipment(loaded)
-        uow.commit()
+        await uow.shipments.save_shipment(loaded)
+        await uow.commit()
     except OptimisticConcurrencyConflict:
-        uow.rollback()
+        await uow.rollback()
+        await engine.dispose()
         return True
     else:
-        uow.rollback()
+        await uow.rollback()
+        await engine.dispose()
         return False
 
 

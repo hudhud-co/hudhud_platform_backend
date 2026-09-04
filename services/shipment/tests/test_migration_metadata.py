@@ -26,8 +26,10 @@ def test_single_head_migration_chain() -> None:
         "w16a_shipment_acceptance_idempotency_001.py",
     ]
     w16 = (versions / "w16a_shipment_acceptance_idempotency_001.py").read_text(encoding="utf-8")
-    assert 'down_revision' in w16
+    assert "down_revision" in w16
     assert "w15a_shipment_acceptance_001" in w16
+    assert 'revision: str = "w16a_acceptance_idempotency_001"' in w16
+    assert len("w16a_acceptance_idempotency_001") <= 32
 
 
 def test_metadata_tables_owned_by_service() -> None:

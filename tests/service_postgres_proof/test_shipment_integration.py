@@ -26,6 +26,7 @@ from .helpers import (
     list_public_tables,
     psql,
     psql_expect_failure,
+    run_shipment_http_probe,
     run_shipment_transaction_probe,
     shipment_alembic_url,
     shipment_service_url,
@@ -127,3 +128,21 @@ def test_shipment_acceptance_transactions(postgres_proof_stack: int) -> None:
     assert result["duplicate_rejected"] is True
     assert result["rollback_without_partial"] is True
     assert result["stale_write_rejected"] is True
+
+
+def test_shipment_http_acceptance_against_postgres(postgres_proof_stack: int) -> None:
+    owner_url = shipment_alembic_url()
+    alembic_upgrade_head(SHIPMENT_SERVICE, owner_url)
+    assert alembic_current_revision(SHIPMENT_SERVICE, owner_url) == SHIPMENT_EXPECTED_HEAD
+    grant_service_role_privileges(database=SHIPMENT_DATABASE, role=SHIPMENT_ROLE)
+
+    result = run_shipment_http_probe(shipment_service_url())
+    assert result["acceptance_committed"] is True
+    assert result["rows_persisted"] is True
+    assert result["idempotent_replay"] is True
+    assert result["conflicting_key"] is True
+    assert result["no_partial_on_invalid"] is True
+    assert result["unauthenticated_401"] is True
+    assert result["identity_headers_ignored"] is True
+    assert result["health_liveness"] is True
+    assert result["ready_reports_blockers"] is True

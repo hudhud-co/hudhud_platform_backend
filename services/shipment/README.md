@@ -101,7 +101,7 @@ Configuration: `DATABASE_URL` (or `SHIPMENT_DATABASE_URL`), `SHIPMENT_ENVIRONMEN
 - Hub/bag/manifest/seal/linehaul operations
 - Payments/COD/settlement/refunds, returns
 - NATS/outbox ACK publishing
-- HTTP production runtime proof (Compose/staging)
+- Production/staging deployment and secured runtime
 
 ## Validation
 
@@ -114,12 +114,13 @@ uv run pytest -q
 uv run python ../../scripts/quality/verify_boundaries.py
 ```
 
-Targeted tests are unit/in-memory (and static adapter checks). No Docker, live
-network, NATS, or legacy repository access in the W16-A gate set.
+Service-local tests are unit/in-memory (and static adapter checks). Disposable
+PostgreSQL + FastAPI ASGI proof lives in `tests/service_postgres_proof`
+(`workflow_dispatch` only). No NATS or legacy repository access in that lab.
 
 ## Production readiness
 
-**Not production-ready.** PostgreSQL/Alembic and disposable lab persistence proof
-exist (W15). The acceptance HTTP API is implemented with fail-closed authorization,
-but **HTTP production runtime proof remains pending**. Secured messaging, Pickup
-integration, and post-acceptance lifecycle remain future Waves.
+**Not production-ready.** PostgreSQL/Alembic, disposable lab persistence proof
+(W15), and local disposable HTTP+PostgreSQL command-API proof (W16) exist. Default
+authorization remains fail-closed. Production identity adapters, secured messaging,
+Pickup integration, and post-acceptance lifecycle remain deferred.

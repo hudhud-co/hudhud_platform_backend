@@ -82,7 +82,7 @@ Unit of work port: `RecoveryUnitOfWork`.
 
 - Production Shipment HTTP/event eligibility adapter
 - Production identity/authorization adapter (JWT/mTLS)
-- NATS/events, Compose/CI wiring
+- NATS/events and production/staging deployment
 - Driver assignment algorithms, routing, scheduling engine
 - Hub inbound custody transfer
 - Notification, Control Tower, Delivery, Finance
@@ -98,10 +98,13 @@ uv run pytest -q
 uv run python ../../scripts/quality/verify_boundaries.py
 ```
 
-Evidence is **unit/fake only** — no Docker, network, NATS, live PostgreSQL, or
-legacy repository access in targeted tests.
+Service-local tests are unit/fake. PostgreSQL/Alembic and disposable lab
+persistence proof exist (W15). Local disposable HTTP+PostgreSQL command-API
+proof lives in `tests/service_postgres_proof` (`workflow_dispatch` only). No NATS
+or legacy repository access in that lab.
 
 ## Production readiness
 
-**Not production-ready.** Authorization and Shipment eligibility production adapters,
-secured messaging, and disposable-database migration proof remain future Waves.
+**Not production-ready.** Default authorization and Shipment eligibility adapters
+remain fail-closed / deferred. Secured messaging and production deployment remain
+future Waves.

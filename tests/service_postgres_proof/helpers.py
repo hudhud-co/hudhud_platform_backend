@@ -458,9 +458,21 @@ def run_shipment_transaction_probe(database_url: str) -> dict[str, object]:
     return _run_probe(probe, SHIPMENT_SERVICE, database_url)
 
 
+def run_shipment_http_probe(database_url: str) -> dict[str, object]:
+    assert_lab_database_url(database_url, expected_database=SHIPMENT_DATABASE)
+    probe = Path(__file__).resolve().parent / "probes" / "shipment_http.py"
+    return _run_probe(probe, SHIPMENT_SERVICE, database_url)
+
+
 def run_pickup_transaction_probe(database_url: str) -> dict[str, object]:
     assert_lab_database_url(database_url, expected_database=PICKUP_DATABASE)
     probe = Path(__file__).resolve().parent / "probes" / "pickup_transactions.py"
+    return _run_probe(probe, PICKUP_SERVICE, database_url)
+
+
+def run_pickup_http_probe(database_url: str) -> dict[str, object]:
+    assert_lab_database_url(database_url, expected_database=PICKUP_DATABASE)
+    probe = Path(__file__).resolve().parent / "probes" / "pickup_http.py"
     return _run_probe(probe, PICKUP_SERVICE, database_url)
 
 

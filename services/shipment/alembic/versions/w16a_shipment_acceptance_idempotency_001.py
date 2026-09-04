@@ -12,7 +12,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "w16a_shipment_acceptance_idempotency_001"
+# Keep ≤32 chars — Alembic default version_num is VARCHAR(32).
+revision: str = "w16a_acceptance_idempotency_001"
 down_revision: str | Sequence[str] | None = "w15a_shipment_acceptance_001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
