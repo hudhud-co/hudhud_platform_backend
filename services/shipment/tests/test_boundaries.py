@@ -33,7 +33,14 @@ def test_no_cross_service_imports() -> None:
 def test_allowed_shared_packages_only() -> None:
     service_root = Path(__file__).resolve().parents[1] / "src"
     allowed = {"shipment"}
-    allowed_third_party = {"alembic", "sqlalchemy"}
+    allowed_third_party = {
+        "alembic",
+        "fastapi",
+        "pydantic",
+        "sqlalchemy",
+        "starlette",
+        "uvicorn",
+    }
     stdlib = {
         "abc",
         "asyncio",

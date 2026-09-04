@@ -84,3 +84,14 @@ class AuditLogEntry:
     actor_id: str
     occurred_at: datetime
     details: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class AcceptanceIdempotencyRecord:
+    """Stored acceptance command identity for safe HTTP replay."""
+
+    idempotency_key: str
+    command_fingerprint: str
+    shipment_id: UUID
+    pickup_task_id: UUID
+    recorded_at: datetime

@@ -1,8 +1,7 @@
-"""PostgreSQL acceptance unit of work with optimistic concurrency."""
+"""PostgreSQL acceptance unit of work with optimistic concurrency (async-native)."""
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -11,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shipment.domain.entities import (
+    AcceptanceIdempotencyRecord,
     AuditLogEntry,
     OrderIntent,
     PickupTaskSnapshot,
@@ -20,6 +20,8 @@ from shipment.domain.entities import (
 from shipment.domain.errors import AcceptanceAlreadyRecorded, OptimisticConcurrencyConflict
 from shipment.infrastructure.persistence.mappers import (
     acceptance_decision_from_audit,
+    acceptance_idempotency_from_row,
+    acceptance_idempotency_to_row,
     audit_log_from_row,
     audit_log_to_row,
     order_intent_from_row,
@@ -33,31 +35,17 @@ from shipment.infrastructure.persistence.mappers import (
 )
 from shipment.infrastructure.persistence.models import (
     AcceptanceAuditLogRow,
+    AcceptanceIdempotencyRow,
     OrderIntentRow,
     PickupTaskSnapshotRow,
     ShipmentEventRow,
     ShipmentRow,
 )
 
-_sync_event_loop_holder: dict[str, asyncio.AbstractEventLoop | None] = {"loop": None}
-
-
-def _run_async(coro):  # noqa: ANN001, ANN201
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        loop = _sync_event_loop_holder["loop"]
-        if loop is None or loop.is_closed():
-            loop = asyncio.new_event_loop()
-            _sync_event_loop_holder["loop"] = loop
-        return loop.run_until_complete(coro)
-    msg = "SqlAlchemyAcceptanceUnitOfWork sync methods cannot run inside a running event loop"
-    raise RuntimeError(msg)
-
 
 @dataclass
 class SqlAlchemyAcceptanceUnitOfWork:
-    """Atomic acceptance persistence backed by PostgreSQL."""
+    """Atomic acceptance persistence backed by PostgreSQL (async session API)."""
 
     session_factory: async_sessionmaker[AsyncSession]
     _session: AsyncSession | None = field(default=None, init=False, repr=False)
@@ -80,10 +68,11 @@ class SqlAlchemyAcceptanceUnitOfWork:
     def audit_logs(self) -> _AuditLogRepo:
         return _AuditLogRepo(self)
 
-    def begin(self) -> None:
-        _run_async(self._begin())
+    @property
+    def idempotency(self) -> _IdempotencyRepo:
+        return _IdempotencyRepo(self)
 
-    async def _begin(self) -> None:
+    async def begin(self) -> None:
         if self._session is not None:
             msg = "transaction already active"
             raise RuntimeError(msg)
@@ -92,10 +81,7 @@ class SqlAlchemyAcceptanceUnitOfWork:
         self._shipment_versions.clear()
         self._pickup_versions.clear()
 
-    def commit(self) -> None:
-        _run_async(self._commit())
-
-    async def _commit(self) -> None:
+    async def commit(self) -> None:
         if self._session is None:
             msg = "commit without transaction"
             raise RuntimeError(msg)
@@ -110,10 +96,7 @@ class SqlAlchemyAcceptanceUnitOfWork:
             self._shipment_versions.clear()
             self._pickup_versions.clear()
 
-    def rollback(self) -> None:
-        _run_async(self._rollback())
-
-    async def _rollback(self) -> None:
+    async def rollback(self) -> None:
         if self._session is not None:
             await self._session.rollback()
             await self._session.close()
@@ -132,19 +115,7 @@ class _ShipmentRepo:
     def __init__(self, store: SqlAlchemyAcceptanceUnitOfWork) -> None:
         self._store = store
 
-    def save_order_intent(self, order_intent: OrderIntent) -> None:
-        _run_async(self._save_order_intent(order_intent))
-
-    def save_shipment(self, shipment: Shipment) -> None:
-        _run_async(self._save_shipment(shipment))
-
-    def get_shipment(self, shipment_id: UUID) -> Shipment | None:
-        return _run_async(self._get_shipment(shipment_id))
-
-    def get_order_intent(self, order_id: UUID) -> OrderIntent | None:
-        return _run_async(self._get_order_intent(order_id))
-
-    async def _save_order_intent(self, order_intent: OrderIntent) -> None:
+    async def save_order_intent(self, order_intent: OrderIntent) -> None:
         session, owned = await self._store._session_or_factory()
         try:
             session.add(order_intent_to_row(order_intent))
@@ -158,7 +129,7 @@ class _ShipmentRepo:
             if owned:
                 await session.close()
 
-    async def _save_shipment(self, shipment: Shipment) -> None:
+    async def save_shipment(self, shipment: Shipment) -> None:
         session, owned = await self._store._session_or_factory()
         expected_version = self._store._shipment_versions.get(shipment.shipment_id)
         try:
@@ -212,7 +183,7 @@ class _ShipmentRepo:
             )
         self._store._shipment_versions[shipment.shipment_id] = next_version
 
-    async def _get_shipment(self, shipment_id: UUID) -> Shipment | None:
+    async def get_shipment(self, shipment_id: UUID) -> Shipment | None:
         session, owned = await self._store._session_or_factory()
         try:
             row = await session.get(ShipmentRow, shipment_id)
@@ -225,7 +196,7 @@ class _ShipmentRepo:
             if owned:
                 await session.close()
 
-    async def _get_order_intent(self, order_id: UUID) -> OrderIntent | None:
+    async def get_order_intent(self, order_id: UUID) -> OrderIntent | None:
         session, owned = await self._store._session_or_factory()
         try:
             row = await session.get(OrderIntentRow, order_id)
@@ -239,16 +210,7 @@ class _PickupTaskRepo:
     def __init__(self, store: SqlAlchemyAcceptanceUnitOfWork) -> None:
         self._store = store
 
-    def save_pickup_task(self, pickup_task: PickupTaskSnapshot) -> None:
-        _run_async(self._save_pickup_task(pickup_task))
-
-    def get_pickup_task(self, pickup_task_id: UUID) -> PickupTaskSnapshot | None:
-        return _run_async(self._get_pickup_task(pickup_task_id))
-
-    def get_pickup_task_for_shipment(self, shipment_id: UUID) -> PickupTaskSnapshot | None:
-        return _run_async(self._get_pickup_task_for_shipment(shipment_id))
-
-    async def _save_pickup_task(self, pickup_task: PickupTaskSnapshot) -> None:
+    async def save_pickup_task(self, pickup_task: PickupTaskSnapshot) -> None:
         session, owned = await self._store._session_or_factory()
         expected_version = self._store._pickup_versions.get(pickup_task.pickup_task_id)
         try:
@@ -302,7 +264,7 @@ class _PickupTaskRepo:
             )
         self._store._pickup_versions[pickup_task.pickup_task_id] = next_version
 
-    async def _get_pickup_task(self, pickup_task_id: UUID) -> PickupTaskSnapshot | None:
+    async def get_pickup_task(self, pickup_task_id: UUID) -> PickupTaskSnapshot | None:
         session, owned = await self._store._session_or_factory()
         try:
             row = await session.get(PickupTaskSnapshotRow, pickup_task_id)
@@ -315,7 +277,7 @@ class _PickupTaskRepo:
             if owned:
                 await session.close()
 
-    async def _get_pickup_task_for_shipment(self, shipment_id: UUID) -> PickupTaskSnapshot | None:
+    async def get_pickup_task_for_shipment(self, shipment_id: UUID) -> PickupTaskSnapshot | None:
         session, owned = await self._store._session_or_factory()
         try:
             row = await session.execute(
@@ -338,13 +300,7 @@ class _ShipmentEventRepo:
     def __init__(self, store: SqlAlchemyAcceptanceUnitOfWork) -> None:
         self._store = store
 
-    def append_event(self, event: ShipmentEvent) -> None:
-        _run_async(self._append_event(event))
-
-    def list_events_for_shipment(self, shipment_id: UUID) -> tuple[ShipmentEvent, ...]:
-        return _run_async(self._list_events_for_shipment(shipment_id))
-
-    async def _append_event(self, event: ShipmentEvent) -> None:
+    async def append_event(self, event: ShipmentEvent) -> None:
         session, owned = await self._store._session_or_factory()
         try:
             session.add(shipment_event_to_row(event))
@@ -362,7 +318,7 @@ class _ShipmentEventRepo:
             if owned:
                 await session.close()
 
-    async def _list_events_for_shipment(self, shipment_id: UUID) -> tuple[ShipmentEvent, ...]:
+    async def list_events_for_shipment(self, shipment_id: UUID) -> tuple[ShipmentEvent, ...]:
         session, owned = await self._store._session_or_factory()
         try:
             rows = await session.execute(
@@ -380,15 +336,7 @@ class _AuditLogRepo:
     def __init__(self, store: SqlAlchemyAcceptanceUnitOfWork) -> None:
         self._store = store
 
-    def append_entry(self, entry: AuditLogEntry) -> None:
-        _run_async(self._append_entry(entry))
-
-    def list_entries_for_entity(
-        self, entity_type: str, entity_id: str
-    ) -> tuple[AuditLogEntry, ...]:
-        return _run_async(self._list_entries_for_entity(entity_type, entity_id))
-
-    async def _append_entry(self, entry: AuditLogEntry) -> None:
+    async def append_entry(self, entry: AuditLogEntry) -> None:
         session, owned = await self._store._session_or_factory()
         try:
             session.add(audit_log_to_row(entry))
@@ -408,7 +356,7 @@ class _AuditLogRepo:
             if owned:
                 await session.close()
 
-    async def _list_entries_for_entity(
+    async def list_entries_for_entity(
         self, entity_type: str, entity_id: str
     ) -> tuple[AuditLogEntry, ...]:
         session, owned = await self._store._session_or_factory()
@@ -422,6 +370,34 @@ class _AuditLogRepo:
                 .order_by(AcceptanceAuditLogRow.occurred_at)
             )
             return tuple(audit_log_from_row(row) for row in rows.scalars())
+        finally:
+            if owned:
+                await session.close()
+
+
+class _IdempotencyRepo:
+    def __init__(self, store: SqlAlchemyAcceptanceUnitOfWork) -> None:
+        self._store = store
+
+    async def save_record(self, record: AcceptanceIdempotencyRecord) -> None:
+        session, owned = await self._store._session_or_factory()
+        try:
+            session.add(acceptance_idempotency_to_row(record))
+            if owned:
+                await session.commit()
+        except Exception:
+            if owned:
+                await session.rollback()
+            raise
+        finally:
+            if owned:
+                await session.close()
+
+    async def get_record(self, idempotency_key: str) -> AcceptanceIdempotencyRecord | None:
+        session, owned = await self._store._session_or_factory()
+        try:
+            row = await session.get(AcceptanceIdempotencyRow, idempotency_key)
+            return acceptance_idempotency_from_row(row) if row is not None else None
         finally:
             if owned:
                 await session.close()

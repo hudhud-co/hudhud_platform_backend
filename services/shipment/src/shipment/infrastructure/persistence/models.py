@@ -120,3 +120,13 @@ class AcceptanceDecisionRow(Base):
         nullable=False,
         default=list,
     )
+
+
+class AcceptanceIdempotencyRow(Base):
+    __tablename__ = "acceptance_idempotency"
+
+    idempotency_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    command_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    shipment_id: Mapped[object] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    pickup_task_id: Mapped[object] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    recorded_at: Mapped[object] = mapped_column(DateTime(timezone=True), nullable=False)

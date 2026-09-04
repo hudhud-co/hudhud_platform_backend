@@ -53,6 +53,10 @@ def test_acceptance_uow_declares_transaction_boundary() -> None:
     assert "SqlAlchemyAcceptanceUnitOfWork" in source
     assert "OptimisticConcurrencyConflict" in source
     assert "AcceptanceAlreadyRecorded" in source
+    assert "async def begin" in source
+    assert "run_until_complete" not in source
+    assert "_run_async" not in source
+    assert "asyncio.run" not in source
 
 
 def test_shipment_mapper_round_trip_preserves_aggregate_fields() -> None:

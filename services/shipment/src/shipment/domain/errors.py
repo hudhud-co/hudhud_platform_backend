@@ -131,3 +131,11 @@ class ScannedIdentifierMismatch(ShipmentError):
         super().__init__(
             f"scanned identifier {scanned_identifier!r} does not match shipment {shipment_id}"
         )
+
+
+class ConflictingIdempotencyKey(ShipmentError):
+    """Idempotency key was reused with a different command fingerprint."""
+
+    def __init__(self, *, idempotency_key: str) -> None:
+        self.idempotency_key = idempotency_key
+        super().__init__("idempotency key conflict")

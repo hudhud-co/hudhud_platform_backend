@@ -1,10 +1,9 @@
 # Shipment
 
-Independently managed HUDHUD Shipment service package. This Wave establishes the
-**order intent → acceptance scan** domain foundation only. Shipment remains the sole
-canonical writer of shipment lifecycle state (ADR-0003), but this Wave implements
-acceptance-boundary behavior without HTTP, PostgreSQL, NATS, or post-acceptance
-lifecycle stages.
+Independently managed HUDHUD Shipment service. Shipment remains the sole canonical
+writer of shipment lifecycle state (ADR-0003). This package covers the
+**order intent → acceptance scan** domain foundation (W11), PostgreSQL persistence
+(W15-A), and the acceptance command HTTP API (W16-A).
 
 ## Source authority
 
@@ -63,25 +62,46 @@ evidence references and otherwise follows the successful acceptance path.
 - Missing capture timestamp and/or location metadata does **not** discard the
   photo reference; it is retained with `low_trust=True` and explicit reasons.
 
-## Application API (in-process)
+## Persistence (W15-A)
 
-`AcceptanceLifecycleService` exposes:
+- Service-owned Alembic history under `alembic/` (single head).
+- `SqlAlchemyAcceptanceUnitOfWork` is **async-native** (no `asyncio.run` /
+  `run_until_complete` / manual loop bridging from request handlers).
+- Optimistic concurrency via aggregate `version` columns.
+- Disposable PostgreSQL upgrade and transaction/rollback proof exist in the
+  platform lab (`infra/labs/service-postgres-proof` / W15 evidence).
 
-- `create_order_intent` — creates `OrderIntent` + `Shipment` (`CREATED`) without custody/SLA.
-- `register_pickup_task` — persists service-local Pickup prerequisite snapshot.
-- `record_acceptance_scan` — validates Phase 11 prerequisites and applies effects atomically.
+## HTTP API (W16-A)
 
-Unit of work port: `AcceptanceUnitOfWork`. Tests use `InMemoryAcceptanceUnitOfWork`
-(copy-on-write rollback).
+Composition root: `shipment.main:create_app`.
+
+| Route | Role |
+|-------|------|
+| `GET /health` | Liveness only |
+| `GET /ready` | Configuration, PostgreSQL reachability, authorization-adapter readiness |
+| `POST /v1/shipments/{shipment_id}/acceptance-scans` | Acceptance-scan command |
+
+Command requirements:
+
+- `Authorization: Bearer …` — identity from the injected authorization port only
+- `Idempotency-Key` — required; matching fingerprint replays; conflict → 409
+- Actor identity is **never** taken from `X-User-Id`, `X-Role`, request body, or query
+- Default production authorizer is **default-deny / not production-ready**
+- Tests inject `FakeAcceptanceAuthorizer`
+- Response is returned only after DB commit; rollback leaves no partial acceptance
+- ACK/outbox/NATS events remain out of scope
+
+Configuration: `DATABASE_URL` (or `SHIPMENT_DATABASE_URL`), `SHIPMENT_ENVIRONMENT`.
 
 ## Explicit non-goals (deferred)
 
-- **Production Pickup integration adapter** — live Pickup service/database/API reads
-- Delivery / Delivered and all post-acceptance lifecycle stages
+- Production identity/JWT authorization adapter (beyond default-deny + test fake)
+- Production Pickup integration adapter
+- Delivery / post-acceptance lifecycle stages
 - Hub/bag/manifest/seal/linehaul operations
-- Linehaul, payments/COD/settlement/refunds, returns
-- HTTP endpoints, PostgreSQL migrations, NATS/events, authentication
-- Cross-service distributed transaction claims
+- Payments/COD/settlement/refunds, returns
+- NATS/outbox ACK publishing
+- HTTP production runtime proof (Compose/staging)
 
 ## Validation
 
@@ -94,10 +114,12 @@ uv run pytest -q
 uv run python ../../scripts/quality/verify_boundaries.py
 ```
 
-W11 evidence is **unit/in-memory only** — no Docker, network, NATS, PostgreSQL, or
-legacy repository access in targeted tests.
+Targeted tests are unit/in-memory (and static adapter checks). No Docker, live
+network, NATS, or legacy repository access in the W16-A gate set.
 
 ## Production readiness
 
-**Not production-ready.** Runtime persistence, API surface, secured messaging, Pickup
+**Not production-ready.** PostgreSQL/Alembic and disposable lab persistence proof
+exist (W15). The acceptance HTTP API is implemented with fail-closed authorization,
+but **HTTP production runtime proof remains pending**. Secured messaging, Pickup
 integration, and post-acceptance lifecycle remain future Waves.

@@ -7,6 +7,7 @@ from pathlib import Path
 from shipment.infrastructure.persistence.models import (
     AcceptanceAuditLogRow,
     AcceptanceDecisionRow,
+    AcceptanceIdempotencyRow,
     Base,
     OrderIntentRow,
     PickupTaskSnapshotRow,
@@ -15,10 +16,18 @@ from shipment.infrastructure.persistence.models import (
 )
 
 
-def test_single_head_migration_exists() -> None:
+def test_single_head_migration_chain() -> None:
     versions = Path(__file__).resolve().parents[1] / "alembic" / "versions"
-    migration_files = [path for path in versions.glob("*.py") if path.name != "__init__.py"]
-    assert len(migration_files) == 1
+    migration_files = sorted(
+        path.name for path in versions.glob("*.py") if path.name != "__init__.py"
+    )
+    assert migration_files == [
+        "w15a_shipment_acceptance_001_initial.py",
+        "w16a_shipment_acceptance_idempotency_001.py",
+    ]
+    w16 = (versions / "w16a_shipment_acceptance_idempotency_001.py").read_text(encoding="utf-8")
+    assert 'down_revision' in w16
+    assert "w15a_shipment_acceptance_001" in w16
 
 
 def test_metadata_tables_owned_by_service() -> None:
@@ -30,6 +39,7 @@ def test_metadata_tables_owned_by_service() -> None:
         ShipmentEventRow.__tablename__,
         AcceptanceAuditLogRow.__tablename__,
         AcceptanceDecisionRow.__tablename__,
+        AcceptanceIdempotencyRow.__tablename__,
     }
 
 

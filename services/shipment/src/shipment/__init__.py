@@ -1,3 +1,5 @@
-"""HUDHUD Shipment service — canonical lifecycle writer (domain foundation)."""
+"""HUDHUD Shipment service — canonical lifecycle writer."""
 
-__all__: list[str] = []
+__version__ = "0.1.0"
+
+__all__ = ["__version__"]

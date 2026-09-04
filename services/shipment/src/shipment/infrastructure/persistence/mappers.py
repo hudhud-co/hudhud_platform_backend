@@ -6,6 +6,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from shipment.domain.entities import (
+    AcceptanceIdempotencyRecord,
     AuditLogEntry,
     OrderIntent,
     PickupTaskSnapshot,
@@ -23,6 +24,7 @@ from shipment.domain.value_objects import (
 from shipment.infrastructure.persistence.models import (
     AcceptanceAuditLogRow,
     AcceptanceDecisionRow,
+    AcceptanceIdempotencyRow,
     OrderIntentRow,
     PickupTaskSnapshotRow,
     ShipmentEventRow,
@@ -188,3 +190,23 @@ def _parse_exception_evidence(raw: str) -> list[dict[str, str | bool | None]]:
     if not raw:
         return []
     return [{"storage_uri": uri.strip()} for uri in raw.split(",") if uri.strip()]
+
+
+def acceptance_idempotency_to_row(record: AcceptanceIdempotencyRecord) -> AcceptanceIdempotencyRow:
+    return AcceptanceIdempotencyRow(
+        idempotency_key=record.idempotency_key,
+        command_fingerprint=record.command_fingerprint,
+        shipment_id=record.shipment_id,
+        pickup_task_id=record.pickup_task_id,
+        recorded_at=record.recorded_at,
+    )
+
+
+def acceptance_idempotency_from_row(row: AcceptanceIdempotencyRow) -> AcceptanceIdempotencyRecord:
+    return AcceptanceIdempotencyRecord(
+        idempotency_key=row.idempotency_key,
+        command_fingerprint=row.command_fingerprint,
+        shipment_id=row.shipment_id,
+        pickup_task_id=row.pickup_task_id,
+        recorded_at=row.recorded_at,
+    )

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID, uuid4
 
 from shipment.domain.entities import (
+    AcceptanceIdempotencyRecord,
     AuditLogEntry,
     OrderIntent,
     PickupTaskSnapshot,
@@ -16,6 +19,7 @@ from shipment.domain.entities import (
 from shipment.domain.errors import (
     AcceptanceAlreadyRecorded,
     ActingDriverNotAssigned,
+    ConflictingIdempotencyKey,
     ExceptionEvidenceRequired,
     PickupConditionProofMissing,
     PickupTaskMissingAssignedBatch,
@@ -63,6 +67,7 @@ class RecordAcceptanceScanCommand:
     scanned_identifier: str
     scan_timestamp: datetime
     outcome: AcceptanceOutcome
+    idempotency_key: str
     exception_evidence: tuple[EvidenceReference, ...] = ()
     recorded_at: datetime | None = None
 
@@ -73,6 +78,7 @@ class AcceptanceScanResult:
     pickup_task: PickupTaskSnapshot
     shipment_event: ShipmentEvent | None
     audit_log: AuditLogEntry
+    idempotent_replay: bool = False
 
 
 class AcceptanceLifecycleService:
@@ -81,7 +87,7 @@ class AcceptanceLifecycleService:
     def __init__(self, unit_of_work: AcceptanceUnitOfWork) -> None:
         self._uow = unit_of_work
 
-    def create_order_intent(
+    async def create_order_intent(
         self,
         command: CreateOrderIntentCommand,
     ) -> tuple[OrderIntent, Shipment]:
@@ -103,11 +109,11 @@ class AcceptanceLifecycleService:
             current_status=ShipmentStatus.CREATED,
             order_created_at=command.created_at,
         )
-        self._uow.shipments.save_order_intent(order_intent)
-        self._uow.shipments.save_shipment(shipment)
+        await self._uow.shipments.save_order_intent(order_intent)
+        await self._uow.shipments.save_shipment(shipment)
         return order_intent, shipment
 
-    def register_pickup_task(self, command: RegisterPickupTaskCommand) -> PickupTaskSnapshot:
+    async def register_pickup_task(self, command: RegisterPickupTaskCommand) -> PickupTaskSnapshot:
         """Persist service-local Pickup prerequisite input (production adapter deferred)."""
         pickup_task = PickupTaskSnapshot(
             pickup_task_id=command.pickup_task_id,
@@ -117,35 +123,53 @@ class AcceptanceLifecycleService:
             assigned_batch_id=command.assigned_batch_id,
             has_pickup_condition_proof=command.has_pickup_condition_proof,
         )
-        self._uow.pickup_tasks.save_pickup_task(pickup_task)
+        await self._uow.pickup_tasks.save_pickup_task(pickup_task)
         return pickup_task
 
-    def record_acceptance_scan(
+    async def record_acceptance_scan(
         self,
         command: RecordAcceptanceScanCommand,
     ) -> AcceptanceScanResult:
         """Record acceptance scan and apply Phase 11 effects atomically."""
+        if not command.idempotency_key.strip():
+            msg = "idempotency key is required"
+            raise ValueError(msg)
+
+        fingerprint = _command_fingerprint(command)
+        cached = await self._uow.idempotency.get_record(command.idempotency_key)
+        if cached is not None:
+            if cached.command_fingerprint != fingerprint:
+                raise ConflictingIdempotencyKey(idempotency_key=command.idempotency_key)
+            return await self._reconstruct_cached_result(cached)
+
         recorded_at = command.recorded_at or command.scan_timestamp
-        self._uow.begin()
+        await self._uow.begin()
         try:
-            result = self._apply_acceptance_scan(command, recorded_at)
+            cached = await self._uow.idempotency.get_record(command.idempotency_key)
+            if cached is not None:
+                if cached.command_fingerprint != fingerprint:
+                    raise ConflictingIdempotencyKey(idempotency_key=command.idempotency_key)
+                result = await self._reconstruct_cached_result(cached)
+            else:
+                result = await self._apply_acceptance_scan(command, recorded_at, fingerprint)
         except Exception:
-            self._uow.rollback()
+            await self._uow.rollback()
             raise
         else:
-            self._uow.commit()
+            await self._uow.commit()
             return result
 
-    def _apply_acceptance_scan(
+    async def _apply_acceptance_scan(
         self,
         command: RecordAcceptanceScanCommand,
         recorded_at: datetime,
+        fingerprint: str,
     ) -> AcceptanceScanResult:
-        shipment = self._uow.shipments.get_shipment(command.shipment_id)
+        shipment = await self._uow.shipments.get_shipment(command.shipment_id)
         if shipment is None:
             raise ShipmentNotFound(str(command.shipment_id))
 
-        pickup_task = self._uow.pickup_tasks.get_pickup_task(command.pickup_task_id)
+        pickup_task = await self._uow.pickup_tasks.get_pickup_task(command.pickup_task_id)
         if pickup_task is None:
             raise PickupTaskNotFound(str(command.pickup_task_id))
 
@@ -188,7 +212,7 @@ class AcceptanceLifecycleService:
                 new_status=ShipmentStatus.IN_CUSTODY,
                 occurred_at=command.scan_timestamp,
             )
-            self._uow.shipment_events.append_event(shipment_event)
+            await self._uow.shipment_events.append_event(shipment_event)
 
         audit_details: dict[str, str] = {
             "outcome": command.outcome.value,
@@ -209,15 +233,50 @@ class AcceptanceLifecycleService:
             occurred_at=recorded_at,
             details=audit_details,
         )
-        self._uow.audit_logs.append_entry(audit_log)
-        self._uow.pickup_tasks.save_pickup_task(pickup_task)
-        self._uow.shipments.save_shipment(shipment)
+        await self._uow.audit_logs.append_entry(audit_log)
+        await self._uow.pickup_tasks.save_pickup_task(pickup_task)
+        await self._uow.shipments.save_shipment(shipment)
+        await self._uow.idempotency.save_record(
+            AcceptanceIdempotencyRecord(
+                idempotency_key=command.idempotency_key,
+                command_fingerprint=fingerprint,
+                shipment_id=shipment.shipment_id,
+                pickup_task_id=pickup_task.pickup_task_id,
+                recorded_at=recorded_at,
+            )
+        )
 
         return AcceptanceScanResult(
             shipment=shipment,
             pickup_task=pickup_task,
             shipment_event=shipment_event,
             audit_log=audit_log,
+        )
+
+    async def _reconstruct_cached_result(
+        self,
+        cached: AcceptanceIdempotencyRecord,
+    ) -> AcceptanceScanResult:
+        shipment = await self._uow.shipments.get_shipment(cached.shipment_id)
+        if shipment is None:
+            raise ShipmentNotFound(str(cached.shipment_id))
+        pickup_task = await self._uow.pickup_tasks.get_pickup_task(cached.pickup_task_id)
+        if pickup_task is None:
+            raise PickupTaskNotFound(str(cached.pickup_task_id))
+        events = await self._uow.shipment_events.list_events_for_shipment(cached.shipment_id)
+        shipment_event = events[-1] if events else None
+        audit_entries = await self._uow.audit_logs.list_entries_for_entity(
+            "shipment", str(cached.shipment_id)
+        )
+        if not audit_entries:
+            msg = "idempotent replay missing audit log"
+            raise RuntimeError(msg)
+        return AcceptanceScanResult(
+            shipment=shipment,
+            pickup_task=pickup_task,
+            shipment_event=shipment_event,
+            audit_log=audit_entries[-1],
+            idempotent_replay=True,
         )
 
     def _validate_prerequisites(
@@ -268,3 +327,18 @@ def _pickup_acceptance_state(outcome: AcceptanceOutcome) -> PickupTaskAcceptance
     if outcome is AcceptanceOutcome.ACCEPTED_WITH_EXCEPTION:
         return PickupTaskAcceptanceState.ACCEPTED_WITH_EXCEPTION
     return PickupTaskAcceptanceState.REJECTED
+
+
+def _command_fingerprint(command: RecordAcceptanceScanCommand) -> str:
+    payload = {
+        "shipment_id": str(command.shipment_id),
+        "pickup_task_id": str(command.pickup_task_id),
+        "scanned_identifier": command.scanned_identifier.strip(),
+        "outcome": command.outcome.value,
+        "exception_evidence_uris": [
+            evidence.storage_uri for evidence in command.exception_evidence
+        ],
+        "scan_timestamp": command.scan_timestamp.isoformat(),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
