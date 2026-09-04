@@ -9,6 +9,7 @@ from shipment.infrastructure.persistence.models import (
     AcceptanceDecisionRow,
     AcceptanceIdempotencyRow,
     Base,
+    IntegrationInboxRow,
     OrderIntentRow,
     PickupTaskSnapshotRow,
     ShipmentEventRow,
@@ -25,6 +26,7 @@ def test_single_head_migration_chain() -> None:
         "w15a_shipment_acceptance_001_initial.py",
         "w16a_shipment_acceptance_idempotency_001.py",
         "w17d_shipment_custody_pickup_driver_001.py",
+        "w17f_shipment_accepted_inbox_001.py",
     ]
     w16 = (versions / "w16a_shipment_acceptance_idempotency_001.py").read_text(encoding="utf-8")
     assert "down_revision" in w16
@@ -39,6 +41,14 @@ def test_single_head_migration_chain() -> None:
     assert "PICKUP_DRIVER" in w17d
     assert "WHERE current_custody_type = 'DRIVER'" in w17d
 
+    w17f = (versions / "w17f_shipment_accepted_inbox_001.py").read_text(encoding="utf-8")
+    assert 'down_revision: str | Sequence[str] | None = "w17d_custody_pickup_driver_001"' in w17f
+    assert 'revision: str = "w17f_accepted_inbox_001"' in w17f
+    assert len("w17f_accepted_inbox_001") <= 32
+    assert "shipment_integration_inbox" in w17f
+    assert "uq_shipment_inbox_consumer_event" in w17f
+    assert "sa.ForeignKey" not in w17f
+
 
 def test_metadata_tables_owned_by_service() -> None:
     table_names = set(Base.metadata.tables)
@@ -50,7 +60,9 @@ def test_metadata_tables_owned_by_service() -> None:
         AcceptanceAuditLogRow.__tablename__,
         AcceptanceDecisionRow.__tablename__,
         AcceptanceIdempotencyRow.__tablename__,
+        IntegrationInboxRow.__tablename__,
     }
+    assert IntegrationInboxRow.__table_args__[0].name == "uq_shipment_inbox_consumer_event"
 
 
 def test_migration_declares_acceptance_idempotency_constraints() -> None:

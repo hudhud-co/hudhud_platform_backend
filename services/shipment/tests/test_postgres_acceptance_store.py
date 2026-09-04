@@ -73,6 +73,7 @@ def test_shipment_mapper_round_trip_preserves_aggregate_fields() -> None:
         sla_started_at=accepted_at,
         current_custody_type=CustodyType.PICKUP_DRIVER,
         current_custody_id="driver-42",
+        version=3,
     )
     row = shipment_to_row(shipment, version=3)
     assert row.current_custody_type == "PICKUP_DRIVER"

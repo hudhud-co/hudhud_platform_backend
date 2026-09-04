@@ -15,6 +15,10 @@ must not run as a second independent production writer alongside native consumpt
 `media_refs`. It must persist `AcceptanceDecisionRecord` and must not query Pickup
 storage or treat `PickupTaskSnapshot` as production authority.
 
+**W17-F:** Transport-independent Shipment inbox consumer for `pickup.fact.accepted`
+v1 is implemented (validate → durable inbox claim → native apply → commit →
+ACK/NAK/DEFER intent). Live NATS pull worker / stream binding remains deferred.
+
 ## Source authority
 
 | Document | Version | Sections implemented in W11 |
@@ -111,11 +115,11 @@ Configuration: `DATABASE_URL` (or `SHIPMENT_DATABASE_URL`), `SHIPMENT_ENVIRONMEN
 ## Explicit non-goals (deferred)
 
 - Production identity/JWT authorization adapter (beyond default-deny + test fake)
-- Production Pickup integration adapter
+- Live NATS pull worker / durable bind / stream mutation for accepted-fact inbox
+- Production Pickup integration adapter (HTTP dual-writer)
 - Delivery / post-acceptance lifecycle stages
 - Hub/bag/manifest/seal/linehaul operations
 - Payments/COD/settlement/refunds, returns
-- NATS/outbox ACK publishing
 - Production/staging deployment and secured runtime
 
 ## Validation

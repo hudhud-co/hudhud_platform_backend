@@ -13,6 +13,7 @@ def test_no_cross_service_imports() -> None:
         "tracking",
         "gateway",
         "delivery",
+        "pickup",
         "legacy_event_bridge",
         "services",
         "finance",
@@ -33,6 +34,7 @@ def test_no_cross_service_imports() -> None:
 def test_allowed_shared_packages_only() -> None:
     service_root = Path(__file__).resolve().parents[1] / "src"
     allowed = {"shipment"}
+    allowed_shared = {"event_envelope", "messaging_conformance"}
     allowed_third_party = {
         "alembic",
         "fastapi",
@@ -40,6 +42,7 @@ def test_allowed_shared_packages_only() -> None:
         "sqlalchemy",
         "starlette",
         "uvicorn",
+        "yaml",
     }
     stdlib = {
         "abc",
@@ -67,7 +70,7 @@ def test_allowed_shared_packages_only() -> None:
         "__future__",
         "types",
     }
-    allowed_modules = allowed | allowed_third_party | stdlib
+    allowed_modules = allowed | allowed_shared | allowed_third_party | stdlib
     for py_file in service_root.rglob("*.py"):
         tree = ast.parse(py_file.read_text(encoding="utf-8"))
         for node in ast.walk(tree):

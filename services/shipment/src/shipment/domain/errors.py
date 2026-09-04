@@ -139,3 +139,42 @@ class ConflictingIdempotencyKey(ShipmentError):
     def __init__(self, *, idempotency_key: str) -> None:
         self.idempotency_key = idempotency_key
         super().__init__("idempotency key conflict")
+
+
+class PreExistingAcceptanceConflict(ShipmentError):
+    """Shipment already accepted via a different path — fail closed, do not re-apply."""
+
+    def __init__(self, *, shipment_id: str, detail: str) -> None:
+        self.shipment_id = shipment_id
+        self.detail = detail
+        super().__init__(f"pre-existing acceptance conflict for shipment {shipment_id}: {detail}")
+
+
+class ContractRejection(ShipmentError):
+    """Permanent contract mismatch — quarantine, do not apply domain effects."""
+
+    def __init__(self, code: str, detail: str) -> None:
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{code}: {detail}")
+
+    def __repr__(self) -> str:
+        return f"ContractRejection(code={self.code!r}, detail={self.detail!r})"
+
+
+class RetryableHandlerError(ShipmentError):
+    """Retryable failure before commit — rollback and NAK."""
+
+    def __init__(self, code: str, detail: str) -> None:
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{code}: {detail}")
+
+
+class PoisonHandlerError(ShipmentError):
+    """Permanent handler failure — durable quarantine then ACK."""
+
+    def __init__(self, code: str, detail: str) -> None:
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{code}: {detail}")

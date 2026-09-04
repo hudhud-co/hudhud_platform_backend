@@ -7,7 +7,9 @@ from datetime import datetime
 from uuid import UUID
 
 from shipment.domain.value_objects import (
+    AcceptanceOutcome,
     CustodyType,
+    EvidenceReference,
     PickupTaskAcceptanceState,
     PickupTaskStatus,
     ShipmentEventType,
@@ -51,6 +53,7 @@ class Shipment:
     sla_started_at: datetime | None = None
     current_custody_type: CustodyType | None = None
     current_custody_id: str | None = None
+    version: int = 1
 
     @property
     def custody_active(self) -> bool:
@@ -59,6 +62,21 @@ class Shipment:
     @property
     def sla_active(self) -> bool:
         return self.sla_started_at is not None
+
+
+@dataclass(frozen=True, slots=True)
+class AcceptanceDecisionRecord:
+    """Persisted acceptance decision — required on both HTTP and native fact apply."""
+
+    decision_id: UUID
+    shipment_id: UUID
+    pickup_task_id: UUID
+    outcome: AcceptanceOutcome
+    acting_driver_user_id: str
+    scanned_identifier: str
+    scan_timestamp: datetime
+    recorded_at: datetime
+    exception_evidence: tuple[EvidenceReference, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

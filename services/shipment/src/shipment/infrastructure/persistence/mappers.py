@@ -83,6 +83,7 @@ def shipment_from_row(row: ShipmentRow) -> tuple[Shipment, int]:
             CustodyType(row.current_custody_type) if row.current_custody_type is not None else None
         ),
         current_custody_id=row.current_custody_id,
+        version=row.version,
     )
     return shipment, row.version
 
