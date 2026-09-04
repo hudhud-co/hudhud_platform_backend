@@ -1,3 +1,5 @@
-"""HUDHUD Pickup bounded context — recovery lifecycle foundation (W12)."""
+"""HUDHUD Pickup bounded context — recovery lifecycle and HTTP command API."""
 
-__all__: list[str] = []
+__version__ = "0.1.0"
+
+__all__ = ["__version__"]

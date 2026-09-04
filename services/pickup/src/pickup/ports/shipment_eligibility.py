@@ -27,4 +27,8 @@ class ShipmentEligibilitySnapshot:
 class ShipmentEligibilityPort(Protocol):
     """Read-only Shipment eligibility boundary — no Shipment database access."""
 
+    @property
+    def is_production_ready(self) -> bool:
+        """True when a real Shipment HTTP/event adapter is configured (not deferred)."""
+
     def get_eligibility(self, shipment_id: UUID) -> ShipmentEligibilitySnapshot | None: ...

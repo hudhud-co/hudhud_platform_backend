@@ -1,17 +1,21 @@
 [project]
 name = "pickup"
 version = "0.1.0"
-description = "HUDHUD Pickup service — recovery lifecycle with PostgreSQL persistence (W15-B)"
+description = "HUDHUD Pickup service — recovery command HTTP API (W16-B)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.115",
     "psycopg[binary]>=3.2",
+    "pydantic>=2.10",
     "sqlalchemy>=2.0",
+    "uvicorn>=0.32",
 ]
 
 [dependency-groups]
 dev = [
     "alembic>=1.14",
+    "httpx>=0.28",
     "pytest>=8.0",
     "pyyaml>=6.0",
     "ruff>=0.8",
@@ -39,9 +43,11 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["ARG001", "ARG002", "PLR0913"]
+"tests/**" = ["ARG001", "ARG002", "PLR0913", "B008"]
 "alembic/**" = ["ARG001"]
 "src/pickup/infrastructure/persistence/sqlalchemy_store.py" = ["PLR0913"]
+"src/pickup/infrastructure/authorizers/default_deny.py" = ["ARG002"]
+"src/pickup/infrastructure/unavailable_shipment_eligibility.py" = ["ARG002"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

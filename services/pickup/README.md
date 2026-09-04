@@ -1,10 +1,9 @@
 # Pickup
 
-Independently managed HUDHUD Pickup service package. This Wave establishes the
-**PickupTask recovery lifecycle** domain foundation only. Pickup owns task recovery
+Independently managed HUDHUD Pickup service package. Pickup owns task recovery
 and attempt history; it does not own or mutate Shipment lifecycle/custody (ADR-0003).
 
-## Scope (W12 + W15-B)
+## Scope (W12 + W15-B + W16-B)
 
 Recovery actions:
 
@@ -26,6 +25,30 @@ Recovery actions:
 9. Recovery is rejected after Shipment custody has started (`IN_CUSTODY` / custody owner present).
 10. Cancellation preserves the task record — no deletion.
 11. Repeated recovery commands with the same idempotency key return the original result.
+
+## HTTP API (W16-B)
+
+Composition root: `pickup.main:create_app`.
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `GET` | `/health` | Liveness only |
+| `GET` | `/ready` | PostgreSQL, authorization, Shipment eligibility gates |
+| `POST` | `/pickup/tasks/{pickup_task_id}/retry` | Requires `Authorization` + `Idempotency-Key` |
+| `POST` | `/pickup/tasks/{pickup_task_id}/reschedule` | Requires scheduled window |
+| `POST` | `/pickup/tasks/{pickup_task_id}/reassign` | Requires `new_driver_user_id` |
+| `POST` | `/pickup/tasks/{pickup_task_id}/cancel` | Cancels without deletion |
+
+Actor identity is established only by the injected `RecoveryAuthorizer` from a bearer
+token. Trusted-looking headers (`X-User-Id`, `X-Role`, …) and request-body actor
+fields are never proof of identity.
+
+Default production composition uses:
+
+- `SqlAlchemyRecoveryUnitOfWork` when `DATABASE_URL` (or `PICKUP_DATABASE_URL`) is set
+- `DefaultDenyRecoveryAuthorizer` (readiness blocker)
+- `UnavailableShipmentEligibilityAdapter` (readiness blocker — production Shipment
+  HTTP/event adapter deferred)
 
 ## Domain design
 
@@ -53,11 +76,13 @@ Unit of work port: `RecoveryUnitOfWork`.
 - **W15-B persistence:** service-owned SQLAlchemy models, sync/async session
   factories, Alembic migration, and `SqlAlchemyRecoveryUnitOfWork` with optimistic
   concurrency, atomic recovery commits, and idempotency/lineage uniqueness constraints.
+- **W16-B HTTP:** FastAPI adapters, readiness gates, fake authorizer for tests.
 
 ## Explicit non-goals (deferred)
 
-- Production Shipment HTTP/event integration
-- HTTP endpoints, NATS/events, Compose/CI wiring
+- Production Shipment HTTP/event eligibility adapter
+- Production identity/authorization adapter (JWT/mTLS)
+- NATS/events, Compose/CI wiring
 - Driver assignment algorithms, routing, scheduling engine
 - Hub inbound custody transfer
 - Notification, Control Tower, Delivery, Finance
@@ -73,10 +98,10 @@ uv run pytest -q
 uv run python ../../scripts/quality/verify_boundaries.py
 ```
 
-W12/W15-B evidence is **unit/fake only** — no Docker, network, NATS, live PostgreSQL, or
+Evidence is **unit/fake only** — no Docker, network, NATS, live PostgreSQL, or
 legacy repository access in targeted tests.
 
 ## Production readiness
 
-**Not production-ready.** API surface, secured messaging, disposable-database migration
-proof, and production Shipment eligibility integration remain future Waves.
+**Not production-ready.** Authorization and Shipment eligibility production adapters,
+secured messaging, and disposable-database migration proof remain future Waves.
