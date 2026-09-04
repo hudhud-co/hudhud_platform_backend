@@ -75,18 +75,23 @@ def build_nats_connect_options(settings: ShipmentSettings) -> dict[str, Any]:
             settings.adr_0010_credentials_configured,
         )
     )
-    if settings.environment is RuntimeEnvironment.PRODUCTION and not has_credentials:
-        msg = "Production NATS requires ADR-0010 credential gate"
-        raise NatsAuthRequiredError(msg)
-
-    if settings.environment is RuntimeEnvironment.PRODUCTION and not settings.nats_tls_enabled:
-        msg = "Production NATS requires TLS"
-        raise NatsAuthRequiredError(msg)
+    secured = settings.environment in {
+        RuntimeEnvironment.STAGING,
+        RuntimeEnvironment.PRODUCTION,
+    }
 
     if settings.environment in {RuntimeEnvironment.LOCAL, RuntimeEnvironment.TEST}:
         if settings.allow_no_auth_local or has_credentials:
             return options
         msg = "Local NATS without auth requires SHIPMENT_ALLOW_NO_AUTH_LOCAL"
+        raise NatsAuthRequiredError(msg)
+
+    if secured and not has_credentials:
+        msg = "Staging/production NATS requires ADR-0010 credential gate"
+        raise NatsAuthRequiredError(msg)
+
+    if secured and not settings.nats_tls_enabled:
+        msg = "Staging/production NATS requires TLS"
         raise NatsAuthRequiredError(msg)
 
     if not has_credentials:

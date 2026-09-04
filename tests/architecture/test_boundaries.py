@@ -310,6 +310,83 @@ def test_wave17_acceptance_boundary_foundation_registered(
     assert ownership_pickup["runtime_evidence"]["production_ready"] is False
 
 
+def test_wave18_security_cutover_integration_registered(
+    boundaries: dict,
+    ownership_matrix: dict,
+) -> None:
+    """W18: local JWT/TLS/ACL proof + cutover guards; ADR-0010 remains Proposed."""
+    wave18 = boundaries["wave_18_runtime_evidence"]
+    assert wave18["production_ready"] is False
+    assert wave18["lab"] == "infra/labs/nats-security-proof"
+    assert wave18["classifications"]["adr_0010_status"] == "Proposed"
+    assert (
+        wave18["classifications"]["local_jwt_nkeys_tls_proof"]
+        == "verified_local_disposable_lab"
+    )
+    assert (
+        wave18["classifications"]["pickup_shipment_scoped_acls"]
+        == "verified_local_disposable_lab"
+    )
+    assert (
+        wave18["classifications"]["acceptance_ingestion_mode"]
+        == "closed_enum_fail_closed"
+    )
+    assert wave18["classifications"]["pickup_relay_default"] == "disabled"
+    limitations = set(wave18["limitations"])
+    assert "no_staging_tls_acl_evidence" in limitations
+    assert "no_production_credentials" in limitations
+    assert "no_ha_cluster" in limitations
+    assert "no_real_cutover_or_credential_revocation" in limitations
+    assert "configuration_gates_are_not_external_proof" in limitations
+
+    shipment_w18 = wave18["services"]["shipment"]
+    assert shipment_w18["nats_identity_acl_tls_proof"] == "proven_local_disposable_lab"
+    assert shipment_w18["acceptance_ingestion_mode_guards"] == "implemented_fail_closed"
+    assert shipment_w18["staging_production_tls_required"] == "enforced_in_config"
+    assert shipment_w18["production_ready"] is False
+
+    pickup_w18 = wave18["services"]["pickup"]
+    assert pickup_w18["nats_identity_acl_tls_proof"] == "proven_local_disposable_lab"
+    assert pickup_w18["relay_cutover_gates"] == "implemented_fail_closed"
+    assert pickup_w18["staging_production_tls_required"] == "enforced_in_config"
+    assert pickup_w18["production_ready"] is False
+
+    assert boundaries["adr_index"]["ADR-0010"]["status"] == "Proposed"
+
+    shipment = boundaries["bounded_contexts"]["shipment"]
+    assert (
+        shipment["runtime_evidence"]["nats_identity_acl_tls_local_proof"]
+        == "proven_local_disposable_lab"
+    )
+    assert (
+        shipment["runtime_evidence"]["acceptance_ingestion_mode_guards"]
+        == "implemented_fail_closed"
+    )
+    assert shipment["runtime_evidence"]["production_ready"] is False
+
+    pickup = boundaries["bounded_contexts"]["pickup"]
+    assert (
+        pickup["runtime_evidence"]["nats_identity_acl_tls_local_proof"]
+        == "proven_local_disposable_lab"
+    )
+    assert pickup["runtime_evidence"]["relay_cutover_gates"] == "implemented_fail_closed"
+    assert pickup["runtime_evidence"]["production_ready"] is False
+
+    ownership_shipment = ownership_matrix["ownership"]["shipment"]
+    assert (
+        ownership_shipment["runtime_evidence"]["nats_identity_acl_tls_local_proof"]
+        == "proven_local_disposable_lab"
+    )
+    assert ownership_shipment["runtime_evidence"]["production_ready"] is False
+
+    ownership_pickup = ownership_matrix["ownership"]["pickup"]
+    assert (
+        ownership_pickup["runtime_evidence"]["nats_identity_acl_tls_local_proof"]
+        == "proven_local_disposable_lab"
+    )
+    assert ownership_pickup["runtime_evidence"]["production_ready"] is False
+
+
 def test_messaging_conformance_is_allowlisted_and_technical(boundaries: dict) -> None:
     allowed = boundaries["shared_packages"]["allowed_categories"]
     assert "messaging_conformance" in allowed

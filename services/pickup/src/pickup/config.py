@@ -164,6 +164,10 @@ class PickupSettings:
             blockers.append("legacy_writer_revocation_not_externally_confirmed")
         if not self.adr_0010_credentials_configured:
             blockers.append("adr_0010_credentials_gate_missing")
+        if not self.nats_tls_enabled:
+            blockers.append("adr_0010_tls_gate_missing")
+        if self.nats_dev_no_auth:
+            blockers.append("nats_dev_no_auth_forbidden_in_staging_or_production")
         return blockers
 
     def relay_cutover_gates_satisfied(self) -> bool:
@@ -180,18 +184,22 @@ class PickupSettings:
             or self.nats_creds_file
             or (self.nats_user and self.nats_password)
         )
+        secured = self.environment in {
+            RuntimeEnvironment.STAGING,
+            RuntimeEnvironment.PRODUCTION,
+        }
+        # Local/test may use no-auth only via the explicit local flag.
         if self.nats_dev_no_auth:
-            return self.environment is not RuntimeEnvironment.PRODUCTION
-        if self.environment is RuntimeEnvironment.PRODUCTION:
+            return not secured and self.environment in {
+                RuntimeEnvironment.LOCAL,
+                RuntimeEnvironment.TEST,
+            }
+        if secured:
             return (
                 self.adr_0010_credentials_configured
                 and self.nats_tls_enabled
                 and has_credentials
                 and self.relay_cutover_gates_satisfied()
-            )
-        if self.environment is RuntimeEnvironment.STAGING:
-            return self.relay_cutover_gates_satisfied() and (
-                has_credentials or self.nats_dev_no_auth
             )
         return has_credentials
 

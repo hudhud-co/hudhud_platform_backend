@@ -711,6 +711,44 @@ def test_production_requires_tls() -> None:
         build_nats_connect_options(settings)
 
 
+def test_staging_requires_tls_and_credentials() -> None:
+    plaintext = load_settings(
+        environment=RuntimeEnvironment.STAGING,
+        database_url="postgresql+psycopg://localhost/shipment",
+        nats_enabled=True,
+        nats_url="nats://broker.example:4222",
+        adr_0010_credentials_configured=True,
+        nats_tls_enabled=False,
+    )
+    with pytest.raises(NatsAuthRequiredError, match="TLS"):
+        build_nats_connect_options(plaintext)
+
+    missing_creds = load_settings(
+        environment=RuntimeEnvironment.STAGING,
+        database_url="postgresql+psycopg://localhost/shipment",
+        nats_enabled=True,
+        nats_url="tls://broker.example:4222",
+        adr_0010_credentials_configured=False,
+        nats_tls_enabled=True,
+    )
+    with pytest.raises(NatsAuthRequiredError, match="credential"):
+        build_nats_connect_options(missing_creds)
+
+    staging = load_settings(
+        environment=RuntimeEnvironment.STAGING,
+        database_url="postgresql+psycopg://localhost/shipment",
+        nats_enabled=True,
+        nats_url="tls://broker.example:4222",
+        adr_0010_credentials_configured=True,
+        nats_tls_enabled=True,
+    )
+    options = build_nats_connect_options(staging)
+    tls_context = options["tls"]
+    assert isinstance(tls_context, ssl.SSLContext)
+    assert tls_context.verify_mode == ssl.CERT_REQUIRED
+    assert tls_context.check_hostname is True
+
+
 def test_local_no_auth_requires_explicit_flag() -> None:
     settings = load_settings(
         environment=RuntimeEnvironment.LOCAL,

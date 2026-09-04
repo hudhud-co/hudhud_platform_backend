@@ -69,7 +69,8 @@ def test_staging_relay_requires_cutover_configuration_gates() -> None:
     settings = load_settings(
         environment=RuntimeEnvironment.STAGING,
         relay_enabled=True,
-        nats_url="nats://localhost:4222",
+        nats_url="tls://localhost:4222",
+        nats_tls_enabled=True,
         nats_user="pickup",
         nats_password="not-a-real-secret",
         adr_0010_credentials_configured=True,
@@ -97,11 +98,45 @@ def test_staging_relay_requires_cutover_configuration_gates() -> None:
     assert report.checks["production_ready_false"] is True
 
 
+def test_staging_relay_requires_tls_and_forbids_no_auth() -> None:
+    plaintext = load_settings(
+        environment=RuntimeEnvironment.STAGING,
+        relay_enabled=True,
+        nats_url="nats://localhost:4222",
+        nats_user="pickup",
+        nats_password="not-a-real-secret",
+        adr_0010_credentials_configured=True,
+        nats_tls_enabled=False,
+        shipment_acceptance_ingestion_mode_native_confirmed=True,
+        shipment_compatibility_http_acceptance_disabled=True,
+        legacy_pickup_acceptance_writer_revocation_externally_confirmed=True,
+    )
+    assert "adr_0010_tls_gate_missing" in plaintext.relay_cutover_gate_blockers()
+    assert plaintext.relay_configuration_valid() is False
+
+    no_auth = load_settings(
+        environment=RuntimeEnvironment.STAGING,
+        relay_enabled=True,
+        nats_url="nats://localhost:4222",
+        nats_dev_no_auth=True,
+        adr_0010_credentials_configured=True,
+        nats_tls_enabled=True,
+        shipment_acceptance_ingestion_mode_native_confirmed=True,
+        shipment_compatibility_http_acceptance_disabled=True,
+        legacy_pickup_acceptance_writer_revocation_externally_confirmed=True,
+    )
+    assert "nats_dev_no_auth_forbidden_in_staging_or_production" in (
+        no_auth.relay_cutover_gate_blockers()
+    )
+    assert no_auth.relay_configuration_valid() is False
+
+
 def test_staging_relay_passes_when_cutover_gates_configured() -> None:
     settings = load_settings(
         environment=RuntimeEnvironment.STAGING,
         relay_enabled=True,
-        nats_url="nats://localhost:4222",
+        nats_url="tls://localhost:4222",
+        nats_tls_enabled=True,
         nats_user="pickup",
         nats_password="not-a-real-secret",
         adr_0010_credentials_configured=True,

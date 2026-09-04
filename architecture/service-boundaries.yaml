@@ -201,6 +201,43 @@ wave_17_runtime_evidence:
       jetstream_runtime_proof: proven_local_disposable_lab
       production_ready: false
 
+wave_18_runtime_evidence:
+  integration_date: 2026-09-04
+  production_ready: false
+  lab: infra/labs/nats-security-proof
+  proof_scope: >
+    W18 local disposable Pickup/Shipment JWT+NKeys+TLS ACL/rotation evidence
+    reconciled with native acceptance cutover guards (closed AcceptanceIngestionMode,
+    Pickup relay fail-closed activation gates). Configuration enforces verified TLS
+    and scoped credentials in staging/production; local/test no-auth only via explicit
+    local flag. No certificate-verification disable option.
+  classifications:
+    local_jwt_nkeys_tls_proof: verified_local_disposable_lab
+    pickup_shipment_scoped_acls: verified_local_disposable_lab
+    overlap_rotation_targeted_revocation: verified_local_disposable_lab
+    runtime_identities_cannot_mutate_topology: verified_local_disposable_lab
+    acceptance_ingestion_mode: closed_enum_fail_closed
+    pickup_relay_default: disabled
+    evidence_class: local_disposable_nats_security_and_cutover_config
+    adr_0010_status: Proposed
+  limitations:
+    - no_staging_tls_acl_evidence
+    - no_production_credentials
+    - no_ha_cluster
+    - no_real_cutover_or_credential_revocation
+    - configuration_gates_are_not_external_proof
+  services:
+    shipment:
+      nats_identity_acl_tls_proof: proven_local_disposable_lab
+      acceptance_ingestion_mode_guards: implemented_fail_closed
+      staging_production_tls_required: enforced_in_config
+      production_ready: false
+    pickup:
+      nats_identity_acl_tls_proof: proven_local_disposable_lab
+      relay_cutover_gates: implemented_fail_closed
+      staging_production_tls_required: enforced_in_config
+      production_ready: false
+
 legacy_event_bridge:
   classification: transitional_technical_deployable
   bounded_context: false
@@ -418,6 +455,8 @@ bounded_contexts:
       http_acceptance_api: compatibility_internal
       jetstream_runtime_proof: proven_local_disposable_lab
       accepted_fact_worker_composition: postgres_sqlalchemy_fail_closed
+      nats_identity_acl_tls_local_proof: proven_local_disposable_lab
+      acceptance_ingestion_mode_guards: implemented_fail_closed
       production_ready: false
     data_ownership:
       strategy: dedicated_database
@@ -426,8 +465,9 @@ bounded_contexts:
         Platform invariant — sole canonical writer of shipment lifecycle state
         (ADR-0003). Native pickup.fact.accepted SQLAlchemy inbox and JetStream
         pull worker are proven in a local disposable lab (W17). W16 HTTP
-        acceptance remains compatibility/internal only. Production credentials
-        and staging TLS/ACL remain deferred.
+        acceptance remains compatibility/internal only. W18 local disposable
+        JWT/TLS/ACL proof and cutover mode gates exist; staging/production
+        credential delivery, HA, and real cutover remain deferred.
     allowed_dependencies: []
     public_api_ownership: shipment
     published_events: [shipment.fact.delivered, shipment.fact.lifecycle_changed]
@@ -457,6 +497,8 @@ bounded_contexts:
       pickup_fact_accepted_contract: registered_not_production_enabled
       recovery_eligibility_blocks_on: PICKUP_DRIVER
       jetstream_runtime_proof: proven_local_disposable_lab
+      nats_identity_acl_tls_local_proof: proven_local_disposable_lab
+      relay_cutover_gates: implemented_fail_closed
       production_ready: false
     data_ownership:
       strategy: dedicated_database
@@ -466,7 +508,8 @@ bounded_contexts:
         snapshot through port only — does not own or mutate Shipment custody (ADR-0003).
         Producer of pickup.fact.accepted (aggregate PickupTask); transactional
         outbox SQLAlchemy adapter and local disposable JetStream relay proven (W17).
-        Production/staging NATS credentials remain deferred.
+        W18 local disposable JWT/TLS/ACL proof and relay cutover gates exist;
+        staging/production credential delivery, HA, and real cutover remain deferred.
     allowed_dependencies: []
     public_api_ownership: pickup
     published_events: [pickup.fact.accepted, pickup.fact.handover_completed]

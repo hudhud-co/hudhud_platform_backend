@@ -146,6 +146,8 @@ ownership:
       http_acceptance_api: compatibility_internal
       jetstream_runtime_proof: proven_local_disposable_lab
       accepted_fact_worker_composition: postgres_sqlalchemy_fail_closed
+      nats_identity_acl_tls_local_proof: proven_local_disposable_lab
+      acceptance_ingestion_mode_guards: implemented_fail_closed
       production_ready: false
 
   pickup:
@@ -173,13 +175,16 @@ ownership:
       pickup_fact_accepted_contract: registered_not_production_enabled
       recovery_eligibility_blocks_on: PICKUP_DRIVER
       jetstream_runtime_proof: proven_local_disposable_lab
+      nats_identity_acl_tls_local_proof: proven_local_disposable_lab
+      relay_cutover_gates: implemented_fail_closed
       production_ready: false
     notes: >
       Owns PickupTask recovery and attempt history. Shipment eligibility consumed
       through port only — no Shipment custody mutation. Producer of
       pickup.fact.accepted (registered; transactional outbox SQLAlchemy adapter
-      and local disposable JetStream relay proven). Production/staging NATS
-      credentials remain deferred.
+      and local disposable JetStream relay proven). W18 local disposable JWT/TLS/ACL
+      proof and relay cutover gates exist; staging/production credential delivery
+      and real cutover remain deferred.
 
   hub:
     canonical_writer: hub

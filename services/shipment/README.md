@@ -25,8 +25,18 @@ on `HUDHUD_PICKUP` / `hudhud.pickup.pickup.fact.accepted.v1`. Fail-closed bindin
 The worker composition root builds PostgreSQL SQLAlchemy accepted-fact persistence
 from `DATABASE_URL`, instantiates the coordinator, and fails closed when the
 database, migrations, or NATS binding are unavailable. In-memory persistence is
-forbidden in staging/production. Production requires ADR-0010 credentials + TLS.
-Local disposable no-auth proof is labelled and is not ADR-0010 evidence.
+forbidden in staging/production. Staging and production require ADR-0010
+credentials + verified TLS (no plaintext fallback; no certificate-verification
+disable option). Local/test may use no-auth only via explicit
+`SHIPMENT_ALLOW_NO_AUTH_LOCAL`. Local disposable no-auth proof is labelled and
+is not ADR-0010 evidence.
+
+**Acceptance ingestion mode (W18-B):** Closed enum
+`SHIPMENT_ACCEPTANCE_INGESTION_MODE` — `compatibility_http` | `native_pickup_fact`
+| `disabled`. Local/test default to `compatibility_http`; staging/production
+fail closed without an explicit mode. Modes are mutually exclusive: HTTP and
+native cannot both be enabled. `/health` remains liveness; `/ready` reports
+secret-safe blockers.
 
 ## Source authority
 
@@ -147,11 +157,14 @@ Service-local tests are unit/in-memory (and static adapter checks). Disposable
 PostgreSQL + FastAPI ASGI proof lives in `tests/service_postgres_proof`
 (`workflow_dispatch` only). Local disposable Pickup→Shipment JetStream pipeline
 proof lives in `tests/pickup_acceptance_eventing_proof` (`workflow_dispatch` only;
-local no-auth labelled lab — not ADR-0010 production credential proof).
+local no-auth labelled lab — not ADR-0010 production credential proof). Local
+disposable Pickup/Shipment JWT+TLS+ACL proof lives in
+`tests/nats_security_proof` (`workflow_dispatch` only).
 
 ## Production readiness
 
 **Not production-ready.** PostgreSQL/Alembic, disposable lab persistence proof
 (W15), and local disposable HTTP+PostgreSQL command-API proof (W16) exist. Default
-authorization remains fail-closed. Production identity adapters, secured messaging,
-Pickup integration, and post-acceptance lifecycle remain deferred.
+authorization remains fail-closed. ADR-0010 remains Proposed; local disposable
+JWT/TLS/ACL evidence exists (W18). Staging/production credential delivery, HA,
+real cutover, and post-acceptance lifecycle remain deferred.

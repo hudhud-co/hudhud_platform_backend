@@ -44,7 +44,7 @@ def test_pickup_tls_verification_cannot_be_disabled() -> None:
     client = _assert_no_tls_disablement(PICKUP_CLIENT)
     config = _assert_no_tls_disablement(PICKUP_CONFIG)
     assert "ssl.create_default_context" in client
-    assert "production requires explicit NATS TLS" in client
+    assert "staging/production requires explicit NATS TLS" in client
     assert "nats_tls_enabled" in config
     assert "STAGING" in config
     assert "PRODUCTION" in config
@@ -54,7 +54,7 @@ def test_shipment_tls_verification_cannot_be_disabled() -> None:
     connection = _assert_no_tls_disablement(SHIPMENT_CONNECTION)
     config = _assert_no_tls_disablement(SHIPMENT_CONFIG)
     assert "ssl.create_default_context" in connection
-    assert "Production NATS requires TLS" in connection
+    assert "Staging/production NATS requires TLS" in connection
     assert "nats_tls_enabled" in config
     assert "STAGING" in config
     assert "PRODUCTION" in config

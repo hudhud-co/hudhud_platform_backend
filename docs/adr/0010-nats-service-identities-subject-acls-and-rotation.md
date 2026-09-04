@@ -516,6 +516,21 @@ Audit readiness calls `consumer_info` before work ([`verify_nats_readiness`](ser
 
 ---
 
+## Wave 18 local Pickup/Shipment NATS security + cutover boundary (W18)
+
+**[evidence]** W18-A (`infra/labs/nats-security-proof/`, `tests/nats_security_proof/`) extends the disposable JWT/NKeys + TLS lab with Pickup publisher and Shipment bind-only consumer identities from `identity-manifest.yaml`. Positive publish/bind/pull/ACK, negative ACL denial, overlap rotation (`pickup-v1`/`v2`, `shipment-v1`/`v2`), and targeted revocation were proven locally. Runtime identities cannot mutate topology. No secrets were committed.
+
+**[evidence]** Exact scoped ACLs proven locally for:
+
+- **pickup** — publish only `hudhud.pickup.pickup.fact.accepted.v1`; deny other domain subjects and `$JS.API.>` / consumer create/delete / foreign durable NEXT
+- **shipment** — bind-only `$JS.API.CONSUMER.INFO|MSG.NEXT` + `$JS.ACK` for `HUDHUD_PICKUP` / `shipment_pickup_facts_v1`; deny domain publish and topology mutation
+
+**[evidence]** W18-B configuration guards: closed `AcceptanceIngestionMode` (`compatibility_http` | `native_pickup_fact` | `disabled`); staging/production fail closed without explicit mode; native mode blocks HTTP before auth/UoW; compatibility mode blocks native worker; Pickup relay disabled by default and requires Shipment native confirmation, compatibility HTTP disabled, external legacy-writer revocation confirmation, scoped credentials, and verified TLS. Configuration flags are gates, not external cutover proof.
+
+**[decision boundary]** W18 local disposable evidence is **not** staging, production, or HA evidence. Staging/production TLS+credential delivery, real cutover, and credential revocation remain **open**. ADR-0010 remains **Proposed**. `production_ready` remains **false**.
+
+---
+
 ## Implementation gates
 
 Production NATS transport security is **blocked** until:
@@ -525,11 +540,11 @@ Production NATS transport security is **blocked** until:
 | G1 | **ADR-0010 accepted** with named deciders (platform architecture + security operations) |
 | G2 | Selected model **O6** implemented in server/account configuration (or documented interim O2/O3 with expiry date) |
 | G3 | Server/account JWT topology: operator, account, service users issued |
-| G4 | **Exact ACL verification** — automated negative tests: Bridge cannot publish `hudhud.shipment.>`; Audit cannot `$JS.API.CONSUMER.CREATE`; bootstrap cannot publish `hudhud.*` events — **local disposable evidence available (W8-B); staging replay open** |
+| G4 | **Exact ACL verification** — automated negative tests: Bridge cannot publish `hudhud.shipment.>`; Audit cannot `$JS.API.CONSUMER.CREATE`; bootstrap cannot publish `hudhud.*` events — **local disposable evidence available (W8-B Bridge/Audit/Tracking; W18-A Pickup/Shipment); staging replay open** |
 | G5 | **Secret delivery mechanism** chosen and documented (K8s secrets / Vault / etc.) — names only in repo — **open** |
-| G6 | **Rotation drill** — dual-validity + rollback executed in staging — **local overlap verified (W8-B); staging drill open** |
-| G7 | **Revocation drill** — emergency revoke + readiness failure observed — **local targeted revocation verified (W8-B); staging drill open** |
-| G8 | **TLS verification** — staging with production-like TLS trust (no `allow_no_auth`) — **local TLS + CA verification verified (W8-B); staging open** |
+| G6 | **Rotation drill** — dual-validity + rollback executed in staging — **local overlap verified (W8-B; W18-A Pickup/Shipment); staging drill open** |
+| G7 | **Revocation drill** — emergency revoke + readiness failure observed — **local targeted revocation verified (W8-B; W18-A Pickup/Shipment); staging drill open** |
+| G8 | **TLS verification** — staging with production-like TLS trust (no `allow_no_auth`) — **local TLS + CA verification verified (W8-B; W18-A); staging open** |
 | G9 | **Bridge publisher live proof** — local functional evidence **available** (W7-A no-auth; W8-B scoped JWT/TLS/ACL); staging scoped-creds + TLS/ACL proof **open** |
 | G10 | **Audit bind/pull/ACK proof** — local functional evidence **available** (W7-A no-auth; W8-B scoped JWT/TLS/ACL); staging scoped-creds + TLS/ACL proof **open** |
 | G11 | **Monitoring and audit logs** — connection identity, auth failures, ACL violations (no secret values) |
@@ -581,7 +596,7 @@ Production NATS transport security is **blocked** until:
 | `nats_acl_denied_total{service,operation}` | Permission misconfiguration |
 | `bridge_publish_acl_denied_total` | Bridge subject violations |
 | `audit_pull_acl_denied_total` | Consumer API violations |
-| Readiness blockers | `nats_binding_unverified`, `nats_unreachable`, `nats_tls_required_in_production` |
+| Readiness blockers | `nats_binding_unverified`, `nats_unreachable`, `nats_tls_required_in_staging_or_production` |
 
 Logs: connection user/NKey id, error class — **never** passwords, seeds, JWT bodies, or creds file contents.
 

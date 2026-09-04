@@ -48,14 +48,18 @@ def evaluate_readiness(
         and settings.persistence_backend is PersistenceBackend.MEMORY
     )
     nats_configured = not settings.nats_enabled or bool(settings.nats_url)
+    secured_nats_env = settings.environment in {
+        RuntimeEnvironment.STAGING,
+        RuntimeEnvironment.PRODUCTION,
+    }
     nats_tls_ready = (
         not settings.nats_enabled
-        or settings.environment is not RuntimeEnvironment.PRODUCTION
+        or not secured_nats_env
         or settings.nats_tls_enabled
     )
     nats_credentials_ready = (
         not settings.nats_enabled
-        or settings.environment is not RuntimeEnvironment.PRODUCTION
+        or not secured_nats_env
         or settings.adr_0010_credentials_configured
     )
     nats_ready = not settings.nats_enabled or (
@@ -157,9 +161,9 @@ def evaluate_readiness(
     if settings.nats_enabled and not nats_binding_verified:
         blockers.append("nats_binding_unverified")
     if settings.nats_enabled and not nats_tls_ready:
-        blockers.append("nats_tls_required_in_production")
+        blockers.append("nats_tls_required_in_staging_or_production")
     if settings.nats_enabled and not nats_credentials_ready:
-        blockers.append("nats_credentials_required_in_production")
+        blockers.append("nats_credentials_required_in_staging_or_production")
     if memory_in_production:
         blockers.append("memory_persistence_forbidden_in_production")
 

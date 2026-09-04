@@ -33,17 +33,25 @@ def assert_nats_configuration(settings: PickupSettings) -> None:
     if not settings.nats_url:
         raise NatsNotConfiguredError("NATS URL is not configured")
 
-    if settings.environment is RuntimeEnvironment.PRODUCTION:
+    secured = settings.environment in {
+        RuntimeEnvironment.STAGING,
+        RuntimeEnvironment.PRODUCTION,
+    }
+
+    if settings.nats_dev_no_auth:
+        if secured:
+            raise NatsNotConfiguredError(
+                "no-auth mode is forbidden in staging/production"
+            )
+        return
+
+    if secured:
         if not settings.adr_0010_credentials_configured:
             raise NatsNotConfiguredError("ADR-0010 credentials gate is not satisfied")
         if not settings.nats_tls_enabled:
-            raise NatsNotConfiguredError("production requires explicit NATS TLS")
-        if not _has_credentials(settings) and not settings.nats_dev_no_auth:
-            raise NatsNotConfiguredError("production requires NATS credentials")
-
-    if settings.nats_dev_no_auth:
-        if settings.environment is RuntimeEnvironment.PRODUCTION:
-            raise NatsNotConfiguredError("no-auth mode is forbidden in production")
+            raise NatsNotConfiguredError("staging/production requires explicit NATS TLS")
+        if not _has_credentials(settings):
+            raise NatsNotConfiguredError("staging/production requires NATS credentials")
         return
 
     if not _has_credentials(settings):

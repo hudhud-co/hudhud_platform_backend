@@ -105,12 +105,20 @@ Entry point: `python -m pickup.runtime.relay_main` (signal-safe drain/close).
 | Setting | Default | Notes |
 |---------|---------|-------|
 | `PICKUP_RELAY_ENABLED` | `false` | Relay off until explicitly enabled |
-| `PICKUP_NATS_DEV_NO_AUTH` | `false` | Local/test escape hatch only |
-| `PICKUP_ADR_0010_CREDENTIALS_CONFIGURED` | `false` | Required with TLS + credentials in production |
+| `PICKUP_NATS_DEV_NO_AUTH` | `false` | Local/test escape hatch only — forbidden in staging/production |
+| `PICKUP_NATS_TLS_ENABLED` | `false` | Required with verified CA trust in staging/production |
+| `PICKUP_ADR_0010_CREDENTIALS_CONFIGURED` | `false` | Required with TLS + scoped credentials in staging/production |
+| `PICKUP_SHIPMENT_ACCEPTANCE_INGESTION_MODE_NATIVE_CONFIRMED` | `false` | Staging/production relay gate (config flag, not external proof) |
+| `PICKUP_SHIPMENT_COMPATIBILITY_HTTP_ACCEPTANCE_DISABLED` | `false` | Staging/production relay gate |
+| `PICKUP_LEGACY_PICKUP_ACCEPTANCE_WRITER_REVOCATION_EXTERNALLY_CONFIRMED` | `false` | Staging/production relay gate |
 | `PICKUP_PRODUCTION_READY` | `false` | Must remain false |
 
 Publish contract: subject `hudhud.pickup.pickup.fact.accepted.v1`, stream
 `HUDHUD_PICKUP`, `Nats-Msg-Id` = stable outbox `event_id`.
+
+Relay staging/production activation requires native Shipment mode confirmed,
+compatibility HTTP disabled, external legacy-writer revocation confirmation,
+scoped credentials, and verified TLS. Flags are configuration gates only.
 
 ## Validation
 
@@ -128,11 +136,13 @@ persistence proof exist (W15). Local disposable HTTP+PostgreSQL command-API
 proof lives in `tests/service_postgres_proof` (`workflow_dispatch` only). Local
 disposable Pickup→Shipment JetStream pipeline proof lives in
 `tests/pickup_acceptance_eventing_proof` (`workflow_dispatch` only; local
-no-auth labelled lab — not ADR-0010 production credential proof).
+no-auth labelled lab — not ADR-0010 production credential proof). Local
+disposable Pickup/Shipment JWT+TLS+ACL proof lives in
+`tests/nats_security_proof` (`workflow_dispatch` only).
 
 ## Production readiness
 
 **Not production-ready.** Default authorization and Shipment eligibility adapters
-remain fail-closed / deferred. Relay is disabled by default; ADR-0010 staging/
-production NATS identity evidence remains open. Secured messaging and production
-deployment remain future Waves.
+remain fail-closed / deferred. Relay is disabled by default; ADR-0010 remains
+Proposed. Local disposable JWT/TLS/ACL evidence exists (W18); staging/production
+credential delivery, HA, and real cutover remain open.

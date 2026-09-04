@@ -268,20 +268,20 @@ def test_production_requires_adr_0010_tls_and_credentials() -> None:
         adr_0010_credentials_configured=True,
         database_url="postgresql+psycopg://localhost/pickup",
     )
-    with pytest.raises(NatsNotConfiguredError, match="TLS"):
+    with pytest.raises(NatsNotConfiguredError, match="no-auth"):
         assert_nats_configuration(settings)
 
-    no_auth = load_settings(
+    missing_tls = load_settings(
         environment=RuntimeEnvironment.PRODUCTION,
         relay_enabled=True,
         nats_url="tls://127.0.0.1:4222",
-        nats_tls_enabled=True,
-        nats_dev_no_auth=True,
+        nats_tls_enabled=False,
+        nats_creds_file="/tmp/disposable.creds",
         adr_0010_credentials_configured=True,
         database_url="postgresql+psycopg://localhost/pickup",
     )
-    with pytest.raises(NatsNotConfiguredError, match="no-auth"):
-        assert_nats_configuration(no_auth)
+    with pytest.raises(NatsNotConfiguredError, match="TLS"):
+        assert_nats_configuration(missing_tls)
 
     prod = load_settings(
         environment=RuntimeEnvironment.PRODUCTION,
@@ -293,6 +293,41 @@ def test_production_requires_adr_0010_tls_and_credentials() -> None:
         database_url="postgresql+psycopg://localhost/pickup",
     )
     assert_nats_configuration(prod)
+
+
+def test_staging_requires_tls_credentials_and_forbids_no_auth() -> None:
+    plaintext = load_settings(
+        environment=RuntimeEnvironment.STAGING,
+        relay_enabled=True,
+        nats_url="nats://localhost:4222",
+        nats_user="pickup",
+        nats_password="not-a-real-secret",
+        adr_0010_credentials_configured=True,
+        nats_tls_enabled=False,
+    )
+    with pytest.raises(NatsNotConfiguredError, match="TLS"):
+        assert_nats_configuration(plaintext)
+
+    no_auth = load_settings(
+        environment=RuntimeEnvironment.STAGING,
+        relay_enabled=True,
+        nats_url="tls://127.0.0.1:4222",
+        nats_tls_enabled=True,
+        nats_dev_no_auth=True,
+        adr_0010_credentials_configured=True,
+    )
+    with pytest.raises(NatsNotConfiguredError, match="no-auth"):
+        assert_nats_configuration(no_auth)
+
+    staging = load_settings(
+        environment=RuntimeEnvironment.STAGING,
+        relay_enabled=True,
+        nats_url="tls://127.0.0.1:4222",
+        nats_tls_enabled=True,
+        nats_creds_file="/tmp/disposable.creds",
+        adr_0010_credentials_configured=True,
+    )
+    assert_nats_configuration(staging)
 
 
 def test_graceful_drain_and_close() -> None:
