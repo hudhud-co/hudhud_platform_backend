@@ -51,7 +51,7 @@ Each violated prerequisite raises an explicit domain error — no silent generic
 | `shipment.current_status` | `IN_CUSTODY` |
 | `shipment.accepted_at` | acceptance scan timestamp |
 | `shipment.sla_started_at` | acceptance scan timestamp |
-| `shipment.current_custody_type` | `DRIVER` (bootstrap value — canonical target terminology is `PICKUP_DRIVER`; compatibility/data migration required in coding wave — ADR-0003 W17-A) |
+| `shipment.current_custody_type` | `PICKUP_DRIVER` (ADR-0003 W17-A; Alembic converts legacy bootstrap `DRIVER` rows) |
 | `shipment.current_custody_id` | assigned driver user id |
 | Pickup task acceptance state | `ACCEPTED` or `ACCEPTED_WITH_EXCEPTION` |
 | ShipmentEvent | `ACCEPTANCE_SCAN`, `CREATED` → `IN_CUSTODY` |

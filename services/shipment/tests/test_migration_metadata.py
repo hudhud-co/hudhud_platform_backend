@@ -24,12 +24,20 @@ def test_single_head_migration_chain() -> None:
     assert migration_files == [
         "w15a_shipment_acceptance_001_initial.py",
         "w16a_shipment_acceptance_idempotency_001.py",
+        "w17d_shipment_custody_pickup_driver_001.py",
     ]
     w16 = (versions / "w16a_shipment_acceptance_idempotency_001.py").read_text(encoding="utf-8")
     assert "down_revision" in w16
     assert "w15a_shipment_acceptance_001" in w16
     assert 'revision: str = "w16a_acceptance_idempotency_001"' in w16
     assert len("w16a_acceptance_idempotency_001") <= 32
+
+    w17d = (versions / "w17d_shipment_custody_pickup_driver_001.py").read_text(encoding="utf-8")
+    assert 'down_revision: str | Sequence[str] | None = "w16a_acceptance_idempotency_001"' in w17d
+    assert 'revision: str = "w17d_custody_pickup_driver_001"' in w17d
+    assert len("w17d_custody_pickup_driver_001") <= 32
+    assert "PICKUP_DRIVER" in w17d
+    assert "WHERE current_custody_type = 'DRIVER'" in w17d
 
 
 def test_metadata_tables_owned_by_service() -> None:

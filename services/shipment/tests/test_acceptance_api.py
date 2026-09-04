@@ -187,6 +187,7 @@ def test_identity_headers_and_body_actor_fields_are_ignored_or_rejected() -> Non
         },
     )
     assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["current_custody_type"] == "PICKUP_DRIVER"
     assert accepted.json()["current_custody_id"] == "driver-from-auth"
     assert authorizer.seen_tokens == [SENSITIVE_TOKEN]
 

@@ -71,13 +71,33 @@ def test_shipment_mapper_round_trip_preserves_aggregate_fields() -> None:
         order_created_at=datetime(2026, 5, 31, 9, 0, tzinfo=UTC),
         accepted_at=accepted_at,
         sla_started_at=accepted_at,
-        current_custody_type=CustodyType.DRIVER,
+        current_custody_type=CustodyType.PICKUP_DRIVER,
         current_custody_id="driver-42",
     )
     row = shipment_to_row(shipment, version=3)
+    assert row.current_custody_type == "PICKUP_DRIVER"
     restored, version = shipment_from_row(row)
     assert version == 3
     assert restored == shipment
+
+
+def test_shipment_mapper_rejects_ambiguous_driver_custody_type() -> None:
+    """Persisted bootstrap value DRIVER must not be silently remapped on read."""
+    shipment_id = uuid4()
+    row = ShipmentRow(
+        shipment_id=shipment_id,
+        order_id=uuid4(),
+        waybill_number="WB-LEGACY-DRIVER",
+        current_status=ShipmentStatus.IN_CUSTODY.value,
+        order_created_at=datetime(2026, 5, 31, 9, 0, tzinfo=UTC),
+        accepted_at=datetime(2026, 5, 31, 10, 0, tzinfo=UTC),
+        sla_started_at=datetime(2026, 5, 31, 10, 0, tzinfo=UTC),
+        current_custody_type="DRIVER",
+        current_custody_id="driver-42",
+        version=1,
+    )
+    with pytest.raises(ValueError):
+        shipment_from_row(row)
 
 
 def test_acceptance_decision_stores_external_evidence_refs_only() -> None:

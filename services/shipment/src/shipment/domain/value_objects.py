@@ -22,9 +22,9 @@ class ShipmentStatus(StrEnum):
 
 
 class CustodyType(StrEnum):
-    """Custody holder type at acceptance."""
+    """Custody holder type at acceptance (ADR-0003 W17-A / Legacy CUSTODY_TYPE_*)."""
 
-    DRIVER = "DRIVER"
+    PICKUP_DRIVER = "PICKUP_DRIVER"
 
 
 class PickupTaskStatus(StrEnum):

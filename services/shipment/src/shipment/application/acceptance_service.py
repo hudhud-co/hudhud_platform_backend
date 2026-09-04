@@ -202,7 +202,7 @@ class AcceptanceLifecycleService:
             shipment.current_status = ShipmentStatus.IN_CUSTODY
             shipment.accepted_at = command.scan_timestamp
             shipment.sla_started_at = command.scan_timestamp
-            shipment.current_custody_type = CustodyType.DRIVER
+            shipment.current_custody_type = CustodyType.PICKUP_DRIVER
             shipment.current_custody_id = assigned_driver
             shipment_event = ShipmentEvent(
                 event_id=uuid4(),

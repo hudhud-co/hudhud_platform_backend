@@ -166,7 +166,7 @@ async def test_successful_acceptance_produces_all_atomic_effects() -> None:
     assert updated.current_status is ShipmentStatus.IN_CUSTODY
     assert updated.accepted_at == scan_timestamp
     assert updated.sla_started_at == scan_timestamp
-    assert updated.current_custody_type is CustodyType.DRIVER
+    assert updated.current_custody_type is CustodyType.PICKUP_DRIVER
     assert updated.current_custody_id == driver_id
     assert updated_pickup is not None
     assert updated_pickup.acceptance_state is PickupTaskAcceptanceState.ACCEPTED
@@ -519,6 +519,7 @@ async def test_accepted_with_exception_starts_custody_and_sla_with_event() -> No
     assert updated is not None
     assert updated.current_status is ShipmentStatus.IN_CUSTODY
     assert updated.sla_started_at == scan_timestamp
+    assert updated.current_custody_type is CustodyType.PICKUP_DRIVER
     assert len(await store.shipment_events.list_events_for_shipment(shipment.shipment_id)) == 1
 
 
