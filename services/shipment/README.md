@@ -5,6 +5,12 @@ writer of shipment lifecycle state (ADR-0003). This package covers the
 **order intent → acceptance scan** domain foundation (W11), PostgreSQL persistence
 (W15-A), and the acceptance command HTTP API (W16-A).
 
+**W17-A boundary:** Production Pickup → Shipment acceptance applies via native
+`pickup.fact.accepted` (Pickup outbox → JetStream → Shipment inbox). The W16 HTTP
+acceptance endpoint remains a **compatibility / internal command** boundary and
+must not run as a second independent production writer alongside native consumption
+(ADR-0003 W17-A; ADR-0009 C10).
+
 ## Source authority
 
 | Document | Version | Sections implemented in W11 |
@@ -45,7 +51,7 @@ Each violated prerequisite raises an explicit domain error — no silent generic
 | `shipment.current_status` | `IN_CUSTODY` |
 | `shipment.accepted_at` | acceptance scan timestamp |
 | `shipment.sla_started_at` | acceptance scan timestamp |
-| `shipment.current_custody_type` | `DRIVER` |
+| `shipment.current_custody_type` | `DRIVER` (bootstrap value — canonical target terminology is `PICKUP_DRIVER`; compatibility/data migration required in coding wave — ADR-0003 W17-A) |
 | `shipment.current_custody_id` | assigned driver user id |
 | Pickup task acceptance state | `ACCEPTED` or `ACCEPTED_WITH_EXCEPTION` |
 | ShipmentEvent | `ACCEPTANCE_SCAN`, `CREATED` → `IN_CUSTODY` |
@@ -75,11 +81,15 @@ evidence references and otherwise follows the successful acceptance path.
 
 Composition root: `shipment.main:create_app`.
 
+**Classification (W17-A):** Compatibility / internal command boundary for acceptance
+application. After the native `pickup.fact.accepted` consumer is enabled, production
+Pickup must not use this HTTP path as an independent writer (ADR-0003).
+
 | Route | Role |
 |-------|------|
 | `GET /health` | Liveness only |
 | `GET /ready` | Configuration, PostgreSQL reachability, authorization-adapter readiness |
-| `POST /v1/shipments/{shipment_id}/acceptance-scans` | Acceptance-scan command |
+| `POST /v1/shipments/{shipment_id}/acceptance-scans` | Acceptance-scan command (compatibility/internal) |
 
 Command requirements:
 

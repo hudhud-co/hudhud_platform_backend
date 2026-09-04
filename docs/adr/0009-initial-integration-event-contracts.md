@@ -3,8 +3,10 @@
 - **Status:** Accepted
 - **Date:** 2026-08-30
 - **Deciders:** platform architecture review (Wave 3 capture integration)
-- **Workstream:** W3-E
-- **Implementation allowed:** no — JSON Schemas and production publishers remain next Wave
+- **Workstream:** W3-E; W17-A acceptance-boundary reconciliation (C10 status only)
+- **Implementation allowed:** A1/A2 — no production publishers without existing gates;
+  C10 — `implementation_authorized_not_production_enabled` (contract + adapters next
+  coding wave; staging/production gated)
 
 Label key: **[evidence]** verified from repository or legacy audit; **[proposal]** recommended design not yet accepted; **[decision]** binding only after acceptance; **[assumption]** engineering default pending validation; **[unresolved policy]** requires named deciders.
 
@@ -210,7 +212,8 @@ the producer/source — **not** an aggregate identifier. No `HUDHUD_LEGACY_BRIDG
 | `delivery.fact.cod_collected`, `CodCollected` | ADR-0005 policy-blocked |
 | `notification.projection.delivery_requested` | Notification-native — not Bridge first set |
 | `media_proof.observation.evidence_registered` | Ownership unresolved |
-| Pickup/Hub/Linehaul facts (C10–C13) | Not Wave 1 bridge scope |
+| `pickup.fact.accepted` (C10) | **W17-A:** lifted to `implementation_authorized_not_production_enabled` — not Wave 1 Bridge; contract/adapters next coding wave; production gated (see C10 below) |
+| Hub/Linehaul facts (C11–C13) | Not Wave 1 bridge scope; remain deferred |
 | `delivery.command.complete` | ADR-0004 identity gate |
 | Finance/Wallet facts (C14–C15) | ADR-0005 policy-blocked |
 | Bridge wallet/COD row observations | Finance policy-blocked |
@@ -243,7 +246,7 @@ Scores: **Accept** = recommend for minimal Wave 1 set; **Defer** = define but bl
 | C7 | `audit.fact.entry_recorded` | 1 | `hudhud.audit.audit.fact.entry_recorded.v1` | `integration` | `audit` (native only) | `non_aggregate` or entity-scoped | N/A (non-aggregate) | Audit service | `audit_logs` | **Defer** — use A2 observation from Bridge |
 | C8 | `notification.projection.delivery_requested` | 1 | `hudhud.notification.notification.projection.delivery_requested.v1` | `projection` | `notification` | `non_aggregate` | N/A | Notification internal workers | Derived from C1/C2; legacy catalog mapping | **Accept** |
 | C9 | `media_proof.observation.evidence_registered` | 1 | `hudhud.media_proof.media_proof.observation.evidence_registered.v1` | `integration` | `media_proof` or `legacy_bridge` | Context-specific (`shipment`, `pickup_task`, …) | Optional | Control Tower, Tracking, Notification | Evidence tables / MinIO keys | **Accept** (draft; defer impl.) |
-| C10 | `pickup.fact.accepted` | 1 | `hudhud.pickup.pickup.fact.accepted.v1` | `integration` | `pickup` | `shipment` | **Required** | Shipment | `acceptance_scan_pickup_task.py`, boundaries YAML | **Defer** (not Wave 1 consumer) |
+| C10 | `pickup.fact.accepted` | 1 | `hudhud.pickup.pickup.fact.accepted.v1` | `integration` | `pickup` | `pickup_task` | **Required** — PickupTask-owned monotonic (not Shipment) | Shipment | `acceptance_scan_pickup_task.py`, boundaries YAML, ADR-0003 W17-A | **`implementation_authorized_not_production_enabled`** |
 | C11 | `hub.fact.inbound` | 1 | `hudhud.hub.hub.fact.inbound.v1` | `integration` | `hub` | `shipment` | **Required** | Shipment | `origin_hub_inbound_scan.py` | **Defer** |
 | C12 | `linehaul.fact.dispatched` | 1 | `hudhud.linehaul.linehaul.fact.dispatched.v1` | `integration` | `linehaul` | `shipment` | **Required** | Shipment | `dispatch_linehaul_trip.py` | **Defer** |
 | C13 | `linehaul.fact.arrived` | 1 | `hudhud.linehaul.linehaul.fact.arrived.v1` | `integration` | `linehaul` | `shipment` | **Required** | Shipment | `arrive_linehaul_trip.py` | **Defer** |
@@ -258,15 +261,30 @@ Scores: **Accept** = recommend for minimal Wave 1 set; **Defer** = define but bl
 
 ## Decision
 
-**[decision]** Accept **A1** and **A2** only (see Accepted minimal first contract set).
+**[decision]** Accept **A1** and **A2** only as the minimal Wave 1 Bridge publish set
+(see Accepted minimal first contract set). **A1/A2 migration-observation authority
+is unchanged by W17-A.**
 
-**[decision]** Defer all canonical lifecycle, finance, notification projection, media/proof, and
-operational facts until respective service authority and ADR gates clear.
+**[decision]** Defer all canonical lifecycle, finance, notification projection, media/proof,
+and operational facts (except C10 status below) until respective service authority and
+ADR gates clear.
+
+**[decision — W17-A]** Lift **C10** (`pickup.fact.accepted`) only to
+**`implementation_authorized_not_production_enabled`**:
+
+| Meaning | Bound |
+|---------|-------|
+| Allowed next coding wave | Contract registration under `contracts/events/` and Pickup/Shipment adapter implementation (outbox publish / inbox consume) |
+| Still gated for staging/production | Outbox/inbox tests, topology, credentials, and runtime evidence |
+| Unchanged | A1/A2 observation authority; C11–C19 and other deferred/rejected rows |
 
 **[decision]** Reject Bridge emission of canonical Audit/Shipment facts and finance paths.
 
-**Status: Accepted** — minimal observation set only. JSON Schemas and production publishers
-remain implementation work for the next Wave. Accepted ≠ implementation-complete.
+**Status: Accepted** — minimal observation set only (A1/A2). C10 is not an accepted
+Bridge first-publish contract; it is implementation-authorized for the next coding
+wave without production enablement. JSON Schemas and production publishers for A1/A2
+remain implementation work for their own gates. Accepted ≠ implementation-complete /
+production-enabled.
 
 ---
 
@@ -465,6 +483,42 @@ remain implementation work for the next Wave. Accepted ≠ implementation-comple
 
 ---
 
+### C10 — `pickup.fact.accepted` v1 — W17-A reconciliation
+
+**Status:** `implementation_authorized_not_production_enabled` (not Bridge first-publish;
+not production-enabled). Full JSON Schema registration is deferred to the next coding
+wave — this section records ownership and authority only.
+
+**Envelope:** `message_kind=integration`, `producer=pickup`,
+`aggregate_type=pickup_task`, `aggregate_id={pickup_task_id}`,
+`aggregate_version` = PickupTask-owned monotonic version (**required**).
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `pickup_task_id` | UUID string | **yes** | Same as envelope `aggregate_id` |
+| `shipment_id` | UUID string | **yes** | Payload correlation only — not Shipment aggregate authority |
+| `outcome` | string | **yes** | `ACCEPTED` or `ACCEPTED_WITH_EXCEPTION` only |
+| `accepted_at` | RFC 3339 | **yes** | Operational acceptance timestamp from Pickup |
+
+**Producer / consumer:** Pickup publishes; Shipment consumes and applies canonical
+`CREATED` → `IN_CUSTODY` with custody terminology `PICKUP_DRIVER` (ADR-0003 W17-A).
+
+**Outcomes:** Custody-starting success only. `REJECTED` does not emit this event and
+remains Pickup-local — do not invent a rejection fact here.
+
+**Aggregate authority:** Pickup must not claim or generate a Shipment
+`aggregate_version`. Shipment increments its own version when applying the fact.
+
+**Production path:** Pickup outbox → JetStream → Shipment inbox → Shipment apply →
+ACK. W16 Shipment HTTP acceptance remains compatibility/internal only; must not run
+as a second independent production writer alongside native consumption.
+
+**Explicit non-actions (this ADR update):** Do not register the JSON Schema in this
+workstream; do not enable staging/production publish/consume without outbox/inbox
+tests, topology, credentials, and runtime evidence.
+
+---
+
 ## Compatibility and evolution rules
 
 **[proposal]** Aligned with ADR-0002:
@@ -570,7 +624,9 @@ Envelope `pii_present=true` triggers consumer log redaction pipelines.
 
 ## Decision (summary)
 
-See **Accepted minimal first contract set** above. Status **Accepted** — two observations only.
+See **Accepted minimal first contract set** above. Status **Accepted** — two
+observations only (A1/A2). **W17-A:** C10 lifted only to
+`implementation_authorized_not_production_enabled`; A1/A2 unchanged.
 
 ---
 
@@ -597,7 +653,8 @@ See **Accepted minimal first contract set** above. Status **Accepted** — two o
 
 ### Neutral
 
-- Operational facts (pickup/hub/linehaul) documented but deferred — no Wave 1 delay.
+- Operational facts Hub/Linehaul (C11–C13) documented but deferred — no Wave 1 delay.
+- C10 (`pickup.fact.accepted`) is implementation-authorized (not production-enabled) per W17-A.
 - COD payload drafted but blocked — avoids rework when ADR-0005 resolves.
 
 ---
@@ -700,9 +757,9 @@ Logs: envelope `safe_log_fields()` only — no raw confidential payload.
 
 ```text
 ADR path: docs/adr/0009-initial-integration-event-contracts.md
-Status: Accepted — minimal observation set only
-Deciders: platform architecture review (Wave 3 capture integration)
-Canonical docs updated: service-boundaries.yaml, ownership-matrix.yaml, docs/adr/README.md
+Status: Accepted — minimal observation set only (A1/A2); C10 implementation_authorized_not_production_enabled (W17-A)
+Deciders: platform architecture review (Wave 3 capture integration); W17-A acceptance boundary reconciliation
+Canonical docs updated: service-boundaries.yaml, ownership-matrix.yaml, docs/adr/README.md (prior waves); ADR-0003 W17-A cross-links
 Unresolved questions: 8 (see section above)
-Implementation allowed: no (JSON Schemas + publishers next Wave)
+Implementation allowed: A1/A2 schemas/publishers gated; C10 contract+adapters authorized next coding wave — not production-enabled
 ```

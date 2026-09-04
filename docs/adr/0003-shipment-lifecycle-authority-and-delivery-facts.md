@@ -175,9 +175,13 @@ wallet ledger, or notification delivery state.
 
 | Kind | Producer | Consumer | Examples |
 |------|----------|----------|----------|
-| **Operational fact** | Pickup, Hub, Linehaul, Delivery | Shipment (inbox) | `pickup.fact.acceptance_scanned`, `hub.fact.origin_inbound_scanned`, `linehaul.fact.trip_dispatched`, `delivery.fact.task_completed` |
+| **Operational fact** | Pickup, Hub, Linehaul, Delivery | Shipment (inbox) | `pickup.fact.accepted`, `hub.fact.origin_inbound_scanned`, `linehaul.fact.trip_dispatched`, `delivery.fact.task_completed` |
 | **Command** | Delivery, Operations (via Gateway) | Shipment | `shipment.command.apply_delivery_outcome` (authorized override) |
 | **Canonical fact** | Shipment | Tracking, Notification, Control Tower, Finance | `shipment.fact.lifecycle_transitioned`, `shipment.fact.delivered` |
+
+**Canonical naming note (W17-A):** The earlier draft name `pickup.fact.acceptance_scanned`
+is superseded by **`pickup.fact.accepted`** (ADR-0009 C10 and
+`architecture/service-boundaries.yaml`). Do not introduce a second acceptance fact type.
 
 **Proposal:** Facts are immutable observations with producer idempotency keys. Commands request
 Shipment to validate and apply a transition; Shipment is the only writer of canonical state.
@@ -237,7 +241,7 @@ CREATED → IN_CUSTODY → AT_ORIGIN_HUB → IN_LINEHAUL → AT_DESTINATION_HUB
 | Operational trigger | Published fact / command | Shipment transition | Preconditions (from legacy evidence) |
 |--------------------|--------------------------|---------------------|--------------------------------------|
 | Send parcel confirm | Internal: `CreateShipment` command | → `CREATED` | Validated order |
-| Pickup acceptance scan | `pickup.fact.acceptance_scanned` | → `IN_CUSTODY` | Shipment `CREATED` |
+| Pickup acceptance scan | `pickup.fact.accepted` | → `IN_CUSTODY` | Shipment `CREATED` |
 | Origin hub inbound scan | `hub.fact.origin_inbound_scanned` | → `AT_ORIGIN_HUB` | `IN_CUSTODY`, custody driver |
 | Linehaul dispatch | `linehaul.fact.trip_dispatched` | → `IN_LINEHAUL` | `AT_ORIGIN_HUB` |
 | Linehaul arrive | `linehaul.fact.trip_arrived` | → `AT_DESTINATION_HUB` | `IN_LINEHAUL` |
@@ -262,6 +266,117 @@ CREATED → IN_CUSTODY → AT_ORIGIN_HUB → IN_LINEHAUL → AT_DESTINATION_HUB
 | `DELIVERED` | Shipment (from Delivery fact or ops command) | Delivery, Shipment ops |
 | `DELIVERY_FAILED` | Shipment (from Delivery fact or ops command) | Delivery, Shipment ops |
 | `DELIVERY_CANCELLED` | Shipment (ops command only in legacy) | Shipment ops |
+
+## W17-A: Pickup → Shipment acceptance boundary reconciliation
+
+**[decision]** Technical reconciliation only — no invented product behavior. Binding
+Legacy evidence already extracted (acceptance initiated by assigned pickup driver;
+atomic PickupTask + Shipment mutation in Legacy is an ownership violation the
+platform must remove). Do not expand those findings here.
+
+### Canonical event name
+
+**[decision]** Use **`pickup.fact.accepted`**.
+
+- ADR-0009 C10 and `architecture/service-boundaries.yaml` already use this name.
+- The older ADR-0003 draft example `pickup.fact.acceptance_scanned` is superseded.
+- Contract registration remains out of this reconciliation workstream (next coding wave).
+
+### Producer and consumer
+
+| Role | Service |
+|------|---------|
+| Producer | **Pickup** — records its operational acceptance result in Pickup-owned storage and outbox |
+| Consumer | **Shipment** — sole canonical Shipment lifecycle writer; applies acceptance via inbox |
+
+**[decision]** Pickup must never write Shipment storage or hold Shipment write credentials.
+
+### Aggregate authority
+
+**[decision]** The fact is scoped to Pickup-owned state:
+
+| Envelope field | Value |
+|----------------|-------|
+| `aggregate_type` | `pickup_task` |
+| `aggregate_id` | `pickup_task_id` |
+| `aggregate_version` | PickupTask-owned monotonic version |
+
+`shipment_id` is **required payload correlation only**. Pickup must not claim or
+generate a Shipment aggregate version.
+
+### Single production apply path
+
+**[decision]** Target production flow after native fact consumer is enabled:
+
+```text
+Pickup transaction
+  → Pickup outbox
+  → pickup.fact.accepted
+  → JetStream
+  → Shipment inbox
+  → Shipment acceptance domain application
+  → Shipment commit
+  → ACK
+```
+
+**[decision]** The W16 Shipment HTTP acceptance endpoint
+(`POST /v1/shipments/{shipment_id}/acceptance-scans`) remains a
+**compatibility / internal command boundary**. It must **not** be used by the
+production Pickup flow after the native fact consumer is enabled. Do not delete
+or change that endpoint in this reconciliation workstream.
+
+**[decision]** HTTP Pickup ingestion and native-event Pickup ingestion must **not**
+be enabled simultaneously as independent production writers (no dual production
+apply path).
+
+### Acceptance outcomes
+
+**[decision]** The first `pickup.fact.accepted` contract represents custody-starting
+success only:
+
+- `ACCEPTED`
+- `ACCEPTED_WITH_EXCEPTION`
+
+**`REJECTED`:**
+
+- does not start custody or SLA;
+- does not produce `pickup.fact.accepted`;
+- remains Pickup-local until an existing source/ADR authorizes a separate rejection fact.
+
+Do **not** invent a rejection event in this workstream. Legacy acceptance scan has
+no distinct rejected event.
+
+### Recovery eligibility (source-aligned)
+
+**[decision]** Source-aligned recovery rule for Pickup:
+
+1. Shipment existence is required (eligibility obtained through port only).
+2. Recovery is **blocked** when canonical custody type represents **`PICKUP_DRIVER`**.
+3. Do **not** add blocking based only on: Shipment `IN_CUSTODY` status, any custody id,
+   or inferred `custody_started`.
+4. Fail closed when Shipment eligibility cannot be obtained.
+
+**[evidence / platform gap]** Current W12 Pickup recovery logic is **stricter**
+(blocks on `IN_CUSTODY` / inferred `custody_started` / custody owner present) and
+must be aligned in the next coding wave — not in this ADR-only reconciliation.
+
+### Custody enum mapping
+
+**[decision]** Canonical target terminology for this boundary is **`PICKUP_DRIVER`**
+(matches Legacy `CUSTODY_TYPE_*` evidence).
+
+**[decision]** The existing Shipment bootstrap value `DRIVER` requires an explicit
+compatibility / data migration plan in the coding wave. Do not edit enum code or
+migrations in this reconciliation.
+
+### Consistency checks (unchanged invariants)
+
+- Shipment remains sole lifecycle writer.
+- Pickup remains PickupTask owner.
+- No cross-service DB access.
+- No dual production apply path.
+- No Shipment aggregate version produced by Pickup.
+- No rejected acceptance fact invented.
 
 ## Sequence diagrams
 

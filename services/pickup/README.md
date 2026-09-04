@@ -3,6 +3,11 @@
 Independently managed HUDHUD Pickup service package. Pickup owns task recovery
 and attempt history; it does not own or mutate Shipment lifecycle/custody (ADR-0003).
 
+**W17-A boundary:** Pickup is the producer of `pickup.fact.accepted` (PickupTask
+aggregate authority). Shipment is the sole consumer that applies canonical custody.
+Pickup must never write Shipment storage. Contract registration and adapters are
+`implementation_authorized_not_production_enabled` (ADR-0009 C10).
+
 ## Scope (W12 + W15-B + W16-B)
 
 Recovery actions:
@@ -22,7 +27,12 @@ Recovery actions:
 6. Previous attempts become terminal (`SUPERSEDED` or `CANCELLED`) and remain queryable.
 7. Recovery never directly modifies Shipment custody.
 8. Recovery is rejected if the task is already accepted.
-9. Recovery is rejected after Shipment custody has started (`IN_CUSTODY` / custody owner present).
+9. **Source-aligned recovery eligibility (ADR-0003 W17-A):** Shipment existence is
+   required; recovery is blocked when canonical custody type represents
+   `PICKUP_DRIVER`. Do not block solely on Shipment `IN_CUSTODY`, any custody id,
+   or inferred `custody_started`. Fail closed when eligibility cannot be obtained.
+   **Current W12 implementation is stricter** (`IN_CUSTODY` / `custody_started` /
+   custody owner present) and must be aligned in the next coding wave.
 10. Cancellation preserves the task record — no deletion.
 11. Repeated recovery commands with the same idempotency key return the original result.
 
