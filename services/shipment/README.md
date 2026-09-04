@@ -9,7 +9,11 @@ writer of shipment lifecycle state (ADR-0003). This package covers the
 `pickup.fact.accepted` (Pickup outbox → JetStream → Shipment inbox). The W16 HTTP
 acceptance endpoint remains a **compatibility / internal command** boundary and
 must not run as a second independent production writer alongside native consumption
-(ADR-0003 W17-A; ADR-0009 C10).
+(ADR-0003 W17-A; ADR-0009 C10). Native apply uses the fact payload
+(`assigned_driver_user_id`, `acting_driver_user_id`, `scanned_identifier`,
+`accepted_at`, `outcome`) plus envelope `event_id` / `aggregate_version` /
+`media_refs`. It must persist `AcceptanceDecisionRecord` and must not query Pickup
+storage or treat `PickupTaskSnapshot` as production authority.
 
 ## Source authority
 
@@ -25,7 +29,8 @@ See `docs/source/README.md` for provenance (PDF not in Git).
 ```text
 OrderIntent (intent only)
     └── Shipment aggregate (current_status=CREATED until acceptance)
-            ├── PickupTaskSnapshot (service-local prerequisite input; Pickup adapter deferred)
+            ├── PickupTaskSnapshot (compatibility/HTTP prerequisite input only; not production fact authority)
+            ├── AcceptanceDecisionRecord (persisted on apply; not optional)
             ├── ShipmentEvent append (ACCEPTANCE_SCAN on successful acceptance)
             └── AuditLogEntry append
 ```

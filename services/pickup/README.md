@@ -5,7 +5,10 @@ and attempt history; it does not own or mutate Shipment lifecycle/custody (ADR-0
 
 **W17-A boundary:** Pickup is the producer of `pickup.fact.accepted` (PickupTask
 aggregate authority). Shipment is the sole consumer that applies canonical custody.
-Pickup must never write Shipment storage. Contract registration and adapters are
+Pickup must never write Shipment storage. The fact payload must include the
+operational identities Shipment persists (`assigned_driver_user_id`,
+`acting_driver_user_id`, `scanned_identifier`) plus `outcome` and `accepted_at`.
+Exception evidence uses envelope `media_refs` only. Contract registration remains
 `implementation_authorized_not_production_enabled` (ADR-0009 C10).
 
 ## Scope (W12 + W15-B + W16-B)

@@ -18,6 +18,9 @@
     "shipment_id": "835aa643-3538-4cb1-ae26-9beb65224618",
     "outcome": "ACCEPTED",
     "accepted_at": "2026-09-04T12:00:00.000Z",
+    "assigned_driver_user_id": "driver-42",
+    "acting_driver_user_id": "driver-42",
+    "scanned_identifier": "WB-1001",
     "shipment_aggregate_version": 7
   }
 }

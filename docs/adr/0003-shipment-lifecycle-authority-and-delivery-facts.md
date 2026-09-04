@@ -346,6 +346,35 @@ success only:
 Do **not** invent a rejection event in this workstream. Legacy acceptance scan has
 no distinct rejected event.
 
+### Fact applicability for Shipment apply
+
+**[decision]** `pickup.fact.accepted` v1 must carry the operational facts Shipment
+persists on apply, so the consumer does not read Pickup storage, invent custody or
+operator identities, bypass `AcceptanceDecisionRecord`, or treat compatibility
+`PickupTaskSnapshot` as a permanent cross-context authority.
+
+| Pickup source | Contract field | Shipment persist/effect |
+|---------------|----------------|-------------------------|
+| PickupTask id | `payload.pickup_task_id` (= envelope `aggregate_id`) | Decision `pickup_task_id`; audit details |
+| PickupTask `shipment_id` | `payload.shipment_id` | Correlation; load Shipment aggregate |
+| Pickup acceptance outcome | `payload.outcome` | Decision outcome; `IN_CUSTODY` when custody-starting |
+| Pickup acceptance timestamp | `payload.accepted_at` | `accepted_at`, `sla_started_at`, event `occurred_at` |
+| PickupTask `assigned_driver_user_id` | `payload.assigned_driver_user_id` | `current_custody_id` |
+| Authorized acceptance actor | `payload.acting_driver_user_id` | Audit `actor_id`; decision `acting_driver_user_id` |
+| Identifier actually scanned | `payload.scanned_identifier` | Decision `scanned_identifier`; verify vs Shipment `waybill_identity` |
+| Exception/condition evidence | envelope `media_refs` (required when `ACCEPTED_WITH_EXCEPTION`) | Decision `exception_evidence`; audit evidence URIs |
+| PickupTask `version` | envelope `aggregate_version` | Ordering only — never Shipment `version` |
+| Outbox `event_id` | envelope `event_id` | Inbox idempotency `(consumer_name, event_id)` |
+
+`acting_driver_user_id` MUST equal `assigned_driver_user_id` (Pickup validates
+before publish). Neither identity may be the producer name, `event_id`, or a
+placeholder. Custody type is `PICKUP_DRIVER` from this event's semantics.
+
+Packaging/seal assessment and approximate weight/dimensions are unused Shipment
+value objects and are not Pickup-persisted at acceptance — they are not added.
+Pickup-side publication gates (`PROOF_CAPTURED`, assigned batch, condition-proof
+existence) stay in Pickup.
+
 ### Recovery eligibility (source-aligned)
 
 **[decision]** Source-aligned recovery rule for Pickup:
@@ -377,6 +406,8 @@ migrations in this reconciliation.
 - No dual production apply path.
 - No Shipment aggregate version produced by Pickup.
 - No rejected acceptance fact invented.
+- Shipment apply does not read Pickup DB or use `PickupTaskSnapshot` as production authority.
+- Custody owner and responsible operator come from Pickup-provided driver identities, never producer/`event_id`/placeholder.
 
 ## Sequence diagrams
 

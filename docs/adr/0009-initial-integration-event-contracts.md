@@ -486,8 +486,8 @@ production-enabled.
 ### C10 — `pickup.fact.accepted` v1 — W17-A reconciliation
 
 **Status:** `implementation_authorized_not_production_enabled` (not Bridge first-publish;
-not production-enabled). Full JSON Schema registration is deferred to the next coding
-wave — this section records ownership and authority only.
+not production-enabled). Schema is registered under
+`contracts/events/pickup.fact.accepted/`. Publication remains gated.
 
 **Envelope:** `message_kind=integration`, `producer=pickup`,
 `aggregate_type=pickup_task`, `aggregate_id={pickup_task_id}`,
@@ -498,7 +498,19 @@ wave — this section records ownership and authority only.
 | `pickup_task_id` | UUID string | **yes** | Same as envelope `aggregate_id` |
 | `shipment_id` | UUID string | **yes** | Payload correlation only — not Shipment aggregate authority |
 | `outcome` | string | **yes** | `ACCEPTED` or `ACCEPTED_WITH_EXCEPTION` only |
-| `accepted_at` | RFC 3339 | **yes** | Operational acceptance timestamp from Pickup |
+| `accepted_at` | RFC 3339 | **yes** | Operational acceptance timestamp from Pickup; Shipment sets `accepted_at` and `sla_started_at` |
+| `assigned_driver_user_id` | string | **yes** | PickupTask assigned driver → Shipment `current_custody_id`. Never producer, `event_id`, or a placeholder |
+| `acting_driver_user_id` | string | **yes** | Pickup acceptance actor → audit `actor_id` and `AcceptanceDecisionRecord`. MUST equal `assigned_driver_user_id` |
+| `scanned_identifier` | string | **yes** | Identifier actually scanned; Shipment verifies against its `waybill_identity` and persists on the decision record |
+
+**[decision — W17 contract applicability]** The four identity/outcome/timestamp fields
+alone are not sufficient for Shipment apply. The three additional payload fields above
+are the minimum already required by committed Shipment acceptance persistence and
+available from the Pickup acceptance operation. Envelope `media_refs` is required
+when `outcome=ACCEPTED_WITH_EXCEPTION`. Evidence stays out of the payload. Custody
+type is `PICKUP_DRIVER` from this event's semantics, not a payload field. Shipment
+MUST NOT read Pickup storage or treat compatibility `PickupTaskSnapshot` as
+production authority.
 
 **Producer / consumer:** Pickup publishes; Shipment consumes and applies canonical
 `CREATED` → `IN_CUSTODY` with custody terminology `PICKUP_DRIVER` (ADR-0003 W17-A).
@@ -513,9 +525,11 @@ remains Pickup-local — do not invent a rejection fact here.
 ACK. W16 Shipment HTTP acceptance remains compatibility/internal only; must not run
 as a second independent production writer alongside native consumption.
 
-**Explicit non-actions (this ADR update):** Do not register the JSON Schema in this
-workstream; do not enable staging/production publish/consume without outbox/inbox
-tests, topology, credentials, and runtime evidence.
+**Explicit non-actions:** Do not enable staging/production publish/consume without
+outbox/inbox tests, topology, credentials, and runtime evidence. Do not add
+speculative payload fields (hub, courier ceremony, notification, COD, finance,
+policy warnings, raw metadata, rejected-event information, unused packaging/weight
+VOs).
 
 ---
 

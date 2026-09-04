@@ -2,14 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hudhud.platform/contracts/events/pickup.fact.accepted/v1.payload.schema.json",
   "title": "pickup.fact.accepted v1 payload",
-  "description": "ADR-0009 C10 — custody-starting Pickup acceptance fact for Shipment apply. Minimal payload authorized by W17-A.",
+  "description": "ADR-0009 C10 — custody-starting Pickup acceptance fact for Shipment apply. Minimum fields Shipment persists without Pickup DB or permanent PickupTaskSnapshot authority.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "pickup_task_id",
     "shipment_id",
     "outcome",
-    "accepted_at"
+    "accepted_at",
+    "assigned_driver_user_id",
+    "acting_driver_user_id",
+    "scanned_identifier"
   ],
   "properties": {
     "pickup_task_id": {
@@ -30,7 +33,25 @@
     "accepted_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Operational acceptance timestamp from Pickup (RFC 3339 UTC)."
+      "description": "Operational acceptance timestamp from Pickup (RFC 3339 UTC). Shipment sets accepted_at and sla_started_at from this value."
+    },
+    "assigned_driver_user_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "PickupTask assigned driver. Shipment persists as current_custody_id. MUST be the real assigned driver — never producer, event_id, or a placeholder."
+    },
+    "acting_driver_user_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Authorized actor of the Pickup acceptance operation. Shipment persists as AcceptanceDecision.acting_driver_user_id and audit actor_id. MUST equal assigned_driver_user_id (Pickup validates before publish). MUST NOT be producer, event_id, or a placeholder."
+    },
+    "scanned_identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "Identifier actually scanned at acceptance. Shipment verifies against its waybill_identity and persists on AcceptanceDecisionRecord."
     }
   },
   "not": {
@@ -53,6 +74,8 @@
       { "required": ["secret"] },
       { "required": ["inline_evidence"] },
       { "required": ["evidence_bytes"] },
+      { "required": ["exception_evidence"] },
+      { "required": ["storage_uri"] },
       { "required": ["shipment_aggregate_version"] }
     ]
   }

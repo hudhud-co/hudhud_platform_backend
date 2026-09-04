@@ -54,6 +54,29 @@
         "aggregate_version",
         "payload"
       ]
+    },
+    {
+      "if": {
+        "properties": {
+          "payload": {
+            "properties": {
+              "outcome": { "const": "ACCEPTED_WITH_EXCEPTION" }
+            },
+            "required": ["outcome"]
+          }
+        },
+        "required": ["payload"]
+      },
+      "then": {
+        "required": ["media_refs"],
+        "properties": {
+          "media_refs": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Exception/condition evidence remains envelope media_refs only. Required when outcome is ACCEPTED_WITH_EXCEPTION."
+          }
+        }
+      }
     }
   ]
 }

@@ -46,6 +46,7 @@ def test_c10_valid_examples_validate(fixture_name: str) -> None:
         "invalid_shipment_aggregate_version.json",
         "invalid_raw_cdc_fields.json",
         "invalid_missing_aggregate_version.json",
+        "invalid_exception_without_media_refs.json",
     ],
 )
 def test_c10_invalid_fixtures_rejected(fixture_name: str) -> None:
@@ -59,6 +60,60 @@ def test_c10_unknown_top_level_payload_field_rejected_at_publish() -> None:
     instance["payload"]["unexpected_field"] = "not-allowed"
     with pytest.raises(ValidationError):
         c10_validator().validate(instance)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "assigned_driver_user_id",
+        "acting_driver_user_id",
+        "scanned_identifier",
+    ],
+)
+def test_c10_required_applicability_fields_rejected_when_missing(field: str) -> None:
+    instance = load_example(C10_DIR, "minimal_valid.json")
+    del instance["payload"][field]
+    with pytest.raises(ValidationError):
+        c10_validator().validate(instance)
+
+
+def test_c10_empty_operator_identities_rejected() -> None:
+    instance = load_example(C10_DIR, "minimal_valid.json")
+    instance["payload"]["assigned_driver_user_id"] = ""
+    with pytest.raises(ValidationError):
+        c10_validator().validate(instance)
+    instance = load_example(C10_DIR, "minimal_valid.json")
+    instance["payload"]["acting_driver_user_id"] = ""
+    with pytest.raises(ValidationError):
+        c10_validator().validate(instance)
+
+
+def test_c10_exception_requires_non_empty_media_refs() -> None:
+    instance = load_example(C10_DIR, "accepted_with_exception.json")
+    del instance["media_refs"]
+    with pytest.raises(ValidationError):
+        c10_validator().validate(instance)
+    instance = load_example(C10_DIR, "accepted_with_exception.json")
+    instance["media_refs"] = []
+    with pytest.raises(ValidationError):
+        c10_validator().validate(instance)
+
+
+def test_c10_payload_rejects_embedded_exception_evidence() -> None:
+    instance = load_example(C10_DIR, "minimal_valid.json")
+    instance["payload"]["exception_evidence"] = [{"storage_uri": "s3://bucket/key"}]
+    with pytest.raises(ValidationError):
+        c10_validator().validate(instance)
+
+
+def test_c10_applicability_fields_are_real_pickup_identities() -> None:
+    instance = load_example(C10_DIR, "minimal_valid.json")
+    payload = instance["payload"]
+    assert payload["assigned_driver_user_id"] == payload["acting_driver_user_id"]
+    assert payload["assigned_driver_user_id"] not in {instance["event_id"], instance["producer"]}
+    assert payload["acting_driver_user_id"] not in {instance["event_id"], instance["producer"]}
+    assert payload["scanned_identifier"]
+    assert payload["accepted_at"]
 
 
 def test_c10_aggregate_id_matches_pickup_task_id() -> None:

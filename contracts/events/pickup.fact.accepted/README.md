@@ -64,22 +64,36 @@ Exactly-once delivery is not claimed.
 
 ## Payload fields (v1)
 
-Derived from ADR-0009 C10 / ADR-0003 W17-A — smallest set required for Shipment
-to apply custody-starting acceptance and retain traceability:
+Minimum set Shipment needs to apply custody-starting acceptance **without**
+reading Pickup storage, inventing operator/custody identities, or treating
+compatibility `PickupTaskSnapshot` as a permanent cross-context authority:
 
 | Field | Required | Notes |
 |-------|----------|-------|
 | `pickup_task_id` | yes | Same as envelope `aggregate_id` |
 | `shipment_id` | yes | Correlation only |
 | `outcome` | yes | `ACCEPTED` or `ACCEPTED_WITH_EXCEPTION` only |
-| `accepted_at` | yes | Operational acceptance timestamp from Pickup |
+| `accepted_at` | yes | Operational acceptance timestamp from Pickup; Shipment sets `accepted_at` and `sla_started_at` |
+| `assigned_driver_user_id` | yes | PickupTask assigned driver → Shipment `current_custody_id`. Never producer, `event_id`, or a placeholder |
+| `acting_driver_user_id` | yes | Authorized Pickup acceptance actor → audit `actor_id` and `AcceptanceDecisionRecord.acting_driver_user_id`. MUST equal `assigned_driver_user_id` |
+| `scanned_identifier` | yes | Identifier actually scanned; Shipment verifies against its `waybill_identity` and persists on the decision record |
+
+**Custody type:** `PICKUP_DRIVER` is this event's semantics (ADR-0003 W17-A), not a
+payload field. Shipment sets `current_custody_type` from the event type.
 
 **Outcomes:** Custody-starting success only. `REJECTED` does **not** produce this
 fact and remains Pickup-local — no rejection event is introduced by this contract.
 
 **Evidence:** External evidence MUST remain references only (envelope `media_refs`).
-Do not embed inline evidence, credentials, raw CDC tuples, or arbitrary metadata
-blobs in the payload.
+`ACCEPTED_WITH_EXCEPTION` requires at least one `media_refs` entry. Do not embed
+inline evidence, `exception_evidence`, credentials, raw CDC tuples, or arbitrary
+metadata blobs in the payload.
+
+**Not in this contract (not required to apply; not Pickup-persisted at acceptance):**
+packaging/seal assessment, approximate weight/dimensions, hub, courier ceremony,
+notification, COD, finance, policy warnings, raw metadata, rejected-event
+information. Pickup-side publication gates (`PROOF_CAPTURED`, assigned batch,
+condition-proof existence) stay in Pickup — Shipment does not re-read them.
 
 Forbidden in payload: raw CDC fields (`lsn`, `xid`, `source_op`, `before`,
 `after`, …), secrets/tokens, inline evidence, `shipment_aggregate_version`.
@@ -105,13 +119,15 @@ Pickup outbox → JetStream → Shipment inbox → Shipment apply → ACK
 
 W16 Shipment HTTP acceptance remains compatibility/internal only and MUST NOT run
 as a second independent production writer alongside native consumption
-(ADR-0003 W17-A).
+(ADR-0003 W17-A). Native apply uses this fact's payload and envelope fields;
+it MUST persist `AcceptanceDecisionRecord` and MUST NOT query Pickup DB or treat
+`PickupTaskSnapshot` as production authority.
 
 ## Explicit non-actions
 
 - A1/A2 observation contracts remain unchanged.
 - No rejection event registration.
-- No services/, infra/eventing/, architecture/, ADR, CI, or Compose changes in
+- No services/, infra/eventing/, architecture/, CI, or Compose changes in
   this registration wave.
 - Staging/production publish/consume remain gated.
 

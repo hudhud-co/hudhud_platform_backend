@@ -18,7 +18,10 @@
     "pickup_task_id": "f2faafa9-bca5-491f-b4b6-ef3b9884206c",
     "shipment_id": "835aa643-3538-4cb1-ae26-9beb65224618",
     "outcome": "ACCEPTED_WITH_EXCEPTION",
-    "accepted_at": "2026-09-04T12:05:00.000Z"
+    "accepted_at": "2026-09-04T12:05:00.000Z",
+    "assigned_driver_user_id": "driver-42",
+    "acting_driver_user_id": "driver-42",
+    "scanned_identifier": "WB-1001"
   },
   "media_refs": [
     {
