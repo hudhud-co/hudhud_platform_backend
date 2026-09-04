@@ -1,7 +1,8 @@
 """Idempotent JetStream bootstrap for NATS security proof topology only.
 
-Creates only HUDHUD_SHIPMENT, HUDHUD_AUDIT, tracking_bridge_timeline_v1,
-and audit_bridge_entry_v1 from canonical topology definitions.
+Creates HUDHUD_SHIPMENT, HUDHUD_AUDIT, HUDHUD_PICKUP,
+tracking_bridge_timeline_v1, audit_bridge_entry_v1, and
+shipment_pickup_facts_v1 from canonical topology definitions.
 """
 
 from __future__ import annotations
@@ -29,8 +30,14 @@ from nats.js.errors import NotFoundError
 REPO_ROOT = Path(__file__).resolve().parents[4]
 TOPOLOGY_DIR = REPO_ROOT / "infra" / "eventing" / "topology"
 
-PROOF_STREAMS = frozenset({"HUDHUD_SHIPMENT", "HUDHUD_AUDIT"})
-PROOF_CONSUMERS = frozenset({"tracking_bridge_timeline_v1", "audit_bridge_entry_v1"})
+PROOF_STREAMS = frozenset({"HUDHUD_SHIPMENT", "HUDHUD_AUDIT", "HUDHUD_PICKUP"})
+PROOF_CONSUMERS = frozenset(
+    {
+        "tracking_bridge_timeline_v1",
+        "audit_bridge_entry_v1",
+        "shipment_pickup_facts_v1",
+    }
+)
 
 
 def _parse_duration(value: str) -> float:

@@ -27,17 +27,18 @@ async def connect_nats(
     ca_file: Path,
     server_hostname: str | None = None,
     allow_plaintext: bool = False,
+    connect_timeout: float = CONNECT_TIMEOUT_SECONDS,
 ) -> Any:
     connect_kwargs: dict[str, Any] = {
         "servers": [nats_url],
         "user_credentials": str(creds_file),
-        "connect_timeout": CONNECT_TIMEOUT_SECONDS,
+        "connect_timeout": connect_timeout,
     }
     if not allow_plaintext:
         connect_kwargs["tls"] = build_tls_context(ca_file, server_hostname=server_hostname)
     return await asyncio.wait_for(
         nats.connect(**connect_kwargs),
-        timeout=CONNECT_TIMEOUT_SECONDS,
+        timeout=connect_timeout,
     )
 
 

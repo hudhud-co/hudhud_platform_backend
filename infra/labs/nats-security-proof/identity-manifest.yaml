@@ -9,14 +9,17 @@ tls_server_name: hudhud-nats-security-proof
 subjects:
   a1: hudhud.shipment.legacy_bridge.observation.shipment_timeline_entry.v1
   a2: hudhud.audit.legacy_bridge.observation.audit_entry.v1
+  pickup_fact_accepted: hudhud.pickup.pickup.fact.accepted.v1
 
 streams:
   shipment: HUDHUD_SHIPMENT
   audit: HUDHUD_AUDIT
+  pickup: HUDHUD_PICKUP
 
 consumers:
   tracking: tracking_bridge_timeline_v1
   audit: audit_bridge_entry_v1
+  shipment_pickup_facts: shipment_pickup_facts_v1
 
 identities:
   hudhud-eventing-bootstrap:
@@ -87,6 +90,45 @@ identities:
       - $JS.API.CONSUMER.DELETE.>
     versions: [v1, v2]
 
+  pickup:
+    purpose: pickup.fact.accepted publisher only
+    topology_admin: false
+    publish:
+      - hudhud.pickup.pickup.fact.accepted.v1
+    subscribe:
+      - _INBOX.>
+    deny_publish:
+      - hudhud.pickup.pickup.fact.handover_completed.v1
+      - hudhud.shipment.>
+      - hudhud.audit.>
+      - hudhud.dlq.>
+      - $JS.API.>
+      - $JS.API.STREAM.>
+      - $JS.API.CONSUMER.CREATE.>
+      - $JS.API.CONSUMER.DELETE.>
+      - $JS.API.CONSUMER.MSG.NEXT.HUDHUD_PICKUP.shipment_pickup_facts_v1
+    versions: [v1, v2]
+
+  shipment:
+    purpose: bind-only HUDHUD_PICKUP / shipment_pickup_facts_v1 pull consumer
+    topology_admin: false
+    publish:
+      - $JS.API.CONSUMER.INFO.HUDHUD_PICKUP.shipment_pickup_facts_v1
+      - $JS.API.CONSUMER.MSG.NEXT.HUDHUD_PICKUP.shipment_pickup_facts_v1
+      - $JS.ACK.HUDHUD_PICKUP.shipment_pickup_facts_v1.>
+    subscribe:
+      - _INBOX.>
+      - $JS.FC.HUDHUD_PICKUP.>
+    deny_publish:
+      - hudhud.>
+      - hudhud.pickup.pickup.fact.accepted.v1
+      - $JS.API.STREAM.>
+      - $JS.API.CONSUMER.CREATE.>
+      - $JS.API.CONSUMER.DELETE.>
+      - $JS.API.CONSUMER.INFO.HUDHUD_AUDIT.audit_bridge_entry_v1
+      - $JS.API.>
+    versions: [v1, v2]
+
   hudhud-nats-break-glass:
     purpose: documented emergency inspection only
     topology_admin: true
@@ -103,6 +145,8 @@ runtime_services_lack_topology_mutation:
   - legacy-event-bridge
   - audit
   - tracking
+  - pickup
+  - shipment
 
 forbidden_wildcards:
   - $JS.API.>
@@ -114,3 +158,6 @@ revocation:
   overlap_identities:
     publisher: legacy-event-bridge-v1/v2
     consumer: audit-v1/v2
+    pickup: pickup-v1/v2
+    shipment: shipment-v1/v2
+  combined_revocation_restart: at most one nats-server restart for pickup-v1 and shipment-v1 together

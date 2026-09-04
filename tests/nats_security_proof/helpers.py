@@ -33,6 +33,8 @@ COMPOSE_FILE = LAB_ROOT / "compose.yaml"
 MANIFEST_FILE = LAB_ROOT / "identity-manifest.yaml"
 BRIDGE_SERVICE = REPO_ROOT / "services" / "legacy_event_bridge"
 AUDIT_SERVICE = REPO_ROOT / "services" / "audit"
+PICKUP_SERVICE = REPO_ROOT / "services" / "pickup"
+SHIPMENT_SERVICE = REPO_ROOT / "services" / "shipment"
 PROBES_DIR = Path(__file__).resolve().parent / "probes"
 
 
@@ -241,25 +243,40 @@ def ca_path(generated_dir: Path) -> Path:
     return generated_dir / "ca" / "ca.pem"
 
 
-def revoke_user(identity: str) -> None:
-    """Revoke a NATS user JWT via nsc and refresh resolver account JWT."""
+def revoke_users(*identities: str, restart: bool = True) -> None:
+    """Revoke NATS user JWTs via nsc and refresh the resolver account JWT once."""
+    if not identities:
+        msg = "at least one identity is required for revocation"
+        raise ValueError(msg)
+    for identity in identities:
+        if not identity.replace("-", "").replace("_", "").isalnum():
+            msg = "refusing identity name that is not a safe token"
+            raise ValueError(msg)
+    revoke_blocks = []
+    for identity in identities:
+        revoke_blocks.extend(
+            [
+                (
+                    f"if nsc describe user --account HUDHUD --name {identity} "
+                    ">/dev/null 2>&1; then"
+                ),
+                f"  nsc delete user --account HUDHUD --name {identity} --revoke",
+                "fi",
+                f'echo "revoked={identity}"',
+            ]
+        )
     script_lines = [
         "set -eu",
         "export NSC_HOME=/generated/nsc-home",
         "export NKEYS_PATH=/generated/nsc-home/keys",
         "nsc env -s /generated/nsc-home",
-        (
-            f"if nsc describe user --account HUDHUD --name {identity} >/dev/null 2>&1; then"
-        ),
-        f"  nsc delete user --account HUDHUD --name {identity} --revoke",
-        "fi",
+        *revoke_blocks,
         (
             "ACCOUNT_ID=$(nsc describe account HUDHUD | awk -F'|' "
             "'/Account ID/ {gsub(/^[ \\t]+|[ \\t]+$/, \"\", $3); print $3}')"
         ),
         "ACCOUNT_JWT_PATH=/generated/nsc-home/HUDHUD/accounts/HUDHUD/HUDHUD.jwt",
         'cp "$ACCOUNT_JWT_PATH" "/generated/jwt/accounts/${ACCOUNT_ID}.jwt"',
-        f'echo "revoked={identity}"',
     ]
     script = "\n".join(script_lines)
     result = subprocess.run(
@@ -284,8 +301,15 @@ def revoke_user(identity: str) -> None:
     )
     if result.returncode != 0:
         msg = result.stderr.strip() or result.stdout.strip()
-        raise RuntimeError(f"failed to revoke user {identity}: {msg}")
-    reload_nats_jwt_resolver()
+        joined = ",".join(identities)
+        raise RuntimeError(f"failed to revoke users {joined}: {msg}")
+    if restart:
+        reload_nats_jwt_resolver()
+
+
+def revoke_user(identity: str) -> None:
+    """Revoke a NATS user JWT via nsc and refresh resolver account JWT."""
+    revoke_users(identity, restart=True)
 
 
 def reload_nats_jwt_resolver() -> None:
@@ -406,5 +430,115 @@ def run_audit_readiness_probe(
         return {"binding_verified": False, "error_type": "TimeoutExpired"}
     if not result.stdout.strip():
         msg = result.stderr.strip() or "audit readiness probe failed"
+        raise RuntimeError(msg)
+    return json.loads(result.stdout.strip())
+
+
+def run_pickup_publish_probe(
+    *,
+    nats_url: str,
+    ca_file: Path,
+    creds_file: Path,
+    envelope: dict[str, object] | None = None,
+    msg_id: str | None = None,
+) -> dict[str, object]:
+    extra = {
+        "NATS_URL": nats_url,
+        "NATS_TLS_CA_FILE": str(ca_file),
+        "NATS_CREDS_FILE": str(creds_file),
+    }
+    if envelope is not None:
+        extra["PUBLISH_ENVELOPE"] = json.dumps(envelope)
+    if msg_id is not None:
+        extra["PUBLISH_MSG_ID"] = msg_id
+    try:
+        result = subprocess.run(
+            ["uv", "run", "--with", "nkeys", "python", str(PROBES_DIR / "pickup_publish_tls.py")],
+            cwd=PICKUP_SERVICE,
+            env=_probe_env(extra),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=INTEGRATION_OPERATION_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return {"puback_received": False, "error_type": "TimeoutExpired"}
+    if result.returncode != 0 and not result.stdout.strip():
+        msg = result.stderr.strip() or "pickup publish probe failed"
+        raise RuntimeError(msg)
+    return json.loads(result.stdout.strip())
+
+
+def run_shipment_bind_pull_probe(
+    *,
+    nats_url: str,
+    ca_file: Path,
+    creds_file: Path,
+) -> dict[str, object]:
+    try:
+        result = subprocess.run(
+            [
+                "uv",
+                "run",
+                "--with",
+                "nkeys",
+                "python",
+                str(PROBES_DIR / "shipment_bind_pull_ack.py"),
+            ],
+            cwd=SHIPMENT_SERVICE,
+            env=_probe_env(
+                {
+                    "NATS_URL": nats_url,
+                    "NATS_TLS_CA_FILE": str(ca_file),
+                    "NATS_CREDS_FILE": str(creds_file),
+                    "FETCH_TIMEOUT_SECONDS": str(FETCH_TIMEOUT_SECONDS),
+                }
+            ),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=INTEGRATION_OPERATION_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return {"binding_verified": False, "acked": 0, "error_type": "TimeoutExpired"}
+    if result.returncode != 0 and not result.stdout.strip():
+        msg = result.stderr.strip() or "shipment bind/pull probe failed"
+        raise RuntimeError(msg)
+    return json.loads(result.stdout.strip())
+
+
+def run_shipment_readiness_probe(
+    *,
+    nats_url: str,
+    ca_file: Path,
+    creds_file: Path,
+) -> dict[str, object]:
+    try:
+        result = subprocess.run(
+            [
+                "uv",
+                "run",
+                "--with",
+                "nkeys",
+                "python",
+                str(PROBES_DIR / "shipment_readiness_tls.py"),
+            ],
+            cwd=SHIPMENT_SERVICE,
+            env=_probe_env(
+                {
+                    "NATS_URL": nats_url,
+                    "NATS_TLS_CA_FILE": str(ca_file),
+                    "NATS_CREDS_FILE": str(creds_file),
+                }
+            ),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=INTEGRATION_OPERATION_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return {"binding_verified": False, "error_type": "TimeoutExpired"}
+    if not result.stdout.strip():
+        msg = result.stderr.strip() or "shipment readiness probe failed"
         raise RuntimeError(msg)
     return json.loads(result.stdout.strip())

@@ -32,6 +32,8 @@ from .constants import (
     IDENTITY_BRIDGE_V2,
     IDENTITY_TRACKING_V1,
     NATS_SERVICE,
+    PICKUP_STREAM,
+    SHIPMENT_PICKUP_DURABLE,
     SHIPMENT_STREAM,
     TRACKING_DURABLE,
 )
@@ -77,6 +79,10 @@ def test_positive_bootstrap_topology_present(nats_security_stack: dict) -> None:
             audit_consumer = await js.consumer_info(AUDIT_STREAM, AUDIT_DURABLE)
             assert shipment.config.name == SHIPMENT_STREAM
             assert audit.config.name == AUDIT_STREAM
+            pickup = await js.stream_info(PICKUP_STREAM)
+            pickup_consumer = await js.consumer_info(PICKUP_STREAM, SHIPMENT_PICKUP_DURABLE)
+            assert pickup.config.name == PICKUP_STREAM
+            assert pickup_consumer.config.durable_name == SHIPMENT_PICKUP_DURABLE
             assert tracking.config.durable_name == TRACKING_DURABLE
             assert audit_consumer.config.durable_name == AUDIT_DURABLE
         finally:

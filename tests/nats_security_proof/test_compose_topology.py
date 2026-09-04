@@ -42,6 +42,8 @@ def test_identity_manifest_exists_and_has_required_identities() -> None:
         "legacy-event-bridge",
         "audit",
         "tracking",
+        "pickup",
+        "shipment",
         "hudhud-nats-break-glass",
     ):
         assert name in identities
@@ -121,6 +123,16 @@ def test_init_script_requires_tls_and_jwt_resolver() -> None:
     assert "resolver:" in init_script
     assert "operator:" in init_script
     assert "NATS_AUTH_ENABLED=false" not in init_script
+    assert 'add_user "pickup-${version}"' in init_script
+    assert 'add_user "shipment-${version}"' in init_script
+    assert "hudhud.pickup.pickup.fact.accepted.v1" in init_script
+    assert "$JS.API.CONSUMER.MSG.NEXT.HUDHUD_PICKUP.shipment_pickup_facts_v1" in init_script
+
+
+def test_bootstrap_script_includes_canonical_pickup_topology() -> None:
+    bootstrap = (LAB_ROOT / "scripts" / "bootstrap_topology.py").read_text(encoding="utf-8")
+    assert "HUDHUD_PICKUP" in bootstrap
+    assert "shipment_pickup_facts_v1" in bootstrap
 
 
 def test_cleanup_script_is_executable_and_targets_dedicated_resources() -> None:

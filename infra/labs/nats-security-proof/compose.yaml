@@ -1,4 +1,5 @@
-# HUDHUD Wave 8-B — disposable NATS JWT/NKeys, TLS, ACL, rotation, and revocation proof.
+# HUDHUD Wave 8-B / 18-A — disposable NATS JWT/NKeys, TLS, ACL, rotation, and revocation proof.
+# W18-A adds Pickup and Shipment identities against HUDHUD_PICKUP / shipment_pickup_facts_v1.
 # Runtime-generated credentials only; TLS required on client port.
 # Ephemeral loopback host port; dedicated Compose project, network, and volumes.
 
@@ -30,7 +31,7 @@ services:
         read_only: true
     labels:
       hudhud.lab: nats-security-proof
-      hudhud.wave: "8-B"
+      hudhud.wave: "8-B/18-A"
 
   nats:
     image: nats:2.10.24-alpine

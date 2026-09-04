@@ -65,6 +65,8 @@ def is_timeout_error(exc: BaseException) -> bool:
     seen: set[int] = set()
     while current is not None and id(current) not in seen:
         seen.add(id(current))
+        if isinstance(current, TimeoutError):
+            return True
         message = sanitize_error_message(str(current)).lower()
         if any(marker in message for marker in TIMEOUT_MARKERS):
             return True
@@ -73,7 +75,7 @@ def is_timeout_error(exc: BaseException) -> bool:
 
 
 def assert_acl_denied(exc: BaseException) -> None:
-    """JetStream API denials often surface as timeouts when $JS.API publish is blocked."""
+    """JetStream API denials and revoked JWT connects often surface as timeouts."""
     if is_authorization_error(exc) or is_timeout_error(exc):
         return
     msg = f"expected ACL denial, got {type(exc).__name__}"

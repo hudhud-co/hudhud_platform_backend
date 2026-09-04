@@ -93,6 +93,23 @@ for version in v1 v2; do
     --allow-sub '$JS.FC.HUDHUD_SHIPMENT.>'
 done
 
+# Pickup publishers (rotation overlap v1/v2)
+for version in v1 v2; do
+  add_user "pickup-${version}" \
+    --allow-pub 'hudhud.pickup.pickup.fact.accepted.v1' \
+    --allow-sub '_INBOX.>'
+done
+
+# Shipment consumers (rotation overlap v1/v2)
+for version in v1 v2; do
+  add_user "shipment-${version}" \
+    --allow-pub '$JS.API.CONSUMER.INFO.HUDHUD_PICKUP.shipment_pickup_facts_v1' \
+    --allow-pub '$JS.API.CONSUMER.MSG.NEXT.HUDHUD_PICKUP.shipment_pickup_facts_v1' \
+    --allow-pub '$JS.ACK.HUDHUD_PICKUP.shipment_pickup_facts_v1.>' \
+    --allow-sub '_INBOX.>' \
+    --allow-sub '$JS.FC.HUDHUD_PICKUP.>'
+done
+
 # Break-glass inspection identity
 add_user hudhud-nats-break-glass \
   --allow-pub '$JS.API.STREAM.INFO.>' \
