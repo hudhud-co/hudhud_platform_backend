@@ -38,6 +38,7 @@ def test_allowed_shared_packages_only() -> None:
     allowed_third_party = {
         "alembic",
         "fastapi",
+        "nats",
         "pydantic",
         "sqlalchemy",
         "starlette",

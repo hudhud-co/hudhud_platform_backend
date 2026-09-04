@@ -26,6 +26,8 @@ def create_app(
     *,
     unit_of_work: AcceptanceUnitOfWork | None = None,
     acceptance_authorizer: AcceptanceAuthorizer | None = None,
+    nats_reachable: bool = False,
+    nats_binding_verified: bool = False,
 ) -> FastAPI:
     resolved = settings or load_settings(environment=RuntimeEnvironment.LOCAL)
     resolved.assert_production_gates()
@@ -65,6 +67,8 @@ def create_app(
         engine=engine,
         persistence_wired=persistence_wired,
         authorization_adapter_ready=authorizer.is_production_ready,
+        nats_reachable=nats_reachable,
+        nats_binding_verified=nats_binding_verified,
     )
     return app
 

@@ -8,6 +8,7 @@ dependencies = [
     "event-envelope",
     "fastapi>=0.115",
     "messaging-conformance",
+    "nats-py>=2.9",
     "pydantic>=2.10",
     "pyyaml>=6.0",
     "sqlalchemy[asyncio]>=2.0",
@@ -58,6 +59,8 @@ ignore = [
 "src/shipment/infrastructure/authorizers/default_deny.py" = ["ARG002"]
 "src/shipment/infrastructure/authorizers/fake.py" = ["ARG002"]
 "src/shipment/infrastructure/accepted_fact_memory.py" = ["ARG002"]
+"src/shipment/infrastructure/jetstream/**" = ["ARG002"]
+"src/shipment/infrastructure/transport.py" = ["ARG002"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

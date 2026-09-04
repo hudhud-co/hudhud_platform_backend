@@ -17,7 +17,13 @@ storage or treat `PickupTaskSnapshot` as production authority.
 
 **W17-F:** Transport-independent Shipment inbox consumer for `pickup.fact.accepted`
 v1 is implemented (validate → durable inbox claim → native apply → commit →
-ACK/NAK/DEFER intent). Live NATS pull worker / stream binding remains deferred.
+ACK/NAK/DEFER intent).
+
+**W17-I:** Bind-only JetStream pull worker for durable `shipment_pickup_facts_v1`
+on `HUDHUD_PICKUP` / `hudhud.pickup.pickup.fact.accepted.v1`. Fail-closed binding
+(stream, durable, filter, AckPolicy, server identity). No topology mutation.
+Production requires ADR-0010 credentials + TLS. Postgres accepted-fact store must
+be injected at the worker composition root.
 
 ## Source authority
 
@@ -97,7 +103,7 @@ Pickup must not use this HTTP path as an independent writer (ADR-0003).
 | Route | Role |
 |-------|------|
 | `GET /health` | Liveness only |
-| `GET /ready` | Configuration, PostgreSQL reachability, authorization-adapter readiness |
+| `GET /ready` | PostgreSQL, NATS config/reachability/durable binding, credential/TLS gates, non-memory production persistence |
 | `POST /v1/shipments/{shipment_id}/acceptance-scans` | Acceptance-scan command (compatibility/internal) |
 
 Command requirements:
@@ -115,8 +121,9 @@ Configuration: `DATABASE_URL` (or `SHIPMENT_DATABASE_URL`), `SHIPMENT_ENVIRONMEN
 ## Explicit non-goals (deferred)
 
 - Production identity/JWT authorization adapter (beyond default-deny + test fake)
-- Live NATS pull worker / durable bind / stream mutation for accepted-fact inbox
+- Postgres SQLAlchemy accepted-fact UoW composition for the worker entrypoint
 - Production Pickup integration adapter (HTTP dual-writer)
+- Shared topology / live NATS mutation (forbidden — bind-only)
 - Delivery / post-acceptance lifecycle stages
 - Hub/bag/manifest/seal/linehaul operations
 - Payments/COD/settlement/refunds, returns
