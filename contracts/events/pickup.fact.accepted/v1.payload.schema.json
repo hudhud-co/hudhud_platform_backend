@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/pickup.fact.accepted/v1.payload.schema.json",
+  "title": "pickup.fact.accepted v1 payload",
+  "description": "ADR-0009 C10 — custody-starting Pickup acceptance fact for Shipment apply. Minimal payload authorized by W17-A.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "pickup_task_id",
+    "shipment_id",
+    "outcome",
+    "accepted_at"
+  ],
+  "properties": {
+    "pickup_task_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "PickupTask aggregate id; MUST equal envelope aggregate_id."
+    },
+    "shipment_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Payload correlation only — not Shipment aggregate authority."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["ACCEPTED", "ACCEPTED_WITH_EXCEPTION"],
+      "description": "Custody-starting success only. REJECTED MUST NOT use this event type."
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Operational acceptance timestamp from Pickup (RFC 3339 UTC)."
+    }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["lsn"] },
+      { "required": ["xid"] },
+      { "required": ["txid"] },
+      { "required": ["source_op"] },
+      { "required": ["before"] },
+      { "required": ["after"] },
+      { "required": ["row_data"] },
+      { "required": ["raw_row"] },
+      { "required": ["change_data"] },
+      { "required": ["op"] },
+      { "required": ["cdc_payload"] },
+      { "required": ["password"] },
+      { "required": ["token"] },
+      { "required": ["jwt"] },
+      { "required": ["api_key"] },
+      { "required": ["secret"] },
+      { "required": ["inline_evidence"] },
+      { "required": ["evidence_bytes"] },
+      { "required": ["shipment_aggregate_version"] }
+    ]
+  }
+}

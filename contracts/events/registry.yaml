@@ -33,3 +33,17 @@ contracts:
     source_table_allowlist:
       - audit_logs
     adr: ADR-0009-A2
+
+  - event_type: pickup.fact.accepted
+    event_version: 1
+    producer: pickup
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: pickup_task
+    subject: hudhud.pickup.pickup.fact.accepted.v1
+    stream: HUDHUD_PICKUP
+    schema_uri: https://hudhud.platform/contracts/events/pickup.fact.accepted/v1.schema.json
+    schema_path: pickup.fact.accepted/v1.schema.json
+    payload_schema_path: pickup.fact.accepted/v1.payload.schema.json
+    adr: ADR-0009-C10
+    implementation_status: implementation_authorized_not_production_enabled

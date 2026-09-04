@@ -1,0 +1,25 @@
+{
+  "envelope_version": 1,
+  "event_id": "a1eb92fb-3f7d-4a8c-be2e-bcc8979ae574",
+  "event_type": "pickup.fact.accepted",
+  "event_version": 1,
+  "occurred_at": "2026-09-04T12:00:00.000Z",
+  "producer": "pickup",
+  "message_kind": "integration",
+  "aggregate_scope": "aggregate",
+  "aggregate_type": "pickup_task",
+  "aggregate_id": "f2faafa9-bca5-491f-b4b6-ef3b9884206c",
+  "aggregate_version": 3,
+  "correlation_id": "3a7e43e5-0014-4a89-abe5-5e927cf3a3e9",
+  "data_classification": "internal",
+  "pii_present": false,
+  "payload": {
+    "pickup_task_id": "f2faafa9-bca5-491f-b4b6-ef3b9884206c",
+    "shipment_id": "835aa643-3538-4cb1-ae26-9beb65224618",
+    "outcome": "ACCEPTED",
+    "accepted_at": "2026-09-04T12:00:00.000Z",
+    "lsn": "0/16B3A8C0",
+    "source_op": "c",
+    "after": {"id": "raw"}
+  }
+}

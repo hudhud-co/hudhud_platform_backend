@@ -32,3 +32,8 @@ See `packages/event_envelope/` and `contracts/events/envelope/README.md`.
 Wave 4 observation contracts (ADR-0009 A1/A2) are registered under
 `contracts/events/legacy_bridge.observation.*/` with index
 `contracts/events/registry.yaml`.
+
+ADR-0009 C10 `pickup.fact.accepted` v1 is registered under
+`contracts/events/pickup.fact.accepted/` as
+`implementation_authorized_not_production_enabled` (contract only — not
+production-enabled).
