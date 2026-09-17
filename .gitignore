@@ -49,3 +49,6 @@ docker-compose.override.yml
 
 # Local dev stack runtime state and logs (scripts/dev/stack.py)
 .dev-stack/
+
+# make bookkeeping
+.make/

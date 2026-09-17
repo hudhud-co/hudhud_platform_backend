@@ -2,7 +2,35 @@
 
 Production-grade monorepo for independently deployable FastAPI macroservices/microservices.
 
-**Foundation Stage F0** — repository conventions, legacy audit, and architecture gates are established. No business APIs, service databases, or deployables exist yet.
+Fifteen services, each with its own database, migrations, API and contracts.
+
+## Quickstart
+
+```bash
+make up          # Postgres + NATS + all 14 services, migrated and serving
+make journeys    # drive the real HTTP APIs end to end
+make down        # stop everything and remove the data
+```
+
+`make up` syncs the root and every service virtualenv first when a lockfile has changed,
+then hands over to `scripts/dev/stack.py`. The stack starts its services with
+`UV_NO_SYNC=1`, so a stale environment would otherwise surface as a dozen confusing
+service failures instead of one clear step.
+
+Services listen on `127.0.0.1:8101`–`8114`, each serving `/docs`, `/health` and `/ready`.
+`make status` prints the table. **`ready: no` is often correct** — it is a production
+readiness gate, and several services deliberately refuse to start serving a decision the
+business has not made (MER-02, CLM-08). `health: ok` is what says a service is running.
+
+| | |
+|---|---|
+| `make help` | every target, with its arguments |
+| `make check` | lint, governance verifiers, root suites, all 15 service suites |
+| `make check-all` | the above plus every Docker-backed lab and migration proof |
+| `make logs s=finance` | tail one service |
+
+`docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md` covers getting a token,
+the service credential those two Identity routes need, and what running it found.
 
 ## Repository vs Runtime Independence
 
