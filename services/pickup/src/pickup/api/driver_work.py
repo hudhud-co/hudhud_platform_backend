@@ -46,6 +46,7 @@ from pickup.application.acceptance_service import (
     PickupAcceptanceService,
 )
 from pickup.application.driver_session_service import (
+    DriverAvailabilityResult,
     DriverWorkSessionService,
     EndWorkSessionCommand,
     PauseWorkSessionCommand,
@@ -70,6 +71,7 @@ from pickup.application.task_lifecycle_service import (
     TaskCommand,
     TaskLifecycleResult,
 )
+from pickup.application.workload import DriverWorkload
 from pickup.domain.value_objects import EvidenceMediaRef
 from pickup.ports.authorization import PickupCommand, PickupRole
 
@@ -85,10 +87,21 @@ def _now() -> datetime:
     return datetime.now(tz=UTC)
 
 
+def _workload_response(workload: DriverWorkload) -> WorkloadResponse:
+    return WorkloadResponse(
+        open_custody_shipment_ids=list(workload.open_custody_shipment_ids),
+        active_handover_manifest_ids=list(workload.active_handover_manifest_ids),
+        active_task_ids=list(workload.active_task_ids),
+        unsynced_offline_operation_ids=list(workload.unsynced_offline_operation_ids),
+        end_blockers=list(workload.end_blockers()),
+        pause_blockers=list(workload.pause_blockers()),
+    )
+
+
 def _session_response(result: WorkSessionResult) -> WorkSessionResponse:
     session = result.session
-    workload = result.workload
     return WorkSessionResponse(
+        has_open_session=True,
         session_id=session.session_id,
         driver_user_id=session.driver_user_id,
         capability=session.capability.value,
@@ -102,15 +115,34 @@ def _session_response(result: WorkSessionResult) -> WorkSessionResponse:
         pause_reason=session.pause_reason.value if session.pause_reason else None,
         end_reason=session.end_reason.value if session.end_reason else None,
         version=session.version,
-        workload=WorkloadResponse(
-            open_custody_shipment_ids=list(workload.open_custody_shipment_ids),
-            active_handover_manifest_ids=list(workload.active_handover_manifest_ids),
-            active_task_ids=list(workload.active_task_ids),
-            unsynced_offline_operation_ids=list(workload.unsynced_offline_operation_ids),
-            end_blockers=list(workload.end_blockers()),
-            pause_blockers=list(workload.pause_blockers()),
-        ),
+        workload=_workload_response(result.workload),
         idempotent_replay=result.replayed,
+    )
+
+
+def _availability_response(result: DriverAvailabilityResult) -> WorkSessionResponse:
+    """The availability read, which has a session to describe only sometimes."""
+    session = result.session
+    return WorkSessionResponse(
+        has_open_session=session is not None,
+        session_id=session.session_id if session else None,
+        driver_user_id=result.driver_user_id,
+        capability=result.capability.value,
+        status=result.status.value,
+        availability=result.availability.value,
+        started_at=session.started_at if session else None,
+        home_hub_id=session.home_hub_id if session else None,
+        paused_at=session.paused_at if session else None,
+        resumed_at=session.resumed_at if session else None,
+        ended_at=session.ended_at if session else None,
+        pause_reason=(
+            session.pause_reason.value if session and session.pause_reason else None
+        ),
+        end_reason=(
+            session.end_reason.value if session and session.end_reason else None
+        ),
+        version=session.version if session else 0,
+        workload=_workload_response(result.workload),
     )
 
 
@@ -275,7 +307,7 @@ async def read_current_work_session(
         result = service.get_status(actor.actor_id)
     except Exception as exc:
         raise_http_for_domain_error(exc)
-    return _session_response(result)
+    return _availability_response(result)
 
 
 # -------------------------------------------------------------- task lifecycle

@@ -313,8 +313,20 @@ def test_missing_parcel_keeps_custody_and_keeps_the_session_open() -> None:
 def test_status_read_reports_offline_without_a_session() -> None:
     store = build_store()
     result = work_session_service(store).get_status(DRIVER_ID)
-    assert result.session.availability is DriverAvailabilityStatus.OFFLINE
-    assert result.session.status is WorkSessionStatus.ENDED
+    # The availability is the result's own, not a fabricated session's: there is no
+    # session to describe, and inventing one is what this asserts against.
+    assert result.session is None
+    assert result.availability is DriverAvailabilityStatus.OFFLINE
+    assert result.status is WorkSessionStatus.ENDED
+
+
+def test_status_read_still_reports_the_workload_without_a_session() -> None:
+    """Ending a session does not end custody, and the read must keep saying so."""
+    store = build_store()
+    result = work_session_service(store).get_status(DRIVER_ID)
+    assert result.session is None
+    assert result.driver_user_id == DRIVER_ID
+    assert result.workload is not None
 
 
 def test_history_records_actor_identity_for_every_transition() -> None:

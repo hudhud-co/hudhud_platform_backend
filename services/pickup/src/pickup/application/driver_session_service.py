@@ -78,6 +78,36 @@ class WorkSessionResult:
     replayed: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class DriverAvailabilityResult:
+    """One driver's pickup availability right now, whether or not a session is open.
+
+    A driver with no open session is an *absence*, not an ended session: modelling it as
+    one forced this service to invent a `DriverWorkSession` with a zero UUID and
+    `datetime.min`, which every client then had to recognise by those two magic values.
+
+    The workload is still reported, because a driver can end a session while parcels are
+    still in their custody — the moment the app most needs to say so.
+    """
+
+    driver_user_id: str
+    capability: DriverCapability
+    workload: DriverWorkload
+    session: DriverWorkSession | None = None
+
+    @property
+    def status(self) -> WorkSessionStatus:
+        return self.session.status if self.session else WorkSessionStatus.ENDED
+
+    @property
+    def availability(self) -> DriverAvailabilityStatus:
+        return (
+            self.session.availability
+            if self.session
+            else DriverAvailabilityStatus.OFFLINE
+        )
+
+
 class DriverWorkSessionService:
     """Start, pause, resume, and end one driver's pickup availability window."""
 
@@ -276,21 +306,14 @@ class DriverWorkSessionService:
         self._uow.commit()
         return result
 
-    def get_status(self, driver_user_id: str) -> WorkSessionResult:
+    def get_status(self, driver_user_id: str) -> DriverAvailabilityResult:
         """Read-only availability projection — no transaction side effects."""
-        session = self._uow.work_sessions.get_open_session_for_driver(driver_user_id)
-        workload = self._workload(driver_user_id)
-        if session is None:
-            session = DriverWorkSession(
-                session_id=UUID(int=0),
-                driver_user_id=driver_user_id,
-                capability=DriverCapability.PICKUP,
-                status=WorkSessionStatus.ENDED,
-                availability=DriverAvailabilityStatus.OFFLINE,
-                started_at=datetime.min.replace(tzinfo=None),
-                version=0,
-            )
-        return WorkSessionResult(session=session, workload=workload)
+        return DriverAvailabilityResult(
+            driver_user_id=driver_user_id,
+            capability=DriverCapability.PICKUP,
+            workload=self._workload(driver_user_id),
+            session=self._uow.work_sessions.get_open_session_for_driver(driver_user_id),
+        )
 
     def _load_owned(self, session_id: UUID, driver_user_id: str) -> DriverWorkSession:
         session = self._uow.work_sessions.get_session(session_id)

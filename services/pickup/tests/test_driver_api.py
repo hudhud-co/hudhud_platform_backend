@@ -190,6 +190,59 @@ def test_current_session_read_reports_offline_when_none_is_open(
     assert response.json()["availability"] == "OFFLINE"
 
 
+def test_current_session_read_invents_no_session_when_none_is_open(
+    client: TestClient,
+) -> None:
+    """No open session is reported as an absence, never as a fabricated one.
+
+    Answering with a zero UUID and `0001-01-01T00:00:00` made "offline" indistinguishable
+    from a real session to any client that does not know those two magic values. A driver
+    app that trusts `started_at` renders two thousand years on duty, and one that trusts
+    `session_id` can address `/work-sessions/00000000-0000-0000-0000-000000000000/pause`.
+    """
+    body = client.get(
+        "/pickup/work-sessions/current", headers=_auth(DRIVER_TOKEN)
+    ).json()
+
+    assert body["has_open_session"] is False
+    assert body["session_id"] is None
+    assert body["started_at"] is None
+    assert body["availability"] == "OFFLINE"
+    assert body["status"] == "ENDED"
+    # The workload is still real: a driver may end a session still carrying parcels,
+    # and that is exactly when the app most needs to say so.
+    assert body["workload"]["open_custody_shipment_ids"] == []
+
+
+def test_current_session_read_reports_an_open_session_as_present(
+    client: TestClient,
+) -> None:
+    started = client.post(
+        "/pickup/work-sessions/start", json={}, headers=_auth(DRIVER_TOKEN)
+    ).json()
+
+    body = client.get(
+        "/pickup/work-sessions/current", headers=_auth(DRIVER_TOKEN)
+    ).json()
+
+    assert body["has_open_session"] is True
+    assert body["session_id"] == started["session_id"]
+    assert body["started_at"] == started["started_at"]
+
+
+def test_every_work_session_timestamp_is_utc_marked(client: TestClient) -> None:
+    """`started_at` carried no timezone, alone among this API's timestamps.
+
+    `datetime.min.replace(tzinfo=None)` serialises as `0001-01-01T00:00:00`, which a
+    client parses as *local* time. Every other timestamp here ends in `Z`.
+    """
+    started = client.post(
+        "/pickup/work-sessions/start", json={}, headers=_auth(DRIVER_TOKEN)
+    ).json()
+
+    assert started["started_at"].endswith("Z")
+
+
 def test_an_invalid_reason_maps_to_422(client: TestClient) -> None:
     started = client.post("/pickup/work-sessions/start", json={}, headers=_auth(DRIVER_TOKEN))
     session_id = started.json()["session_id"]
