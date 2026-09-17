@@ -47,8 +47,8 @@ claims requirements still read `planned` after they were implemented. Rewrite th
 
 | Wave | Service | Tests | Migration proven on PostgreSQL 16 |
 |------|---------|-------|------------------------------------|
-| W20-A | `identity` | 85 | not yet |
-| W20-B | `customer` | 67 | not yet |
+| W20-A | `identity` | 85 | yes |
+| W20-B | `customer` | 67 | yes |
 | W21 | `merchant` | 205 | yes |
 | W22 | `ordering` | 222 | yes |
 | W23 | `hub` | 140 | yes |
@@ -94,9 +94,15 @@ references to prove no two filers get the same one.
 1. `09-FINAL-EXECUTION-REPORT.md` — the final counts and evidence.
 2. The four remaining `PLANNED` requirements: **SEC-05** (`identity`), **SHP-04** and
    **SHP-09** (`shipment`), **OPS-03** (`tracking`).
-3. `identity` and `customer` are the only two services whose migrations have never been
-   proven against PostgreSQL 16. Every other service has a proof in
-   `tests/new_service_migration_proof/`.
+3. ~~`identity` and `customer` migrations proven against PostgreSQL 16.~~ **Done** —
+   `test_identity_migration.py` (19) and `test_customer_migration.py` (17). Every
+   service now has a proof in `tests/new_service_migration_proof/`. Both attack the
+   partial unique indexes the two schemas lean on: one live OTP per phone, one live role
+   grant per (principal, role, scope) — global and scoped, and proven disjoint — one
+   live default address per (owner, kind), one legal acceptance per document version,
+   and the geo-pair check. Identity's privacy claim is checked against the schema
+   PostgreSQL built, not the models: no column can hold a phone, code, token or device
+   id, and every `_hash` column is still `VARCHAR(64)`.
 4. Claims owns an outbox and an inbox table (ADR-0008) that nothing writes to yet. The
    one fact it will carry is "a claim was approved, pay the sender" — and **how** HUDHUD
    pays a compensated sender (wallet credit, payout, cash at a hub) is not stated in

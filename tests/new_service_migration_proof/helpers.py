@@ -108,18 +108,43 @@ def _published_port(container: str) -> int:
 
 
 def _wait_until_ready(container: str, database: str) -> None:
+    """Ready means a TCP client can run a query — not that some socket answered.
+
+    The postgres image starts a *temporary* server on a Unix socket while it initialises
+    the data directory, then stops it and starts the real one. `pg_isready` over that
+    socket answers yes to the temporary server, so a caller that trusts it connects over
+    TCP a moment later and gets `FATAL: the database system is starting up`. The window
+    is small on an idle machine and wide when several proofs start containers at once,
+    which is exactly when the whole suite runs.
+
+    Forcing TCP and requiring a real query closes it: the temporary server is not
+    listening on 127.0.0.1, so this cannot pass until the server the test will actually
+    use is serving.
+    """
     deadline = time.monotonic() + READY_TIMEOUT_SECONDS
+    last_error = "no probe completed"
     while time.monotonic() < deadline:
         probe = subprocess.run(
-            ["docker", "exec", container, "pg_isready", "-U", "postgres", "-d", database],
+            [
+                "docker", "exec",
+                "--env", f"PGPASSWORD={LAB_PASSWORD}",
+                container,
+                "psql", "--host", "127.0.0.1", "--username", "postgres",
+                "--dbname", database, "-tAc", "SELECT 1",
+            ],
             capture_output=True,
             text=True,
             check=False,
         )
-        if probe.returncode == 0:
+        if probe.returncode == 0 and probe.stdout.strip() == "1":
             return
+        last_error = (probe.stderr or probe.stdout).strip().splitlines()[-1:] or [""]
+        last_error = last_error[0]
         time.sleep(0.5)
-    msg = f"PostgreSQL in {container} was not ready within {READY_TIMEOUT_SECONDS}s"
+    msg = (
+        f"PostgreSQL in {container} was not ready within {READY_TIMEOUT_SECONDS}s: "
+        f"{last_error}"
+    )
     raise DockerUnavailableError(msg)
 
 

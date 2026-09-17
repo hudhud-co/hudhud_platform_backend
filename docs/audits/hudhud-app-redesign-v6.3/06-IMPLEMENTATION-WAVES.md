@@ -27,8 +27,8 @@ outbox and a durable inbox, authorization through Identity over HTTP, and its ow
 
 | Wave | Service | Requirements | Depends on | Migration proven |
 |------|---------|--------------|-----------|------------------|
-| **W20-A** | `identity` | SEC-01, SEC-02, SEC-04…06, SEC-09 | none | not yet |
-| **W20-B** | `customer` | CUS-01…09 | W20-A | not yet |
+| **W20-A** | `identity` | SEC-01, SEC-02, SEC-04…06, SEC-09 | none | yes |
+| **W20-B** | `customer` | CUS-01…09 | W20-A | yes |
 | **W21** | `merchant` | MER-01, MER-03…16 | W20-A | yes |
 | **W22** | `ordering` | SHP-01, SHP-03…05, SHP-09…12 | W21 | yes |
 | **W23** | `hub` | SHP-06…08, SHP-13, OPS-01…03 | W22 | yes |
