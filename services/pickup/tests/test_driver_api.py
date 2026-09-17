@@ -547,3 +547,62 @@ def test_production_startup_requires_a_signing_key() -> None:
             database_url="postgresql://placeholder/db",
             signing_key=None,
         ).assert_production_gates()
+
+
+# --------------------------------------------------------- handover discovery
+
+
+def test_handover_discovery_is_readable_by_the_sender(
+    client: TestClient, store: InMemoryPickupUnitOfWork
+) -> None:
+    task = register_task(store)
+    response = client.get(
+        f"/pickup/shipments/{task.shipment_id}/handover", headers=_auth(MERCHANT_TOKEN)
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["shipment_id"] == str(task.shipment_id)
+    assert body["pickup_task_id"] == str(task.pickup_task_id)
+    assert body["state"] == "AWAITING_COURIER_VERIFICATION"
+    assert body["actionable"] is True
+    # Nothing that could stand in for the ceremony itself leaks through the read.
+    assert "assigned_driver_user_id" not in body
+    assert "payload" not in body
+
+
+def test_handover_discovery_for_an_unknown_shipment_is_not_found(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        f"/pickup/shipments/{uuid4()}/handover", headers=_auth(MERCHANT_TOKEN)
+    )
+    assert response.status_code == 404
+
+
+def test_handover_discovery_requires_authentication(
+    client: TestClient, store: InMemoryPickupUnitOfWork
+) -> None:
+    task = register_task(store)
+    response = client.get(f"/pickup/shipments/{task.shipment_id}/handover")
+    assert response.status_code == 401
+
+
+def test_a_denied_handover_discovery_command_is_forbidden(
+    store: InMemoryPickupUnitOfWork,
+) -> None:
+    task = register_task(store)
+    app = create_app(
+        load_settings(environment=RuntimeEnvironment.TEST, signing_key=SIGNING_KEY),
+        unit_of_work=store,
+        shipment_eligibility=InMemoryShipmentEligibilityAdapter(production_ready=True),
+        pickup_authorizer=FakePickupAuthorizer(
+            token_actors=TOKEN_ACTORS,
+            denied_commands=frozenset({PickupCommand.HANDOVER_DISCOVERY_READ}),
+        ),
+    )
+    with TestClient(app) as test_client:
+        response = test_client.get(
+            f"/pickup/shipments/{task.shipment_id}/handover",
+            headers=_auth(MERCHANT_TOKEN),
+        )
+    assert response.status_code == 403

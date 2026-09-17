@@ -6,12 +6,13 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from pickup.api.driver_dependencies import (
     Authorizer,
     BearerToken,
     authorize,
+    get_handover_discovery_service,
     get_hub_handover_service,
     get_verification_service,
 )
@@ -21,6 +22,7 @@ from pickup.api.driver_schemas import (
     ConfirmCourierManifestRequest,
     CourierManifestResponse,
     CreateHandoverManifestRequest,
+    HandoverDiscoveryResponse,
     HandoverManifestItemResponse,
     HandoverManifestResponse,
     HubReceiptResponse,
@@ -31,6 +33,7 @@ from pickup.api.driver_schemas import (
     VerifyChallengeRequest,
 )
 from pickup.api.errors import raise_http_for_domain_error
+from pickup.application.handover_discovery_service import HandoverDiscoveryService
 from pickup.application.handover_verification_service import (
     ConfirmManifestCommand,
     CourierHandoverVerificationService,
@@ -59,6 +62,9 @@ Verification = Annotated[
     CourierHandoverVerificationService, Depends(get_verification_service)
 ]
 HubHandover = Annotated[HubHandoverService, Depends(get_hub_handover_service)]
+Discovery = Annotated[
+    HandoverDiscoveryService, Depends(get_handover_discovery_service)
+]
 
 
 def _now() -> datetime:
@@ -481,3 +487,39 @@ async def read_handover_manifest(
     except Exception as exc:
         raise_http_for_domain_error(exc)
     return _handover_response(view)
+
+
+@router.get(
+    "/shipments/{shipment_id}/handover",
+    response_model=HandoverDiscoveryResponse,
+)
+async def read_handover_discovery(
+    shipment_id: UUID,
+    bearer_token: BearerToken,
+    authorizer: Authorizer,
+    service: Discovery,
+) -> HandoverDiscoveryResponse:
+    """Where the sender ceremony stands for one shipment.
+
+    A shipment with no pickup task the sender can still act on is a 404 rather than an
+    empty ceremony: there is nothing to discover, and saying so is not the same as
+    reporting a ceremony that has not started.
+    """
+    await authorize(
+        authorizer=authorizer,
+        bearer_token=bearer_token,
+        command=PickupCommand.HANDOVER_DISCOVERY_READ,
+        resource_id=shipment_id,
+    )
+    view = service.describe_for_shipment(shipment_id)
+    if view is None:
+        raise HTTPException(status_code=404, detail="no pickup handover for shipment")
+    return HandoverDiscoveryResponse(
+        shipment_id=view.shipment_id,
+        pickup_task_id=view.pickup_task_id,
+        state=view.state.value,
+        verification_required=view.verification_required,
+        actionable=view.actionable,
+        can_verify_courier=view.can_verify_courier,
+        can_confirm_manifest=view.can_confirm_manifest,
+    )

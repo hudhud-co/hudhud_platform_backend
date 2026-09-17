@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from pickup.application.acceptance_service import PickupAcceptanceService
 from pickup.application.driver_session_service import DriverWorkSessionService
+from pickup.application.handover_discovery_service import HandoverDiscoveryService
 from pickup.application.handover_verification_service import (
     CourierHandoverVerificationService,
     VerificationPolicy,
@@ -34,6 +35,7 @@ class DriverServices:
     stop_service: PickupStopService
     acceptance_service: PickupAcceptanceService | None
     verification_service: CourierHandoverVerificationService | None
+    handover_discovery_service: HandoverDiscoveryService
     hub_handover_service: HubHandoverService
     offline_sync_service: OfflineSyncService | None
 
@@ -50,6 +52,12 @@ def build_driver_services(
     task_lifecycle_service = PickupTaskLifecycleService(unit_of_work)  # type: ignore[arg-type]
     stop_service = PickupStopService(unit_of_work)  # type: ignore[arg-type]
     hub_handover_service = HubHandoverService(unit_of_work)  # type: ignore[arg-type]
+    # Discovery is a pure read over the same rows; it needs no signing key, so the
+    # sender can still see where the ceremony stands even where mutations are closed.
+    handover_discovery_service = HandoverDiscoveryService(
+        unit_of_work,  # type: ignore[arg-type]
+        verification_required=settings.require_courier_verification,
+    )
 
     verification_service: CourierHandoverVerificationService | None = None
     offline_sync_service: OfflineSyncService | None = None
@@ -99,6 +107,7 @@ def build_driver_services(
         stop_service=stop_service,
         acceptance_service=acceptance_service,
         verification_service=verification_service,
+        handover_discovery_service=handover_discovery_service,
         hub_handover_service=hub_handover_service,
         offline_sync_service=offline_sync_service,
     )

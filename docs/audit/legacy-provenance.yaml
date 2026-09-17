@@ -150,3 +150,34 @@ records:
     deliberate_divergence: >
       Shipment is the sole writer and applies the transfer from a validated integration
       fact through its durable inbox, instead of Pickup updating shipment rows directly.
+
+  - target_path: services/pickup/src/pickup/application/handover_discovery_service.py
+    legacy_source:
+      repository: hudhud-backend
+      commit_range: 541f407..171b7ba
+      modules:
+        - app/modules/pickup/application/pickup_handover_discovery.py
+        - app/modules/merchant/application/workplace_handover_readiness.py
+    port_type: behavioural
+    ported_rules:
+      - the sender reads the ceremony by shipment, never by enumerating pickup tasks
+      - ceremony states are awaiting verification, verified, awaiting manifest confirmation,
+        ready for acceptance, completed, not required
+      - the sender half is offered only while the attempt is still challenge-eligible
+      - manifest confirmation is offered only once the courier is verified and a manifest
+        is submitted
+      - readiness flags are informational and never replace mutation authorization
+    deliberate_divergence: >
+      Kept wholly inside the Pickup boundary. Legacy builds this projection in Merchant by
+      importing Pickup repositories onto a shared session; here Pickup owns the ceremony
+      and answers for it, so no service reaches into another's rows. The Workplace-side
+      eligibility (OWNER vs Warehouse Keeper, preparation status, queue class) is therefore
+      excluded — it is Merchant-owned state that Pickup must not hold, and the Workplace
+      surface it decorates is not part of the v6.3 catalogue. Legacy's
+      COMPLETED_WITH_RECEIPT and its receipt_id are reduced to COMPLETED: this platform
+      issues no sender handover receipt, and a null field would have implied one exists.
+      can_verify_courier additionally requires an acknowledged assignment, which Pickup
+      knows and legacy did not check — without it the flag promises a challenge that no
+      driver is yet able to issue. Legacy's per-merchant verification allowlist and
+      flag-off path are not carried: this platform refuses production startup unless
+      the ceremony is required for everyone.

@@ -44,12 +44,17 @@ class WorkloadResponse(_Frozen):
 
 
 class WorkSessionResponse(_Frozen):
-    session_id: UUID
     driver_user_id: str
     capability: str
     status: str
     availability: str
-    started_at: datetime
+    #: False only on `GET /work-sessions/current`, and only when the driver has no open
+    #: session. `session_id` and `started_at` are then null rather than invented, so a
+    #: client never has to recognise a sentinel to tell "offline" from a real session.
+    #: Every command response describes a session that exists, and leaves this True.
+    has_open_session: bool = True
+    session_id: UUID | None = None
+    started_at: datetime | None = None
     home_hub_id: UUID | None
     paused_at: datetime | None
     resumed_at: datetime | None
@@ -213,6 +218,18 @@ class VerificationResponse(_Frozen):
     verified_at: datetime
     valid_until: datetime
     idempotent_replay: bool = False
+
+
+class HandoverDiscoveryResponse(_Frozen):
+    """Ceremony readiness for one shipment. Informational only — never authority."""
+
+    shipment_id: UUID
+    pickup_task_id: UUID
+    state: str
+    verification_required: bool
+    actionable: bool
+    can_verify_courier: bool
+    can_confirm_manifest: bool
 
 
 class SubmitCourierManifestRequest(_Frozen):

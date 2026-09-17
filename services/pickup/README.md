@@ -231,6 +231,18 @@ Set `PICKUP_SIGNING_KEY` to enable the ceremony and offline work. Without it tho
 routes are not served **and acceptance is not served either** — the service fails
 closed rather than degrading to a driver-unilateral custody start.
 
+`GET /pickup/shipments/{shipment_id}/handover` tells the sender where that ceremony
+stands. A sender holds a shipment, not a pickup task, and without this read its app has
+to enumerate pickup tasks or hard-code identifiers to find the ceremony at all. The
+answer names the state, whether verification is required, whether the ceremony is still
+open, and which half — if either — this sender may act on. It carries no challenge
+payload, no courier identity and no driver detail.
+
+The two `can_*` flags are **informational**. Every mutation re-derives its own authority,
+so a stale or optimistic flag can never widen what a sender is allowed to do. Discovery
+is a pure read and needs no signing key: the sender can still see where a ceremony stands
+in an environment where the mutations are not served.
+
 ### Hub handover
 
 `POST /pickup/handover-manifests` … `/arrive` … `/receipts` … `/close`. A received or

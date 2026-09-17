@@ -46,6 +46,7 @@ class PickupCommand(StrEnum):
     CHALLENGE_VERIFY = "courier_challenge:verify"
     MANIFEST_SUBMIT = "courier_manifest:submit"
     MANIFEST_CONFIRM = "courier_manifest:confirm"
+    HANDOVER_DISCOVERY_READ = "courier_handover:discover"
 
     # Driver-to-hub handover
     HANDOVER_CREATE = "handover_manifest:create"

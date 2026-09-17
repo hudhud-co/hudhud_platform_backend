@@ -14,6 +14,8 @@ Statement classes follow the repository convention: **evidence**, **proposal**, 
 | D-5 | `TOO_WEAK` permits only `REFUSE`, enforced in the domain | **evidence** — DRV:`condition` "Too weak packaging can only be refused"; PDF p.17 "Clearly no → Refused" |
 | D-6 | Scan resolution is strictly read-only | **evidence** — DRV:`scanEx:unknown` "nothing was created, nothing was accepted"; DRV:`scanEx:pickup` field additions disabled |
 | D-7 | All new columns nullable/defaulted; all new request fields optional | **assumption** — expand/contract migration policy and mobile compatibility |
+| D-8 | Sender handover discovery is answered by `pickup`, not projected into `merchant` | **proposal** — legacy `171b7ba` builds it in Merchant by importing Pickup repositories onto a shared session. Pickup owns the ceremony, so it answers for it; the Workplace-side eligibility that decision carried stays with Merchant and is not part of the v6.3 catalogue. Recorded in `docs/audit/legacy-provenance.yaml` |
+| D-9 | Driver performance metrics do **not** affect assignment priority | **decision** — hudhud-backend `a67b8bb` settles the standing open item by moving `assignment_priority_effect` from `NOT_APPLIED_PENDING_PRODUCT_DECISION` to `NOT_APPLIED_BY_PRODUCT_POLICY`. No driver-performance surface exists in this platform, so nothing is implemented here; the ruling is recorded so that whoever builds one does not reopen the question |
 
 ## Conflicts recorded, not resolved
 
@@ -43,6 +45,11 @@ exact customer-facing delivery goal · return-fee waiver · merchant no-show pol
 acknowledgement of a packaging warning · damage evidence rules at pickup · field addition of an
 unscheduled parcel · hub handoff exception handling · offline acceptance authorisation · the entire
 ADR-0005 finance policy register.
+
+Merchant **Workplace / warehouse operations** (workplace branches, shipment preparation lifecycle,
+queue classes) is a legacy surface this platform has never carried: it predates the ported range
+and appears in no v6.3 requirement. Legacy `171b7ba` decorates it with handover readiness; only
+the Pickup-owned half of that was ported. Building the surface itself is new scope, not a port.
 
 AGENTS.md stop condition honoured: *"Unresolved policy would be silently treated as an approved
 decision."*

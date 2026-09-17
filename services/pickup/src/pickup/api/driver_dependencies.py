@@ -10,6 +10,7 @@ from fastapi import Depends, HTTPException, Request
 from pickup.api.dependencies import require_bearer_token, require_idempotency_key
 from pickup.application.acceptance_service import PickupAcceptanceService
 from pickup.application.driver_session_service import DriverWorkSessionService
+from pickup.application.handover_discovery_service import HandoverDiscoveryService
 from pickup.application.handover_verification_service import (
     CourierHandoverVerificationService,
 )
@@ -78,6 +79,13 @@ def get_verification_service(request: Request) -> CourierHandoverVerificationSer
     return _require(
         _driver_services(request).verification_service,
         "courier handover verification service",
+    )
+
+
+def get_handover_discovery_service(request: Request) -> HandoverDiscoveryService:
+    return _require(
+        _driver_services(request).handover_discovery_service,
+        "handover discovery service",
     )
 
 
