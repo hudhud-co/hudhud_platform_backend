@@ -983,6 +983,28 @@ allocations:
         network_scope: per_deployable_isolated
         notes: staging ingress not scaffolded
 
+  - id: platform-api-docs
+    role: aggregated_openapi_documentation
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/api_docs.py
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8115
+        container:
+          port: 8115
+        network_scope: host_loopback
+        notes: >
+          developer tool, not a deployable — reads each service's /openapi.json over
+          loopback and serves one Swagger page. Started on demand, never by the stack.
+
 collision_policy:
   check_active_host_bindings_only: true
   skip_host_types: [unpublished, env_var, unresolved]

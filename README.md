@@ -41,6 +41,22 @@ Services listen on `127.0.0.1:8101`–`8114`, each serving `/docs`, `/health` an
 readiness gate, and several services deliberately refuse to start serving a decision the
 business has not made (MER-02, CLM-08). `health: ok` is what says a service is running.
 
+### All the APIs on one page
+
+```bash
+make api-docs      # http://127.0.0.1:8115 — Swagger UI over all 14 services
+```
+
+The platform has no gateway yet, so every service documents itself at its own `/docs` on
+its own port. This serves one Swagger page instead: a merged document of all 205 business
+endpoints, plus a dropdown to read any single service on its own.
+
+It aggregates server-side because no service sets CORS headers — a page fetching fourteen
+origins would be blocked, and opening fourteen delivery APIs to the browser to fix a docs
+page would be a poor trade. Nothing about the services changes. In the merged document
+each path carries its own `servers` entry, so "Try it out" reaches the right port.
+`make api-docs-build out=docs/api` writes the same thing as static files.
+
 | | |
 |---|---|
 | `make help` | every target, with its arguments |

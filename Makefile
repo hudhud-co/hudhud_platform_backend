@@ -16,6 +16,7 @@ SHELL := /bin/bash
 UV ?= uv
 STACK := scripts/dev/stack.py
 JOURNEYS := scripts/dev/journeys.py
+API_DOCS := scripts/dev/api_docs.py
 
 # Every directory under services/ that is its own uv project.
 SERVICES := $(notdir $(patsubst %/,%,$(dir $(wildcard services/*/pyproject.toml))))
@@ -28,7 +29,7 @@ SYNC_STAMP := .make/sync.stamp
 SYNC_INPUTS := pyproject.toml uv.lock \
                $(wildcard services/*/pyproject.toml) $(wildcard services/*/uv.lock)
 
-.PHONY: help up down restart status logs journeys token \
+.PHONY: help up down restart status logs journeys api-docs api-docs-build token \
         docker-up docker-down docker-build docker-status docker-logs docker-restart \
         sync resync lint verify test test-services test-integration proofs \
         check check-all clean
@@ -61,6 +62,12 @@ logs: ## Tail one service's log: make logs s=finance
 
 journeys: ## Drive the real HTTP APIs: make journeys [only=finance]
 	$(UV) run python $(JOURNEYS) $(if $(only),--only $(only))
+
+api-docs: ## One Swagger page for all 14 services: make api-docs [PORT=8115]
+	$(UV) run python $(API_DOCS) $(if $(PORT),--port $(PORT))
+
+api-docs-build: ## Write that page and its specs as static files: make api-docs-build out=docs/api
+	$(UV) run python $(API_DOCS) --build $(if $(out),$(out),docs/api)
 
 # --------------------------------------------------------------- everything in docker
 
