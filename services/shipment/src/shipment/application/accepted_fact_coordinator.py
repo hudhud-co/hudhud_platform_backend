@@ -25,13 +25,22 @@ from messaging_conformance.retry import classify_retry_error, should_quarantine
 
 from shipment.application.accepted_fact_apply import NativePickupAcceptedApplyService
 from shipment.application.accepted_fact_validation import validate_pickup_accepted_delivery
+from shipment.application.handover_fact_apply import PickupHandoverCustodyApplyService
+from shipment.application.handover_fact_validation import validate_pickup_handover_delivery
 from shipment.domain.contract import (
     PICKUP_ACCEPTED_EVENT_TYPE,
     PICKUP_ACCEPTED_EVENT_VERSION,
+    PICKUP_HANDOVER_EVENT_TYPE,
+    PICKUP_HANDOVER_EVENT_VERSION,
 )
 from shipment.domain.errors import ContractRejection, PoisonHandlerError, RetryableHandlerError
 from shipment.domain.sanitize import sanitize_error_message
-from shipment.domain.types import Delivery, InboxRow, ValidatedPickupAcceptedFact
+from shipment.domain.types import (
+    Delivery,
+    InboxRow,
+    ValidatedPickupAcceptedFact,
+    ValidatedPickupHandoverFact,
+)
 from shipment.ports.accepted_fact import (
     AcceptedFactUnitOfWork,
     ConsumerTransportPort,
@@ -39,7 +48,9 @@ from shipment.ports.accepted_fact import (
     InboxStorePort,
 )
 
-logger = logging.getLogger("shipment.accepted_fact_consumer")
+logger = logging.getLogger("shipment.pickup_fact_consumer")
+
+ValidatedFact = ValidatedPickupAcceptedFact | ValidatedPickupHandoverFact
 
 
 class PickupAcceptedFactCoordinator:
@@ -51,7 +62,7 @@ class PickupAcceptedFactCoordinator:
         unit_of_work: AcceptedFactUnitOfWork,
         inbox: InboxStorePort,
         transport: ConsumerTransportPort,
-        apply_service: NativePickupAcceptedApplyService,
+        apply_service: NativePickupAcceptedApplyService | PickupHandoverCustodyApplyService,
         consumer_name: str,
         handler_version: str,
         processing_owner: str,
@@ -59,6 +70,10 @@ class PickupAcceptedFactCoordinator:
         max_attempts: int,
         clock: Callable[[], datetime] | None = None,
         quarantine_policy: QuarantineRedeliveryPolicy = QuarantineRedeliveryPolicy.ACK_TERMINAL,
+        validator: Callable[..., ValidatedFact] = validate_pickup_accepted_delivery,
+        poison_event_type: str = PICKUP_ACCEPTED_EVENT_TYPE,
+        poison_event_version: int = PICKUP_ACCEPTED_EVENT_VERSION,
+        log_prefix: str = "pickup_accepted_fact",
     ) -> None:
         self._uow = unit_of_work
         self._inbox = inbox
@@ -71,6 +86,10 @@ class PickupAcceptedFactCoordinator:
         self._max_attempts = max_attempts
         self._clock = clock or (lambda: datetime.now(UTC))
         self._quarantine_policy = quarantine_policy
+        self._validate = validator
+        self._poison_event_type = poison_event_type
+        self._poison_event_version = poison_event_version
+        self._log_prefix = log_prefix
 
     def handle(self, delivery: Delivery) -> HandleOutcome:
         now = self._clock()
@@ -79,7 +98,7 @@ class PickupAcceptedFactCoordinator:
             return self._quarantine_deserialize_poison(delivery, now)
 
         try:
-            validated = validate_pickup_accepted_delivery(envelope=envelope, delivery=delivery)
+            validated = self._validate(envelope=envelope, delivery=delivery)
         except ContractRejection as exc:
             return self._quarantine_permanent(
                 delivery,
@@ -96,7 +115,7 @@ class PickupAcceptedFactCoordinator:
             )
 
         self._log_safe(
-            "pickup_accepted_fact_received",
+            f"{self._log_prefix}_received",
             extra={"event_id": str(validated.event_id)},
         )
         return self._process_validated(delivery, validated, now)
@@ -112,7 +131,7 @@ class PickupAcceptedFactCoordinator:
             UnicodeDecodeError,
         ) as exc:
             self._log_safe(
-                "pickup_accepted_fact_deserialize_failed",
+                f"{self._log_prefix}_deserialize_failed",
                 extra={
                     "error_code": "DESERIALIZE_FAILURE",
                     "error": sanitize_error_message(str(exc)),
@@ -126,8 +145,8 @@ class PickupAcceptedFactCoordinator:
         return self._quarantine_permanent(
             delivery,
             event_id=event_id,
-            event_type=PICKUP_ACCEPTED_EVENT_TYPE,
-            event_version=PICKUP_ACCEPTED_EVENT_VERSION,
+            event_type=self._poison_event_type,
+            event_version=self._poison_event_version,
             correlation_id=None,
             aggregate_type=None,
             aggregate_id=None,
@@ -140,7 +159,7 @@ class PickupAcceptedFactCoordinator:
     def _process_validated(
         self,
         delivery: Delivery,
-        validated: ValidatedPickupAcceptedFact,
+        validated: ValidatedFact,
         now: datetime,
     ) -> HandleOutcome:
         self._uow.begin()
@@ -170,7 +189,7 @@ class PickupAcceptedFactCoordinator:
             action = decide_handler_rollback_action(retryable=True)
             self._apply_transport(action, delivery)
             self._log_safe(
-                "pickup_accepted_fact_retryable_rollback",
+                f"{self._log_prefix}_retryable_rollback",
                 extra={"error_code": exc.code, "error": sanitize_error_message(exc.detail)},
             )
             return HandleOutcome(
@@ -198,7 +217,7 @@ class PickupAcceptedFactCoordinator:
     def _apply_new_delivery(
         self,
         delivery: Delivery,
-        validated: ValidatedPickupAcceptedFact,
+        validated: ValidatedFact,
         _inserted: InboxRow,
         now: datetime,
     ) -> HandleOutcome:
@@ -222,7 +241,7 @@ class PickupAcceptedFactCoordinator:
     def _handle_duplicate(
         self,
         delivery: Delivery,
-        validated: ValidatedPickupAcceptedFact,
+        validated: ValidatedFact,
         now: datetime,
     ) -> HandleOutcome:
         existing = self._inbox.load_existing(
@@ -359,7 +378,7 @@ class PickupAcceptedFactCoordinator:
             action = decide_handler_rollback_action(retryable=True)
             self._apply_transport(action, delivery)
             self._log_safe(
-                "pickup_accepted_fact_quarantine_persistence_failed",
+                f"{self._log_prefix}_quarantine_persistence_failed",
                 extra={"error_code": exc.code, "error": sanitize_error_message(exc.detail)},
             )
             return HandleOutcome(
@@ -371,7 +390,7 @@ class PickupAcceptedFactCoordinator:
         action = decide_post_commit_jetstream_action(committed_status=InboxStatus.QUARANTINED)
         self._apply_transport(action, delivery)
         self._log_safe(
-            "pickup_accepted_fact_quarantined",
+            f"{self._log_prefix}_quarantined",
             extra={"error_code": error_code, "classification": classification.value},
         )
         return HandleOutcome(
@@ -411,3 +430,37 @@ def _poison_delivery_event_id(delivery: Delivery) -> UUID:
         )
     ).hexdigest()
     return uuid5(NAMESPACE_OID, f"shipment-accepted-poison:{digest}")
+
+
+def build_handover_fact_coordinator(
+    *,
+    unit_of_work,
+    inbox: InboxStorePort,
+    transport: ConsumerTransportPort,
+    apply_service: PickupHandoverCustodyApplyService,
+    consumer_name: str,
+    handler_version: str,
+    processing_owner: str,
+    lease_duration: timedelta,
+    max_attempts: int,
+    clock: Callable[[], datetime] | None = None,
+    quarantine_policy: QuarantineRedeliveryPolicy = QuarantineRedeliveryPolicy.ACK_TERMINAL,
+) -> PickupAcceptedFactCoordinator:
+    """Same inbox machinery, pointed at the custody-releasing handover contract."""
+    return PickupAcceptedFactCoordinator(
+        unit_of_work=unit_of_work,
+        inbox=inbox,
+        transport=transport,
+        apply_service=apply_service,
+        consumer_name=consumer_name,
+        handler_version=handler_version,
+        processing_owner=processing_owner,
+        lease_duration=lease_duration,
+        max_attempts=max_attempts,
+        clock=clock,
+        quarantine_policy=quarantine_policy,
+        validator=validate_pickup_handover_delivery,
+        poison_event_type=PICKUP_HANDOVER_EVENT_TYPE,
+        poison_event_version=PICKUP_HANDOVER_EVENT_VERSION,
+        log_prefix="pickup_handover_fact",
+    )

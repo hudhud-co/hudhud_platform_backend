@@ -9,7 +9,11 @@ from uuid import UUID
 from messaging_conformance.enums import InboxStatus
 from messaging_conformance.values import InboxRecordSnapshot, InboxUniqueKey
 
-from shipment.domain.value_objects import AcceptanceOutcome, EvidenceReference
+from shipment.domain.value_objects import (
+    AcceptanceOutcome,
+    EvidenceReference,
+    HandoverOutcome,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,3 +87,26 @@ class ValidatedPickupAcceptedFact:
     acting_driver_user_id: str
     scanned_identifier: str
     exception_evidence: tuple[EvidenceReference, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ValidatedPickupHandoverFact:
+    """Allowlisted pickup.fact.handover_completed fields after contract validation."""
+
+    event_id: UUID
+    correlation_id: UUID
+    event_type: str
+    event_version: int
+    aggregate_type: str
+    aggregate_id: UUID
+    aggregate_version: int
+    pickup_task_id: UUID
+    shipment_id: UUID
+    handover_manifest_id: UUID
+    receiving_hub_id: UUID
+    outcome: HandoverOutcome
+    discrepancy_reason: str | None
+    released_at: datetime
+    releasing_driver_user_id: str
+    receiving_actor_id: str
+    condition_evidence: tuple[EvidenceReference, ...]

@@ -12,6 +12,12 @@ dependencies = [
 dev = [
     "jsonschema>=4.23",
     "nats-py>=2.9",
+    # JWT .creds authentication in the NATS security proof needs nkeys in-process. It
+    # used to be installed on demand with `uv pip install`, which worked only until the
+    # next `uv run` re-synced this environment and removed it as extraneous — so the
+    # suite passed alone and failed whenever anything else ran first. Declared here so
+    # it survives a sync.
+    "nkeys>=0.2",
     "pytest>=8.0",
     "ruff>=0.8",
 ]
@@ -46,7 +52,7 @@ indent-style = "space"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tests/contracts"]
+pythonpath = ["tests/contracts", "tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v"

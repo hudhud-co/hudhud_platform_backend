@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/order.fact.shipment_registered/v1.payload.schema.json",
+  "title": "order.fact.shipment_registered v1 payload",
+  "description": "ADR-0011 O1 — Ordering-owned fact that a parcel is fully described, labelled where required, and ready for the journey. Shipment consumes this to open its own aggregate; from that point Shipment is the sole lifecycle writer (ADR-0003). The receiver's phone, name and street address are not published: routing needs the governorate, and the rest stays behind Ordering's API.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "order_id",
+    "tracking_code",
+    "sender_kind",
+    "sender_principal_id",
+    "destination_governorate",
+    "payment_terms",
+    "requires_pickup",
+    "open_box_allowed",
+    "photo_documentation",
+    "hudhud_packaging",
+    "registered_at"
+  ],
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "ShipmentRequest aggregate id; MUST equal envelope aggregate_id."
+    },
+    "order_id": { "type": "string", "format": "uuid" },
+    "tracking_code": {
+      "type": "string",
+      "pattern": "^SHP-\\d{8}-\\d{6}$",
+      "description": "The code printed on the label and texted to the receiver."
+    },
+    "sender_kind": {
+      "type": "string",
+      "enum": ["CUSTOMER", "MERCHANT"],
+      "description": "Decides which v6.3 rules apply: a customer parcel has no COD and no pickup (p.8)."
+    },
+    "sender_principal_id": { "type": "string", "format": "uuid" },
+    "merchant_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Present only when sender_kind is MERCHANT."
+    },
+    "pickup_store_id": { "type": ["string", "null"], "format": "uuid" },
+    "destination_governorate": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 32,
+      "description": "The routing unit. v6.3 p.12 makes this mandatory; the street address is not."
+    },
+    "label_code": {
+      "type": ["string", "null"],
+      "maxLength": 32,
+      "description": "The pre-printed label the merchant scanned onto the parcel. Null on the customer path, where hub staff label at drop-off."
+    },
+    "payment_terms": {
+      "type": "string",
+      "enum": ["PREPAID", "POSTPAID", "CASH_ON_DELIVERY"]
+    },
+    "cod_amount_minor_units": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Exact minor units. Never a decimal or a formatted string."
+    },
+    "cod_currency": { "type": ["string", "null"], "enum": ["IQD", null] },
+    "requires_pickup": {
+      "type": "boolean",
+      "description": "False for every customer parcel — regular customers do not get a pickup (v6.3 p.8, p.15)."
+    },
+    "open_box_allowed": { "type": "boolean" },
+    "photo_documentation": { "type": "boolean" },
+    "hudhud_packaging": { "type": "boolean" },
+    "delivery_fee_payer": { "type": ["string", "null"], "enum": ["SENDER", "RECEIVER", null] },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Required by v6.3 p.12 so a parcel is never registered as an unknown item."
+    },
+    "goods_category_code": { "type": ["string", "null"], "maxLength": 64 },
+    "weight_grams": { "type": ["integer", "null"], "minimum": 1 },
+    "registered_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "payment_terms": { "const": "CASH_ON_DELIVERY" } },
+        "required": ["payment_terms"]
+      },
+      "then": {
+        "required": ["cod_amount_minor_units", "cod_currency"],
+        "properties": {
+          "cod_amount_minor_units": { "type": "integer", "minimum": 1 },
+          "cod_currency": { "type": "string", "enum": ["IQD"] },
+          "sender_kind": {
+            "const": "MERCHANT",
+            "description": "A regular customer's parcel has no COD option (v6.3 p.8)."
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "sender_kind": { "const": "CUSTOMER" } },
+        "required": ["sender_kind"]
+      },
+      "then": {
+        "properties": {
+          "requires_pickup": { "const": false },
+          "merchant_id": { "type": "null" },
+          "payment_terms": { "enum": ["PREPAID", "POSTPAID"] }
+        }
+      }
+    }
+  ]
+}

@@ -45,6 +45,7 @@ def test_allowed_shared_packages_only() -> None:
     stdlib = {
         "abc",
         "asyncio",
+        "base64",
         "collections",
         "contextlib",
         "copy",
@@ -54,11 +55,13 @@ def test_allowed_shared_packages_only() -> None:
         "enum",
         "functools",
         "hashlib",
+        "hmac",
         "json",
         "logging",
         "os",
         "pathlib",
         "re",
+        "secrets",
         "signal",
         "ssl",
         "sys",
@@ -73,6 +76,10 @@ def test_allowed_shared_packages_only() -> None:
         "sqlalchemy",
         "alembic",
         "uvicorn",
+        # Outbound HTTP transport for Identity token introspection. Like `nats`, it is a
+        # third-party transport used only in the infrastructure layer — never a shared
+        # domain package and never another service's code.
+        "httpx",
     }
     for py_file in service_root.rglob("*.py"):
         tree = ast.parse(py_file.read_text(encoding="utf-8"))

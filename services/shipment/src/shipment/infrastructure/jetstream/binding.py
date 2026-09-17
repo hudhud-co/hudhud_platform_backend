@@ -9,9 +9,19 @@ from shipment.domain.contract import (
     PICKUP_ACCEPTED_DURABLE_CONSUMER,
     PICKUP_ACCEPTED_STREAM,
     PICKUP_ACCEPTED_SUBJECT,
+    PICKUP_HANDOVER_DURABLE_CONSUMER,
+    PICKUP_HANDOVER_STREAM,
+    PICKUP_HANDOVER_SUBJECT,
 )
 
 EXPECTED_ACK_POLICY = "explicit"
+
+#: One durable binding per consumed Pickup contract. Each worker instance serves
+#: exactly one; the stream is shared, the durable and filter subject are not.
+CONSUMER_BINDINGS: dict[str, tuple[str, str]] = {
+    PICKUP_ACCEPTED_DURABLE_CONSUMER: (PICKUP_ACCEPTED_STREAM, PICKUP_ACCEPTED_SUBJECT),
+    PICKUP_HANDOVER_DURABLE_CONSUMER: (PICKUP_HANDOVER_STREAM, PICKUP_HANDOVER_SUBJECT),
+}
 
 
 class ConsumerBindingMismatchError(RuntimeError):
@@ -26,11 +36,18 @@ class ExpectedConsumerBinding:
     ack_policy: str = EXPECTED_ACK_POLICY
 
 
-def expected_consumer_binding() -> ExpectedConsumerBinding:
+def expected_consumer_binding(
+    durable_name: str = PICKUP_ACCEPTED_DURABLE_CONSUMER,
+) -> ExpectedConsumerBinding:
+    binding = CONSUMER_BINDINGS.get(durable_name)
+    if binding is None:
+        msg = f"unknown Shipment durable consumer: {durable_name}"
+        raise ConsumerBindingMismatchError(msg)
+    stream, filter_subject = binding
     return ExpectedConsumerBinding(
-        stream=PICKUP_ACCEPTED_STREAM,
-        durable_name=PICKUP_ACCEPTED_DURABLE_CONSUMER,
-        filter_subject=PICKUP_ACCEPTED_SUBJECT,
+        stream=stream,
+        durable_name=durable_name,
+        filter_subject=filter_subject,
         ack_policy=EXPECTED_ACK_POLICY,
     )
 
@@ -41,11 +58,15 @@ class ConsumerInfoView(Protocol):
     config: Any
 
 
-def verify_consumer_info(info: ConsumerInfoView) -> ExpectedConsumerBinding:
+def verify_consumer_info(
+    info: ConsumerInfoView,
+    *,
+    durable_name: str = PICKUP_ACCEPTED_DURABLE_CONSUMER,
+) -> ExpectedConsumerBinding:
     """Fail closed when stream, durable, filter, AckPolicy, or identity mismatch."""
-    expected = expected_consumer_binding()
+    expected = expected_consumer_binding(durable_name)
     stream_name = getattr(info, "stream_name", None)
-    durable_name = getattr(info, "name", None)
+    actual_durable = getattr(info, "name", None)
     config = getattr(info, "config", None)
     filter_subject = _extract_filter_subject(config)
     ack_policy = _normalize_ack_policy(
@@ -55,13 +76,13 @@ def verify_consumer_info(info: ConsumerInfoView) -> ExpectedConsumerBinding:
     mismatches: list[str] = []
     if stream_name != expected.stream:
         mismatches.append("stream")
-    if durable_name != expected.durable_name:
+    if actual_durable != expected.durable_name:
         mismatches.append("durable_name")
     if filter_subject != expected.filter_subject:
         mismatches.append("filter_subject")
     if ack_policy != expected.ack_policy:
         mismatches.append("ack_policy")
-    if durable_name != PICKUP_ACCEPTED_DURABLE_CONSUMER:
+    if actual_durable not in CONSUMER_BINDINGS:
         mismatches.append("server_side_identity")
     if mismatches:
         # Deduplicate while preserving order

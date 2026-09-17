@@ -18,10 +18,28 @@ from pickup.domain.entities import (
 )
 from pickup.domain.errors import StalePickupTaskVersion
 from pickup.domain.value_objects import (
+    AssignmentDeclineReason,
+    AssignmentState,
+    ConditionDecision,
     OutboxStatus,
+    PackagingAssessment,
+    PickupExceptionReason,
+    PickupRefusalReason,
     PickupTaskAcceptanceState,
     PickupTaskStatus,
     RecoveryAction,
+    StopOutcome,
+)
+from pickup.infrastructure.persistence.driver_store import (
+    CourierChallengeRepo,
+    CourierManifestRepo,
+    DriverWorkSessionRepo,
+    HandoverManifestRepo,
+    OfflineAuthorizationRepo,
+    OfflineEventRepo,
+    OfflineStreamRepo,
+    ReconciliationCaseRepo,
+    TaskHistoryRepo,
 )
 from pickup.infrastructure.persistence.models import (
     AcceptanceIdempotencyRow,
@@ -63,6 +81,49 @@ class SqlAlchemyPickupUnitOfWork:
     @property
     def outbox(self) -> _OutboxRepo:
         return _OutboxRepo(self)
+
+    @property
+    def task_history(self) -> TaskHistoryRepo:
+        return TaskHistoryRepo(self)
+
+    @property
+    def work_sessions(self) -> DriverWorkSessionRepo:
+        return DriverWorkSessionRepo(self)
+
+    @property
+    def challenges(self) -> CourierChallengeRepo:
+        return CourierChallengeRepo(self)
+
+    @property
+    def courier_manifests(self) -> CourierManifestRepo:
+        return CourierManifestRepo(self)
+
+    @property
+    def handover_manifests(self) -> HandoverManifestRepo:
+        return HandoverManifestRepo(self)
+
+    @property
+    def offline_authorizations(self) -> OfflineAuthorizationRepo:
+        return OfflineAuthorizationRepo(self)
+
+    @property
+    def offline_streams(self) -> OfflineStreamRepo:
+        return OfflineStreamRepo(self)
+
+    @property
+    def offline_events(self) -> OfflineEventRepo:
+        return OfflineEventRepo(self)
+
+    @property
+    def reconciliation_cases(self) -> ReconciliationCaseRepo:
+        return ReconciliationCaseRepo(self)
+
+    def savepoint(self) -> _SqlAlchemySavepoint:
+        """Isolate one offline replay: nested transaction plus deferred-buffer restore."""
+        if self._session is None:
+            msg = "savepoint requires an open transaction"
+            raise RuntimeError(msg)
+        return _SqlAlchemySavepoint(self)
 
     def begin(self) -> None:
         self._session = self.session_factory()
@@ -199,6 +260,45 @@ class SqlAlchemyPickupUnitOfWork:
             session.commit()
 
 
+class _SqlAlchemySavepoint:
+    """Nested transaction that also restores the pending write buffers on failure."""
+
+    def __init__(self, store: SqlAlchemyPickupUnitOfWork) -> None:
+        self._store = store
+        self._nested = None
+        self._snapshot: tuple | None = None
+
+    def __enter__(self) -> _SqlAlchemySavepoint:
+        assert self._store._session is not None
+        self._snapshot = (
+            dict(self._store._pending_tasks or {}),
+            list(self._store._pending_history or []),
+            dict(self._store._pending_idempotency or {}),
+            dict(self._store._pending_acceptance_idempotency or {}),
+            list(self._store._pending_outbox or []),
+        )
+        self._nested = self._store._session.begin_nested()
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+        assert self._nested is not None
+        if exc_type is not None:
+            self._nested.rollback()
+            if self._snapshot is not None:
+                (
+                    self._store._pending_tasks,
+                    self._store._pending_history,
+                    self._store._pending_idempotency,
+                    self._store._pending_acceptance_idempotency,
+                    self._store._pending_outbox,
+                ) = self._snapshot
+        else:
+            self._nested.commit()
+        self._nested = None
+        self._snapshot = None
+        return False
+
+
 # Backward-compatible alias for composition root / recovery wiring.
 SqlAlchemyRecoveryUnitOfWork = SqlAlchemyPickupUnitOfWork
 
@@ -245,6 +345,41 @@ class _PickupTaskRepo:
             with self._store.session_factory() as session:
                 rows = session.execute(
                     select(PickupTaskRow).where(PickupTaskRow.shipment_id == shipment_id)
+                ).scalars()
+                for row in rows:
+                    tasks[row.pickup_task_id] = _task_from_row(row)  # type: ignore[index]
+        return tuple(tasks.values())
+
+    def list_tasks_for_driver(self, driver_user_id: str) -> tuple[PickupTask, ...]:
+        """Every task assigned to one driver — the driver workload query.
+
+        Served by `ix_pickup_tasks_driver_status`. Tasks written in the open
+        transaction are merged over the persisted rows, and a task reassigned away
+        from this driver inside it is dropped, so a work-session command reads its
+        own uncommitted writes exactly as the in-memory adapter does.
+        """
+        tasks: dict[UUID, PickupTask] = {}
+        if self._store._session is not None:
+            rows = self._store._session.execute(
+                select(PickupTaskRow).where(
+                    PickupTaskRow.assigned_driver_user_id == driver_user_id
+                )
+            ).scalars()
+            for row in rows:
+                tasks[row.pickup_task_id] = _task_from_row(row)  # type: ignore[index]
+            pending = self._store._pending_tasks
+            if pending is not None:
+                for entity, _previous in pending.values():
+                    if entity.assigned_driver_user_id == driver_user_id:
+                        tasks[entity.pickup_task_id] = _copy_task(entity)
+                    else:
+                        tasks.pop(entity.pickup_task_id, None)
+        else:
+            with self._store.session_factory() as session:
+                rows = session.execute(
+                    select(PickupTaskRow).where(
+                        PickupTaskRow.assigned_driver_user_id == driver_user_id
+                    )
                 ).scalars()
                 for row in rows:
                     tasks[row.pickup_task_id] = _task_from_row(row)  # type: ignore[index]
@@ -432,6 +567,23 @@ def _copy_task(task: PickupTask) -> PickupTask:
         recovered_at=task.recovered_at,
         cancelled_at=task.cancelled_at,
         version=task.version,
+        assignment_state=task.assignment_state,
+        declined_reason=task.declined_reason,
+        declined_at=task.declined_at,
+        arrived_at=task.arrived_at,
+        scanned_at=task.scanned_at,
+        scanned_identifier=task.scanned_identifier,
+        condition_proof_captured_at=task.condition_proof_captured_at,
+        package_condition_status=task.package_condition_status,
+        exception_reason=task.exception_reason,
+        exception_reported_at=task.exception_reported_at,
+        failed_at=task.failed_at,
+        packaging_assessment=task.packaging_assessment,
+        condition_decision=task.condition_decision,
+        photo_documentation_required=task.photo_documentation_required,
+        stop_outcome=task.stop_outcome,
+        stop_outcome_reason=task.stop_outcome_reason,
+        stop_outcome_at=task.stop_outcome_at,
     )
 
 
@@ -457,6 +609,29 @@ def _task_to_row(task: PickupTask) -> PickupTaskRow:
         recovered_at=task.recovered_at,
         cancelled_at=task.cancelled_at,
         version=task.version,
+        assignment_state=task.assignment_state.value,
+        declined_reason=task.declined_reason.value if task.declined_reason else None,
+        declined_at=task.declined_at,
+        arrived_at=task.arrived_at,
+        scanned_at=task.scanned_at,
+        scanned_identifier=task.scanned_identifier,
+        condition_proof_captured_at=task.condition_proof_captured_at,
+        package_condition_status=task.package_condition_status,
+        exception_reason=task.exception_reason.value if task.exception_reason else None,
+        exception_reported_at=task.exception_reported_at,
+        failed_at=task.failed_at,
+        packaging_assessment=(
+            task.packaging_assessment.value if task.packaging_assessment else None
+        ),
+        condition_decision=(
+            task.condition_decision.value if task.condition_decision else None
+        ),
+        photo_documentation_required=task.photo_documentation_required,
+        stop_outcome=task.stop_outcome.value if task.stop_outcome else None,
+        stop_outcome_reason=(
+            task.stop_outcome_reason.value if task.stop_outcome_reason else None
+        ),
+        stop_outcome_at=task.stop_outcome_at,
     )
 
 
@@ -481,6 +656,31 @@ def _task_update_values(task: PickupTask) -> dict[str, object]:
         "recovered_at": task.recovered_at,
         "cancelled_at": task.cancelled_at,
         "version": task.version,
+        "assignment_state": task.assignment_state.value,
+        "declined_reason": task.declined_reason.value if task.declined_reason else None,
+        "declined_at": task.declined_at,
+        "arrived_at": task.arrived_at,
+        "scanned_at": task.scanned_at,
+        "scanned_identifier": task.scanned_identifier,
+        "condition_proof_captured_at": task.condition_proof_captured_at,
+        "package_condition_status": task.package_condition_status,
+        "exception_reason": (
+            task.exception_reason.value if task.exception_reason else None
+        ),
+        "exception_reported_at": task.exception_reported_at,
+        "failed_at": task.failed_at,
+        "packaging_assessment": (
+            task.packaging_assessment.value if task.packaging_assessment else None
+        ),
+        "condition_decision": (
+            task.condition_decision.value if task.condition_decision else None
+        ),
+        "photo_documentation_required": task.photo_documentation_required,
+        "stop_outcome": task.stop_outcome.value if task.stop_outcome else None,
+        "stop_outcome_reason": (
+            task.stop_outcome_reason.value if task.stop_outcome_reason else None
+        ),
+        "stop_outcome_at": task.stop_outcome_at,
     }
 
 
@@ -509,6 +709,37 @@ def _task_from_row(row: PickupTaskRow) -> PickupTask:
         recovered_at=row.recovered_at,  # type: ignore[arg-type]
         cancelled_at=row.cancelled_at,  # type: ignore[arg-type]
         version=row.version,
+        assignment_state=AssignmentState(row.assignment_state),
+        declined_reason=(
+            AssignmentDeclineReason(row.declined_reason) if row.declined_reason else None
+        ),
+        declined_at=row.declined_at,  # type: ignore[arg-type]
+        arrived_at=row.arrived_at,  # type: ignore[arg-type]
+        scanned_at=row.scanned_at,  # type: ignore[arg-type]
+        scanned_identifier=row.scanned_identifier,
+        condition_proof_captured_at=row.condition_proof_captured_at,  # type: ignore[arg-type]
+        package_condition_status=row.package_condition_status,
+        exception_reason=(
+            PickupExceptionReason(row.exception_reason) if row.exception_reason else None
+        ),
+        exception_reported_at=row.exception_reported_at,  # type: ignore[arg-type]
+        failed_at=row.failed_at,  # type: ignore[arg-type]
+        packaging_assessment=(
+            PackagingAssessment(row.packaging_assessment)
+            if row.packaging_assessment
+            else None
+        ),
+        condition_decision=(
+            ConditionDecision(row.condition_decision) if row.condition_decision else None
+        ),
+        photo_documentation_required=bool(row.photo_documentation_required),
+        stop_outcome=StopOutcome(row.stop_outcome) if row.stop_outcome else None,
+        stop_outcome_reason=(
+            PickupRefusalReason(row.stop_outcome_reason)
+            if row.stop_outcome_reason
+            else None
+        ),
+        stop_outcome_at=row.stop_outcome_at,  # type: ignore[arg-type]
     )
 
 

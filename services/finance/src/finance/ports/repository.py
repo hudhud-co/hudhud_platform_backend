@@ -1,0 +1,159 @@
+"""Persistence ports for the Finance service."""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from datetime import date
+from typing import Protocol
+from uuid import UUID
+
+from finance.domain.entities import (
+    CodCollection,
+    Deposit,
+    DriverCashAccount,
+    MerchantAccount,
+    PayoutRequest,
+    RouteReconciliation,
+)
+from finance.domain.ledger import JournalEntry
+from finance.domain.messaging import InboxRecord, OutboxRecord
+from finance.domain.value_objects import AccountRef
+
+
+class LedgerRepository(Protocol):
+    """Append-only. There is deliberately no ``update`` and no ``delete``.
+
+    A mistaken entry is corrected by posting its reverse (ADR-0012), which is why the
+    only write here is ``append``.
+    """
+
+    def append(self, entry: JournalEntry) -> None: ...
+
+    def get(self, entry_id: UUID) -> JournalEntry | None: ...
+
+    def find_by_idempotency_key(self, key: str) -> JournalEntry | None: ...
+
+    def entries_for_account(self, account: AccountRef) -> Iterable[JournalEntry]: ...
+
+    def entries_for_subject(
+        self, subject_kind: str, subject_id: UUID
+    ) -> tuple[JournalEntry, ...]: ...
+
+
+class DriverAccountRepository(Protocol):
+    def save(self, account: DriverCashAccount) -> None: ...
+
+    def get(self, account_id: UUID) -> DriverCashAccount | None: ...
+
+    def find_for_driver(self, driver_principal_id: UUID) -> DriverCashAccount | None: ...
+
+    def list_all(self) -> tuple[DriverCashAccount, ...]: ...
+
+
+class MerchantAccountRepository(Protocol):
+    def save(self, account: MerchantAccount) -> None: ...
+
+    def find_for_merchant(self, merchant_id: UUID) -> MerchantAccount | None: ...
+
+
+class CollectionRepository(Protocol):
+    def save(self, collection: CodCollection) -> None: ...
+
+    def get(self, collection_id: UUID) -> CodCollection | None: ...
+
+    def find_by_tracking_code(self, tracking_code: str) -> CodCollection | None: ...
+
+    def list_unsettled_for_driver(
+        self, driver_principal_id: UUID
+    ) -> tuple[CodCollection, ...]: ...
+
+
+class DepositRepository(Protocol):
+    def save(self, deposit: Deposit) -> None: ...
+
+    def get(self, deposit_id: UUID) -> Deposit | None: ...
+
+    def find_by_reference(self, reference: str) -> Deposit | None: ...
+
+    def list_for_driver(self, driver_principal_id: UUID) -> tuple[Deposit, ...]: ...
+
+    def list_pending_verification(self) -> tuple[Deposit, ...]: ...
+
+
+class PayoutRepository(Protocol):
+    def save(self, payout: PayoutRequest) -> None: ...
+
+    def get(self, payout_id: UUID) -> PayoutRequest | None: ...
+
+    def list_for_merchant(self, merchant_id: UUID) -> tuple[PayoutRequest, ...]: ...
+
+    def list_open(self) -> tuple[PayoutRequest, ...]: ...
+
+
+class ReconciliationRepository(Protocol):
+    def save(self, reconciliation: RouteReconciliation) -> None: ...
+
+    def get(self, reconciliation_id: UUID) -> RouteReconciliation | None: ...
+
+    def find_for_driver_day(
+        self, driver_principal_id: UUID, route_day: date
+    ) -> RouteReconciliation | None: ...
+
+    def list_unresolved(self) -> tuple[RouteReconciliation, ...]: ...
+
+    def list_unresolved_for_driver(
+        self, driver_principal_id: UUID
+    ) -> tuple[RouteReconciliation, ...]: ...
+
+
+class OutboxRepository(Protocol):
+    def insert(self, record: OutboxRecord) -> None: ...
+
+    def get_by_event_id(self, event_id: UUID) -> OutboxRecord | None: ...
+
+    def list_pending(self) -> tuple[OutboxRecord, ...]: ...
+
+    def list_for_aggregate(self, aggregate_id: UUID) -> tuple[OutboxRecord, ...]: ...
+
+
+class InboxRepository(Protocol):
+    def find(self, consumer_name: str, event_id: UUID) -> InboxRecord | None: ...
+
+    def insert(self, record: InboxRecord) -> None: ...
+
+    def save(self, record: InboxRecord) -> None: ...
+
+
+class FinanceUnitOfWork(Protocol):
+    @property
+    def ledger(self) -> LedgerRepository: ...
+
+    @property
+    def driver_accounts(self) -> DriverAccountRepository: ...
+
+    @property
+    def merchant_accounts(self) -> MerchantAccountRepository: ...
+
+    @property
+    def collections(self) -> CollectionRepository: ...
+
+    @property
+    def deposits(self) -> DepositRepository: ...
+
+    @property
+    def payouts(self) -> PayoutRepository: ...
+
+    @property
+    def reconciliations(self) -> ReconciliationRepository: ...
+
+    @property
+    def outbox(self) -> OutboxRepository: ...
+
+    @property
+    def inbox(self) -> InboxRepository: ...
+
+    def begin(self) -> None: ...
+
+    def commit(self) -> None: ...
+
+    def rollback(self) -> None: ...

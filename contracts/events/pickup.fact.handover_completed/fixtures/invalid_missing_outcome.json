@@ -1,0 +1,26 @@
+{
+  "envelope_version": 1,
+  "event_id": "5d2f1c9e-6a04-4f2b-8f0c-2ad9e1f4b7c3",
+  "event_type": "pickup.fact.handover_completed",
+  "event_version": 1,
+  "occurred_at": "2026-09-04T15:30:00.000Z",
+  "producer": "pickup",
+  "message_kind": "integration",
+  "aggregate_scope": "aggregate",
+  "aggregate_type": "pickup_task",
+  "aggregate_id": "f2faafa9-bca5-491f-b4b6-ef3b9884206c",
+  "aggregate_version": 4,
+  "correlation_id": "3a7e43e5-0014-4a89-abe5-5e927cf3a3e9",
+  "data_classification": "internal",
+  "pii_present": false,
+  "payload": {
+    "pickup_task_id": "f2faafa9-bca5-491f-b4b6-ef3b9884206c",
+    "shipment_id": "835aa643-3538-4cb1-ae26-9beb65224618",
+    "handover_manifest_id": "9c1f0b52-4c3a-4a0e-9c1e-8f2a6d5b4e10",
+    "receiving_hub_id": "6f9c1d23-0b55-4f9a-9d67-1c4e5a8b2d31",
+    "outcome": "MISSING",
+    "released_at": "2026-09-04T15:30:00.000Z",
+    "releasing_driver_user_id": "driver-42",
+    "receiving_actor_id": "hub-operator-7"
+  }
+}

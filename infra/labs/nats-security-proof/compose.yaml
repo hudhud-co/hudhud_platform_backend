@@ -3,7 +3,7 @@
 # Runtime-generated credentials only; TLS required on client port.
 # Ephemeral loopback host port; dedicated Compose project, network, and volumes.
 
-name: hudhud-nats-security-proof-lab
+name: hudhud-nats-security-proof-lab${HUDHUD_LAB_SUFFIX:-}
 
 services:
   security-init:
@@ -11,7 +11,7 @@ services:
       context: .
       dockerfile: Dockerfile.security-init
     image: hudhud-nats-security-proof-security-init:0.14.3
-    container_name: hudhud-nats-security-proof-security-init
+    container_name: hudhud-nats-security-proof-security-init${HUDHUD_LAB_SUFFIX:-}
     profiles:
       - nats-security-proof
     restart: "no"
@@ -35,7 +35,7 @@ services:
 
   nats:
     image: nats:2.10.24-alpine
-    container_name: hudhud-nats-security-proof-nats
+    container_name: hudhud-nats-security-proof-nats${HUDHUD_LAB_SUFFIX:-}
     profiles:
       - nats-security-proof
     restart: unless-stopped
@@ -82,7 +82,7 @@ services:
 
   topology-bootstrap:
     image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-    container_name: hudhud-nats-security-proof-bootstrap
+    container_name: hudhud-nats-security-proof-bootstrap${HUDHUD_LAB_SUFFIX:-}
     profiles:
       - nats-security-proof
     restart: "no"
@@ -113,11 +113,11 @@ services:
 
 networks:
   hudhud_nats_security_proof:
-    name: hudhud_nats_security_proof
+    name: hudhud_nats_security_proof${HUDHUD_LAB_SUFFIX:-}
     driver: bridge
 
 volumes:
   hudhud_nats_security_proof_jetstream:
-    name: hudhud_nats_security_proof_jetstream
+    name: hudhud_nats_security_proof_jetstream${HUDHUD_LAB_SUFFIX:-}
   hudhud_nats_security_proof_generated:
-    name: hudhud_nats_security_proof_generated
+    name: hudhud_nats_security_proof_generated${HUDHUD_LAB_SUFFIX:-}

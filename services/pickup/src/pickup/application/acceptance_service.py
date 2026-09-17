@@ -13,9 +13,11 @@ from pickup.domain.entities import AcceptanceIdempotencyRecord, OutboxRecord, Pi
 from pickup.domain.errors import (
     AcceptanceOutcomeNotAllowed,
     ActingDriverMismatch,
+    AssignmentNotAcknowledged,
     ConflictingIdempotencyKey,
     ExceptionEvidenceRequired,
     PickupConditionProofMissing,
+    PickupPhotoDocumentationMissing,
     PickupTaskAlreadyAccepted,
     PickupTaskMissingAssignedBatch,
     PickupTaskMissingAssignedDriver,
@@ -25,11 +27,13 @@ from pickup.domain.errors import (
 )
 from pickup.domain.value_objects import (
     AcceptanceOutcome,
+    AssignmentState,
     EvidenceMediaRef,
     OutboxStatus,
     PickupTaskAcceptanceState,
     PickupTaskStatus,
 )
+from pickup.ports.acceptance_gate import AcceptanceVerificationGate
 from pickup.ports.repository import AcceptanceUnitOfWork
 
 DEFAULT_OUTBOX_MAX_ATTEMPTS = 5
@@ -62,8 +66,14 @@ class AcceptPickupTaskResult:
 class PickupAcceptanceService:
     """Record custody-starting acceptance and enqueue pickup.fact.accepted atomically."""
 
-    def __init__(self, unit_of_work: AcceptanceUnitOfWork) -> None:
+    def __init__(
+        self,
+        unit_of_work: AcceptanceUnitOfWork,
+        *,
+        verification_gate: AcceptanceVerificationGate | None = None,
+    ) -> None:
         self._uow = unit_of_work
+        self._verification_gate = verification_gate
 
     def accept_pickup_task(self, command: AcceptPickupTaskCommand) -> AcceptPickupTaskResult:
         if not command.idempotency_key.strip():
@@ -108,6 +118,21 @@ class PickupAcceptanceService:
 
         if outcome is AcceptanceOutcome.ACCEPTED_WITH_EXCEPTION and not command.media_refs:
             raise ExceptionEvidenceRequired()
+
+        # Photo add-on: "Acceptance is blocked until one photo is attached."
+        # Fail closed — a shipment that paid for photo documentation must not enter
+        # custody without it. Inert for every task where the flag is not set.
+        if task.photo_documentation_required and not command.media_refs:
+            raise PickupPhotoDocumentationMissing(pickup_task_id=str(task.pickup_task_id))
+
+        ceremony = None
+        if self._verification_gate is not None:
+            # Fail closed: a live verified challenge and a confirmed manifest, or nothing.
+            ceremony = self._verification_gate.assert_ready_for_acceptance(
+                task=task,
+                scanned_identifier=command.scanned_identifier,
+                now=command.accepted_at,
+            )
 
         previous_version = task.version
         next_version = previous_version + 1
@@ -160,6 +185,13 @@ class PickupAcceptanceService:
             created_at=now,
         )
         self._uow.outbox.insert(outbox)
+        if ceremony is not None and self._verification_gate is not None:
+            # One ceremony authorizes exactly one acceptance.
+            self._verification_gate.consume_for_acceptance(
+                challenge=ceremony[0],
+                manifest=ceremony[1],
+                now=accepted_at,
+            )
         self._uow.acceptance_idempotency.save_record(
             AcceptanceIdempotencyRecord(
                 idempotency_key=command.idempotency_key,
@@ -221,6 +253,11 @@ class PickupAcceptanceService:
             raise PickupTaskNotProofCaptured(
                 pickup_task_id=str(task.pickup_task_id),
                 current_status=task.status.value,
+            )
+        if task.assignment_state is not AssignmentState.ACKNOWLEDGED:
+            raise AssignmentNotAcknowledged(
+                pickup_task_id=str(task.pickup_task_id),
+                assignment_state=task.assignment_state.value,
             )
         if not task.assigned_driver_user_id.strip():
             raise PickupTaskMissingAssignedDriver(pickup_task_id=str(task.pickup_task_id))

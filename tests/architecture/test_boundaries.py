@@ -61,18 +61,49 @@ def test_gateway_does_not_own_domain_tables(boundaries: dict) -> None:
     assert gateway["data_ownership"]["legacy_tables"] == []
 
 
-def test_hub_and_linehaul_remain_separate(boundaries: dict) -> None:
+def test_hub_and_linehaul_remain_separate_bounded_contexts(boundaries: dict) -> None:
+    """ADR-0001/ADR-0011: sharing one deployable must not merge the two contexts."""
     contexts = boundaries["bounded_contexts"]
     assert "hub" in contexts
     assert "linehaul" in contexts
-    assert contexts["hub"]["proposed_platform_owner"] == "hub"
-    assert contexts["linehaul"]["proposed_platform_owner"] == "linehaul"
+    assert contexts["hub"] is not contexts["linehaul"]
+    # Distinct legacy owners and distinct display names — the contexts never collapsed.
+    assert contexts["hub"]["display_name"] != contexts["linehaul"]["display_name"]
+    assert contexts["hub"]["legacy_owner"] != contexts["linehaul"]["legacy_owner"]
 
 
-def test_finance_is_policy_blocked(boundaries: dict) -> None:
+def test_finance_is_implementable_and_owns_its_own_database(boundaries: dict) -> None:
+    """ADR-0012 supersedes the ADR-0005 policy block."""
     finance = boundaries["bounded_contexts"]["finance_settlement"]
-    assert finance["transitional_deployable_candidate"] == "policy_blocked"
-    assert finance["extraction_status"] == "not_started"
+    assert finance["proposed_platform_owner"] == "finance"
+    assert finance["extraction_status"] != "not_started"
+    assert finance["transitional_deployable_candidate"] != "policy_blocked"
+    assert finance["data_ownership"]["strategy"] == "dedicated_database"
+
+
+def test_delivery_never_writes_the_wallet(ownership_matrix: dict) -> None:
+    """ADR-0003/ADR-0012: COD collection and merchant payable are separate facts."""
+    delivery = ownership_matrix["ownership"]["delivery"]
+    assert "wallet_cod.direct_credit" in delivery["forbidden_writes"]
+    assert "shipment.lifecycle_direct_mutation" in delivery["forbidden_writes"]
+
+
+def test_every_product_context_has_a_named_service_owner(ownership_matrix: dict) -> None:
+    """ADR-0011: no bounded context the product needs may be left undecided."""
+    ownership = ownership_matrix["ownership"]
+    undecided = sorted(
+        name
+        for name, ctx in ownership.items()
+        if isinstance(ctx, dict) and ctx.get("canonical_writer") == "undecided"
+    )
+    assert undecided == []
+
+
+def test_identity_stores_no_domain_membership(ownership_matrix: dict) -> None:
+    """ADR-0004 acceptance: credentials and domain membership stay separate."""
+    identity = ownership_matrix["ownership"]["auth_identity"]
+    assert identity["canonical_writer"] == "identity"
+    assert "domain_membership_storage" in identity["forbidden"]
 
 
 def test_legacy_reference_is_read_only(boundaries: dict) -> None:

@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
+from lab_ports import published_binding
+
 from .constants import (
     ALLOWED_HOSTS,
     COMPOSE_PROFILE,
@@ -101,16 +103,12 @@ def discover_host_port(service: str, container_port: int, *, force_refresh: bool
         _wait_for_tcp_port("127.0.0.1", _port_cache.nats)
         return _port_cache.nats
 
-    result = compose("port", service, str(container_port))
-    if result.returncode != 0:
-        msg = result.stderr.strip() or result.stdout.strip()
-        raise RuntimeError(f"failed to discover {service} port: {msg}")
-    binding = result.stdout.strip().splitlines()[-1].strip()
-    host, _, port_text = binding.rpartition(":")
-    if host not in ALLOWED_HOSTS:
-        msg = f"{service} published on unexpected host: {host!r}"
-        raise AssertionError(msg)
-    port = int(port_text)
+    # Polled rather than read once: `docker compose port` answers successfully while a
+    # container that has just been restarted still has no published port. See
+    # `tests/lab_ports.py` for the failure that came from reading it once.
+    host, port = published_binding(
+        compose, service, container_port, allowed_hosts=ALLOWED_HOSTS
+    )
     _wait_for_tcp_port(host, port)
     if service == NATS_SERVICE:
         _port_cache.nats = port
@@ -138,7 +136,7 @@ def _wait_for_nats_healthy(*, timeout_seconds: float = 45.0) -> None:
                 "inspect",
                 "--format",
                 "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
-                "hudhud-nats-security-proof-nats",
+                NATS_CONTAINER,
             ],
             capture_output=True,
             text=True,
@@ -149,7 +147,7 @@ def _wait_for_nats_healthy(*, timeout_seconds: float = 45.0) -> None:
             return
         if status in {"exited", "dead"}:
             logs = subprocess.run(
-                ["docker", "logs", "hudhud-nats-security-proof-nats"],
+                ["docker", "logs", NATS_CONTAINER],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -337,6 +335,9 @@ def _probe_env(extra: dict[str, str]) -> dict[str, str]:
     env = os.environ.copy()
     env.pop("VIRTUAL_ENV", None)
     env.update(extra)
+    # See the note in the other labs' env builders: concurrent root-level `uv run`
+    # syncs race on the shared virtualenv and can half-write a native library.
+    env["UV_NO_SYNC"] = "1"
     return env
 
 

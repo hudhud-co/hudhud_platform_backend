@@ -15,8 +15,14 @@ from referencing import Registry, Resource
 
 from pickup.domain.errors import ContractAssetMissing, EnvelopeContractValidationFailed
 
-EVENT_TYPE = "pickup.fact.accepted"
-EVENT_VERSION = 1
+ACCEPTED_EVENT_TYPE = "pickup.fact.accepted"
+ACCEPTED_EVENT_VERSION = 1
+HANDOVER_COMPLETED_EVENT_TYPE = "pickup.fact.handover_completed"
+HANDOVER_COMPLETED_EVENT_VERSION = 1
+
+# Backward-compatible aliases for the first registered Pickup contract.
+EVENT_TYPE = ACCEPTED_EVENT_TYPE
+EVENT_VERSION = ACCEPTED_EVENT_VERSION
 
 
 class ContractAssetMissingError(ContractAssetMissing):
@@ -24,7 +30,7 @@ class ContractAssetMissingError(ContractAssetMissing):
 
 
 @dataclass(frozen=True, slots=True)
-class AcceptedFactContract:
+class PickupFactContract:
     event_type: str
     event_version: int
     subject: str
@@ -40,10 +46,15 @@ class AcceptedFactContract:
 
 
 @dataclass(frozen=True, slots=True)
-class LoadedAcceptedFactRegistry:
+class LoadedPickupFactRegistry:
     contracts_root: Path
-    contract: AcceptedFactContract
+    contract: PickupFactContract
     validator: Draft202012Validator
+
+
+# Backward-compatible aliases.
+AcceptedFactContract = PickupFactContract
+LoadedAcceptedFactRegistry = LoadedPickupFactRegistry
 
 
 def resolve_contracts_root(*, anchor: Path | None = None) -> Path:
@@ -80,7 +91,7 @@ def _resource_for(path: Path) -> tuple[str, Resource]:
     return str(content["$id"]), Resource.from_contents(content)
 
 
-def _build_validator(contract: AcceptedFactContract) -> Draft202012Validator:
+def _build_validator(contract: PickupFactContract) -> Draft202012Validator:
     resources = [
         _resource_for(contract.envelope_schema_path),
         _resource_for(contract.payload_schema_path),
@@ -91,15 +102,21 @@ def _build_validator(contract: AcceptedFactContract) -> Draft202012Validator:
     return Draft202012Validator(schema, registry=registry)
 
 
-@lru_cache(maxsize=1)
-def load_accepted_fact_registry(*, anchor: Path | None = None) -> LoadedAcceptedFactRegistry:
+@lru_cache(maxsize=8)
+def load_pickup_fact_registry(
+    event_type: str,
+    event_version: int,
+    *,
+    anchor: Path | None = None,
+) -> LoadedPickupFactRegistry:
+    """Resolve one registered Pickup contract and build its fail-closed validator."""
     contracts_root = resolve_contracts_root(anchor=anchor)
     registry_path = contracts_root / "events" / "registry.yaml"
     payload = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
     for entry in payload["contracts"]:
-        if entry.get("event_type") != EVENT_TYPE:
+        if entry.get("event_type") != event_type:
             continue
-        if int(entry["event_version"]) != EVENT_VERSION:
+        if int(entry["event_version"]) != event_version:
             continue
         schema_path = contracts_root / "events" / str(entry["schema_path"])
         payload_schema_path = contracts_root / "events" / str(entry["payload_schema_path"])
@@ -108,7 +125,7 @@ def load_accepted_fact_registry(*, anchor: Path | None = None) -> LoadedAccepted
             if not path.is_file():
                 msg = f"Missing contract schema asset: {path}"
                 raise ContractAssetMissingError(msg)
-        contract = AcceptedFactContract(
+        contract = PickupFactContract(
             event_type=str(entry["event_type"]),
             event_version=int(entry["event_version"]),
             subject=str(entry["subject"]),
@@ -122,25 +139,64 @@ def load_accepted_fact_registry(*, anchor: Path | None = None) -> LoadedAccepted
             payload_schema_path=payload_schema_path,
             envelope_schema_path=envelope_schema_path,
         )
-        return LoadedAcceptedFactRegistry(
+        return LoadedPickupFactRegistry(
             contracts_root=contracts_root,
             contract=contract,
             validator=_build_validator(contract),
         )
-    msg = "registry.yaml missing pickup.fact.accepted v1"
+    msg = f"registry.yaml missing {event_type} v{event_version}"
     raise ContractAssetMissingError(msg)
 
 
+def load_accepted_fact_registry(*, anchor: Path | None = None) -> LoadedPickupFactRegistry:
+    return load_pickup_fact_registry(
+        ACCEPTED_EVENT_TYPE,
+        ACCEPTED_EVENT_VERSION,
+        anchor=anchor,
+    )
+
+
+def load_handover_completed_registry(
+    *, anchor: Path | None = None
+) -> LoadedPickupFactRegistry:
+    return load_pickup_fact_registry(
+        HANDOVER_COMPLETED_EVENT_TYPE,
+        HANDOVER_COMPLETED_EVENT_VERSION,
+        anchor=anchor,
+    )
+
+
 def reset_registry_cache() -> None:
-    load_accepted_fact_registry.cache_clear()
+    load_pickup_fact_registry.cache_clear()
 
 
-def validate_accepted_fact_envelope(instance: dict[str, Any]) -> None:
+def validate_envelope(
+    instance: dict[str, Any],
+    *,
+    event_type: str,
+    event_version: int,
+) -> None:
     """Fail closed when the generated envelope does not match the registered schema."""
-    loaded = load_accepted_fact_registry()
+    loaded = load_pickup_fact_registry(event_type, event_version)
     errors = sorted(loaded.validator.iter_errors(instance), key=lambda err: list(err.path))
     if errors:
         first = errors[0]
         path = ".".join(str(part) for part in first.path) or "<root>"
-        msg = f"pickup.fact.accepted envelope invalid at {path}: {first.message}"
+        msg = f"{event_type} envelope invalid at {path}: {first.message}"
         raise EnvelopeContractValidationFailed(msg)
+
+
+def validate_accepted_fact_envelope(instance: dict[str, Any]) -> None:
+    validate_envelope(
+        instance,
+        event_type=ACCEPTED_EVENT_TYPE,
+        event_version=ACCEPTED_EVENT_VERSION,
+    )
+
+
+def validate_handover_completed_envelope(instance: dict[str, Any]) -> None:
+    validate_envelope(
+        instance,
+        event_type=HANDOVER_COMPLETED_EVENT_TYPE,
+        event_version=HANDOVER_COMPLETED_EVENT_VERSION,
+    )

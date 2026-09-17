@@ -501,6 +501,474 @@ allocations:
           type: unresolved
         notes: Prometheus/Grafana/Loki ports not scaffolded in F0
 
+  # ------------------------------------------------------------------------------
+  # The local development stack (scripts/dev/stack.py). These are the only fixed host
+  # bindings this repository creates, and they are loopback-only: the stack exists so a
+  # developer can call the APIs, never so anything is reachable from outside the machine.
+  # Staging and production expose these services through an ingress that does not exist
+  # yet, so those bindings stay unresolved rather than being guessed.
+
+  - id: identity-http-api
+    role: identity_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8101
+        container:
+          port: 8101
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
+  - id: customer-http-api
+    role: customer_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8102
+        container:
+          port: 8102
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
+  - id: merchant-http-api
+    role: merchant_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8103
+        container:
+          port: 8103
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
+  - id: ordering-http-api
+    role: ordering_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8104
+        container:
+          port: 8104
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
+  - id: hub-http-api
+    role: hub_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8105
+        container:
+          port: 8105
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
+  - id: notification-http-api
+    role: notification_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8106
+        container:
+          port: 8106
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
+  - id: workforce-http-api
+    role: workforce_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8107
+        container:
+          port: 8107
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
+  - id: delivery-http-api
+    role: delivery_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8108
+        container:
+          port: 8108
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
+  - id: finance-http-api
+    role: finance_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8109
+        container:
+          port: 8109
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
+  - id: pickup-http-api
+    role: pickup_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8110
+        container:
+          port: 8110
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
+  - id: shipment-http-api
+    role: shipment_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8111
+        container:
+          port: 8111
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
+  - id: tracking-http-api
+    role: tracking_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8112
+        container:
+          port: 8112
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
+  - id: audit-http-api
+    role: audit_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8113
+        container:
+          port: 8113
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
+  - id: dev-stack-postgres
+    role: dev_stack_shared_postgres
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 55432
+        container:
+          port: 5432
+        network_scope: host_loopback
+        notes: >
+          One container, a database per service (ADR-0011). Data lives in a tmpfs, so
+          `stack.py down` leaves nothing on disk.
+
+  - id: dev-stack-nats
+    role: dev_stack_jetstream
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 54222
+        container:
+          port: 4222
+        network_scope: host_loopback
+
+  - id: claims-http-api
+    role: claims_service_http_api
+    binding_kind: developer_local_default
+    protocol: tcp
+    statement: evidence
+    evidence:
+      - scripts/dev/stack.py
+      - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
+    bindings:
+      - environment: platform_local_dev
+        active: true
+        public_exposure: false
+        host:
+          type: fixed
+          address: 127.0.0.1
+          port: 8114
+        container:
+          port: 8114
+        network_scope: host_loopback
+        notes: uvicorn, started by the dev stack; loopback only
+      - environment: platform_staging
+        active: false
+        public_exposure: false
+        host:
+          type: unresolved
+        container:
+          port: 8000
+        network_scope: per_deployable_isolated
+        notes: staging ingress not scaffolded
+
 collision_policy:
   check_active_host_bindings_only: true
   skip_host_types: [unpublished, env_var, unresolved]

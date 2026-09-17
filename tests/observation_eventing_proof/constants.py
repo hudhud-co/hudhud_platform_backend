@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
-COMPOSE_PROJECT = "hudhud-observation-eventing-proof-lab"
+# Every name below is namespaced per process by `tests/lab_namespace.py`, so two of these
+# labs — or two pytest sessions — can run at once without tearing down each other's
+# containers. Pin `HUDHUD_LAB_SUFFIX` to share a lab on purpose; set it to "" to restore
+# the old fixed names.
+from lab_namespace import namespaced
+
+COMPOSE_PROJECT = namespaced("hudhud-observation-eventing-proof-lab")
 COMPOSE_PROFILE = "observation-eventing-proof"
-NETWORK_NAME = "hudhud_observation_eventing_proof"
-VOLUME_PG_NAME = "hudhud_observation_eventing_proof_pgdata"
-VOLUME_JS_NAME = "hudhud_observation_eventing_proof_jetstream"
+NETWORK_NAME = namespaced("hudhud_observation_eventing_proof")
+VOLUME_PG_NAME = namespaced("hudhud_observation_eventing_proof_pgdata")
+VOLUME_JS_NAME = namespaced("hudhud_observation_eventing_proof_jetstream")
 
 POSTGRES_SERVICE = "postgres"
 NATS_SERVICE = "nats"

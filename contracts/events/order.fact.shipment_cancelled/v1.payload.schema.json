@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/order.fact.shipment_cancelled/v1.payload.schema.json",
+  "title": "order.fact.shipment_cancelled v1 payload",
+  "description": "ADR-0011 O2 — Ordering-owned cancellation fact. Only ever published for a parcel that never entered custody (SHP-10); a parcel Hudhud is already carrying is Shipment's to close.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["request_id", "order_id", "tracking_code", "reason", "cancelled_at"],
+  "properties": {
+    "request_id": { "type": "string", "format": "uuid" },
+    "order_id": { "type": "string", "format": "uuid" },
+    "tracking_code": { "type": "string", "pattern": "^SHP-\\d{8}-\\d{6}$" },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "SENDER_CHANGED_MIND",
+        "DUPLICATE",
+        "PROHIBITED_CONTENTS",
+        "NOT_DROPPED_IN_TIME",
+        "OPERATIONS_DECISION"
+      ]
+    },
+    "had_courier_assigned": {
+      "type": "boolean",
+      "description": "True when a courier was booked and must now be released."
+    },
+    "cancelled_at": { "type": "string", "format": "date-time" }
+  }
+}

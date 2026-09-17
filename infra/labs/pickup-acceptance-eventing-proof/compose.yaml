@@ -3,12 +3,12 @@
 # Ephemeral loopback host ports; dedicated Compose project, network, and volumes.
 # Not production Compose. No API containers.
 
-name: hudhud-pickup-acceptance-eventing-proof-lab
+name: hudhud-pickup-acceptance-eventing-proof-lab${HUDHUD_LAB_SUFFIX:-}
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: hudhud-pickup-acceptance-eventing-proof-postgres
+    container_name: hudhud-pickup-acceptance-eventing-proof-postgres${HUDHUD_LAB_SUFFIX:-}
     profiles:
       - pickup-acceptance-eventing-proof
     restart: unless-stopped
@@ -47,7 +47,7 @@ services:
 
   nats:
     image: nats:2.10-alpine
-    container_name: hudhud-pickup-acceptance-eventing-proof-nats
+    container_name: hudhud-pickup-acceptance-eventing-proof-nats${HUDHUD_LAB_SUFFIX:-}
     profiles:
       - pickup-acceptance-eventing-proof
     restart: unless-stopped
@@ -82,7 +82,7 @@ services:
 
   topology-bootstrap:
     image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-    container_name: hudhud-pickup-acceptance-eventing-proof-bootstrap
+    container_name: hudhud-pickup-acceptance-eventing-proof-bootstrap${HUDHUD_LAB_SUFFIX:-}
     profiles:
       - pickup-acceptance-eventing-proof
     restart: "no"
@@ -94,6 +94,11 @@ services:
     environment:
       NATS_URL: nats://nats:4222
       UV_CACHE_DIR: /tmp/uv-cache
+      # The repository is bind-mounted read-write, so a container `uv run` would sync
+      # into the host's ./.venv and replace macOS wheels with Linux ones — which shows
+      # up much later as `dlopen(...): slice is not valid mach-o file` in a completely
+      # unrelated suite. Keep the container's environment inside the container.
+      UV_PROJECT_ENVIRONMENT: /tmp/bootstrap-venv
     command:
       - /bin/sh
       - -c
@@ -106,11 +111,11 @@ services:
 
 networks:
   hudhud_pickup_acceptance_eventing_proof:
-    name: hudhud_pickup_acceptance_eventing_proof
+    name: hudhud_pickup_acceptance_eventing_proof${HUDHUD_LAB_SUFFIX:-}
     driver: bridge
 
 volumes:
   hudhud_pickup_acceptance_eventing_proof_pgdata:
-    name: hudhud_pickup_acceptance_eventing_proof_pgdata
+    name: hudhud_pickup_acceptance_eventing_proof_pgdata${HUDHUD_LAB_SUFFIX:-}
   hudhud_pickup_acceptance_eventing_proof_jetstream:
-    name: hudhud_pickup_acceptance_eventing_proof_jetstream
+    name: hudhud_pickup_acceptance_eventing_proof_jetstream${HUDHUD_LAB_SUFFIX:-}

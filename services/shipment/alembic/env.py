@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
@@ -12,6 +13,13 @@ from shipment.infrastructure.persistence.models import Base
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# The URL in alembic.ini is a placeholder. Real runs — a deployment, the local dev
+# stack, the disposable PostgreSQL proofs — supply SHIPMENT_DATABASE_URL, so a migration
+# can never be pointed at whatever happens to be in the checked-in config file.
+_database_url = os.environ.get("SHIPMENT_DATABASE_URL") or os.environ.get("DATABASE_URL")
+if _database_url:
+    config.set_main_option("sqlalchemy.url", _database_url)
 
 target_metadata = Base.metadata
 

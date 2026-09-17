@@ -47,8 +47,10 @@ streams:
       - hudhud.finance.>
     max_age: 30d
     description: >
-      Finance bounded-context financial posting and settlement facts (ADR-0005).
-      Finance owns authoritative posting; Wallet consumes Finance-authorized facts only.
+      Finance bounded-context financial posting and settlement facts (ADR-0012, which
+      supersedes ADR-0005). Finance owns authoritative posting and is the only context
+      that recognises a merchant payable; Delivery publishes what happened at the door
+      and never writes the ledger. Wallet consumes Finance-authorized facts only.
 
   - name: HUDHUD_WALLET
     subjects:
@@ -63,6 +65,44 @@ streams:
       - hudhud.notification.>
     max_age: 3d
     description: Notification bounded-context operational events
+
+  - name: HUDHUD_IDENTITY
+    subjects:
+      - hudhud.identity.>
+    max_age: 7d
+    description: Identity bounded-context operational events (ADR-0004, ADR-0011)
+
+  - name: HUDHUD_CUSTOMER
+    subjects:
+      - hudhud.customer.>
+    max_age: 7d
+    description: Customer bounded-context operational events (ADR-0011)
+
+  - name: HUDHUD_MERCHANT
+    subjects:
+      - hudhud.merchant.>
+    max_age: 7d
+    description: Merchant bounded-context operational events (ADR-0011)
+
+  - name: HUDHUD_ORDER
+    subjects:
+      - hudhud.order.>
+    max_age: 7d
+    description: Ordering bounded-context operational events (ADR-0011)
+
+  - name: HUDHUD_WORKFORCE
+    subjects:
+      - hudhud.workforce.>
+    max_age: 7d
+    description: Driver workforce bounded-context operational events (ADR-0013)
+
+  - name: HUDHUD_CLAIMS
+    subjects:
+      - hudhud.claims.>
+    max_age: 30d
+    description: >
+      Claims bounded-context operational events (ADR-0011). Longer window than an
+      operational stream because a claim outlives the journey that caused it.
 
   - name: HUDHUD_AUDIT
     subjects:

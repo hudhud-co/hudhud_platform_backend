@@ -10,6 +10,7 @@ from shipment.domain.value_objects import (
     AcceptanceOutcome,
     CustodyType,
     EvidenceReference,
+    HandoverOutcome,
     PickupTaskAcceptanceState,
     PickupTaskStatus,
     ShipmentEventType,
@@ -53,6 +54,7 @@ class Shipment:
     sla_started_at: datetime | None = None
     current_custody_type: CustodyType | None = None
     current_custody_id: str | None = None
+    custody_transferred_at: datetime | None = None
     version: int = 1
 
     @property
@@ -77,6 +79,26 @@ class AcceptanceDecisionRecord:
     scan_timestamp: datetime
     recorded_at: datetime
     exception_evidence: tuple[EvidenceReference, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CustodyTransferRecord:
+    """Persisted custody handover decision — one per released pickup task."""
+
+    transfer_id: UUID
+    shipment_id: UUID
+    pickup_task_id: UUID
+    handover_manifest_id: UUID
+    from_custody_type: CustodyType
+    from_custody_id: str
+    to_custody_type: CustodyType
+    to_custody_id: str
+    outcome: HandoverOutcome
+    discrepancy_reason: str | None
+    released_at: datetime
+    recorded_at: datetime
+    receiving_actor_id: str
+    condition_evidence: tuple[EvidenceReference, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

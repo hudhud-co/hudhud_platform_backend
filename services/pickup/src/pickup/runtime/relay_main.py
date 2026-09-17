@@ -28,7 +28,7 @@ def main() -> int:
     settings.assert_production_gates()
 
     if not settings.relay_enabled:
-        logger.error("pickup accepted-fact relay is disabled")
+        logger.error("pickup integration outbox relay is disabled")
         return 1
     if not settings.database_url:
         logger.error("DATABASE_URL is required for the outbox relay")
@@ -36,12 +36,12 @@ def main() -> int:
     cutover_blockers = settings.relay_cutover_gate_blockers()
     if cutover_blockers:
         logger.error(
-            "pickup accepted-fact relay cutover gates unmet: %s",
+            "pickup integration outbox relay cutover gates unmet: %s",
             ", ".join(cutover_blockers),
         )
         return 1
     if not settings.relay_configuration_valid():
-        logger.error("pickup accepted-fact relay NATS configuration is invalid")
+        logger.error("pickup integration outbox relay NATS configuration is invalid")
         return 1
 
     engine = build_engine(settings.database_url)
@@ -101,11 +101,11 @@ def main() -> int:
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    logger.info("pickup accepted-fact outbox relay starting")
+    logger.info("pickup integration outbox relay starting")
     try:
         worker.run_until_stopped()
     finally:
-        logger.info("pickup accepted-fact outbox relay stopped")
+        logger.info("pickup integration outbox relay stopped")
         engine.dispose()
     return 0
 

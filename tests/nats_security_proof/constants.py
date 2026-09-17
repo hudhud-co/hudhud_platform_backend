@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-COMPOSE_PROJECT = "hudhud-nats-security-proof-lab"
+# Every name below is namespaced per process by `tests/lab_namespace.py`, so two of these
+# labs — or two pytest sessions — can run at once without tearing down each other's
+# containers. Pin `HUDHUD_LAB_SUFFIX` to share a lab on purpose; set it to "" to restore
+# the old fixed names.
+from lab_namespace import namespaced
+
+COMPOSE_PROJECT = namespaced("hudhud-nats-security-proof-lab")
 COMPOSE_PROFILE = "nats-security-proof"
-NETWORK_NAME = "hudhud_nats_security_proof"
-VOLUME_JS_NAME = "hudhud_nats_security_proof_jetstream"
-VOLUME_GENERATED_NAME = "hudhud_nats_security_proof_generated"
+NETWORK_NAME = namespaced("hudhud_nats_security_proof")
+VOLUME_JS_NAME = namespaced("hudhud_nats_security_proof_jetstream")
+VOLUME_GENERATED_NAME = namespaced("hudhud_nats_security_proof_generated")
 
 NATS_SERVICE = "nats"
-NATS_CONTAINER = "hudhud-nats-security-proof-nats"
+NATS_CONTAINER = namespaced("hudhud-nats-security-proof-nats")
 SECURITY_INIT_SERVICE = "security-init"
 TOPOLOGY_BOOTSTRAP_SERVICE = "topology-bootstrap"
 

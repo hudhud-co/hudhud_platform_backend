@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/delivery.fact.delivered/v1.payload.schema.json",
+  "title": "delivery.fact.delivered v1 payload",
+  "description": "ADR-0011 D1 — the irreversible physical fact that custody passed to the receiver (ADR-0003). Shipment consumes it to close the journey; Finance correlates it with the COD fact. Carries no delivery code, no ID imagery and no receiver contact detail.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "stop_id",
+    "tracking_code",
+    "delivered_at",
+    "delivering_driver_id",
+    "verified_by",
+    "inspection_outcome",
+    "payment_method"
+  ],
+  "properties": {
+    "stop_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "DeliveryStop aggregate id; MUST equal envelope aggregate_id."
+    },
+    "tracking_code": { "type": "string", "pattern": "^SHP-\\d{8}-\\d{6}$" },
+    "delivered_at": { "type": "string", "format": "date-time" },
+    "delivering_driver_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Whose custody ended. Every custody change is attributable (SEC-09)."
+    },
+    "verified_by": {
+      "type": "string",
+      "enum": ["DELIVERY_CODE", "NAMED_RECEIVER_ID"],
+      "description": "How the person at the door was proven. The code itself is never published."
+    },
+    "inspection_outcome": {
+      "type": "string",
+      "enum": ["SEALED_ACCEPTED", "OPEN_BOX_KEPT"],
+      "description": "A refusal is not a delivery and uses delivery.fact.attempt_failed."
+    },
+    "seal_outcome": {
+      "type": ["string", "null"],
+      "enum": ["INTACT", "NOT_APPLICABLE", null],
+      "description": "Present when the merchant bought the packaging add-on. A broken seal never reaches this event."
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": ["PREPAID", "CASH", "POS_CARD"]
+    },
+    "amount_collected_minor_units": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Exact minor units. Absent for prepaid."
+    },
+    "amount_currency": { "type": ["string", "null"], "enum": ["IQD", null] },
+    "photo_media_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many delivery photos exist. The references themselves stay in Delivery."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "payment_method": { "enum": ["CASH", "POS_CARD"] } },
+        "required": ["payment_method"]
+      },
+      "then": {
+        "required": ["amount_collected_minor_units", "amount_currency"],
+        "properties": {
+          "amount_collected_minor_units": { "type": "integer", "minimum": 1 },
+          "amount_currency": { "type": "string", "enum": ["IQD"] }
+        },
+        "description": "v6.3 p.31 — a COD parcel is not Delivered unless payment was actually collected."
+      }
+    }
+  ]
+}

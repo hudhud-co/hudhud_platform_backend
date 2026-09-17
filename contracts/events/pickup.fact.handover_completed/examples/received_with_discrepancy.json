@@ -1,0 +1,36 @@
+{
+  "envelope_version": 1,
+  "event_id": "7b83a4d1-9f21-4e56-b0aa-3c5d8e9f1204",
+  "event_type": "pickup.fact.handover_completed",
+  "event_version": 1,
+  "occurred_at": "2026-09-04T15:32:00.000Z",
+  "producer": "pickup",
+  "message_kind": "integration",
+  "aggregate_scope": "aggregate",
+  "aggregate_type": "pickup_task",
+  "aggregate_id": "c4d51a08-1f2b-4f7d-b3e9-0a6c7d8e9f21",
+  "aggregate_version": 5,
+  "correlation_id": "3a7e43e5-0014-4a89-abe5-5e927cf3a3e9",
+  "data_classification": "internal",
+  "pii_present": false,
+  "schema_uri": "https://hudhud.platform/contracts/events/pickup.fact.handover_completed/v1.schema.json",
+  "payload": {
+    "pickup_task_id": "c4d51a08-1f2b-4f7d-b3e9-0a6c7d8e9f21",
+    "shipment_id": "1b7c9e40-5a3d-4e28-9f61-2d8a0b4c6e75",
+    "handover_manifest_id": "9c1f0b52-4c3a-4a0e-9c1e-8f2a6d5b4e10",
+    "receiving_hub_id": "6f9c1d23-0b55-4f9a-9d67-1c4e5a8b2d31",
+    "outcome": "RECEIVED_WITH_DISCREPANCY",
+    "discrepancy_reason": "DAMAGED_AT_HANDOVER",
+    "released_at": "2026-09-04T15:32:00.000Z",
+    "releasing_driver_user_id": "driver-42",
+    "receiving_actor_id": "hub-operator-7"
+  },
+  "media_refs": [
+    {
+      "ref_type": "hub_condition_photo",
+      "bucket": "hudhud-evidence",
+      "key": "pickup/handover/c4d51a08/condition-1.jpg",
+      "content_type": "image/jpeg"
+    }
+  ]
+}

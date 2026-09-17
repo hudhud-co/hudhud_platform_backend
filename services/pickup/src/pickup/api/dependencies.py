@@ -39,11 +39,22 @@ def require_idempotency_key(
     return key
 
 
+def get_unit_of_work(request: Request):
+    """One unit of work per request; FastAPI caches it for that request only."""
+    factory = getattr(request.app.state, "unit_of_work_factory", None)
+    if factory is None:
+        raise HTTPException(status_code=503, detail="persistence unavailable")
+    return factory()
+
+
 def get_recovery_service(request: Request) -> PickupRecoveryService:
-    service = getattr(request.app.state, "recovery_service", None)
-    if service is None:
-        raise HTTPException(status_code=503, detail="recovery service unavailable")
-    return service
+    """Built per request, because it holds that request's unit of work."""
+    return PickupRecoveryService(
+        unit_of_work=get_unit_of_work(request),
+        shipment_eligibility=getattr(
+            request.app.state, "shipment_eligibility", None
+        ),
+    )
 
 
 def get_recovery_authorizer(request: Request) -> RecoveryAuthorizer:

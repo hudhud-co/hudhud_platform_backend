@@ -6,9 +6,11 @@ from fastapi.testclient import TestClient
 
 from pickup.config import RuntimeEnvironment, load_settings
 from pickup.infrastructure.authorizers.fake import FakeRecoveryAuthorizer
+from pickup.infrastructure.authorizers.pickup_fake import FakePickupAuthorizer
 from pickup.infrastructure.fake_shipment_eligibility import InMemoryShipmentEligibilityAdapter
 from pickup.infrastructure.memory import InMemoryRecoveryUnitOfWork
 from pickup.main import create_app
+from pickup.ports.authorization import PickupActor
 
 
 def test_health_is_liveness_only() -> None:
@@ -32,12 +34,19 @@ def test_ready_blocks_default_production_adapters() -> None:
 
 
 def test_ready_passes_with_injected_test_adapters() -> None:
-    settings = load_settings(environment=RuntimeEnvironment.TEST)
+    settings = load_settings(
+        environment=RuntimeEnvironment.TEST,
+        signing_key="test-signing-key-value-32-chars-long",
+    )
     app = create_app(
         settings,
         unit_of_work=InMemoryRecoveryUnitOfWork(),
         shipment_eligibility=InMemoryShipmentEligibilityAdapter(production_ready=True),
         recovery_authorizer=FakeRecoveryAuthorizer(production_ready=True),
+        pickup_authorizer=FakePickupAuthorizer(
+            default_actor=PickupActor(actor_id="driver-1"),
+            production_ready=True,
+        ),
     )
     client = TestClient(app)
     ready = client.get("/ready")

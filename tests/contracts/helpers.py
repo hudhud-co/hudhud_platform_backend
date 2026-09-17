@@ -15,6 +15,7 @@ CONTRACTS_ROOT = REPO_ROOT / "contracts" / "events"
 A1_DIR = CONTRACTS_ROOT / "legacy_bridge.observation.shipment_timeline_entry"
 A2_DIR = CONTRACTS_ROOT / "legacy_bridge.observation.audit_entry"
 C10_DIR = CONTRACTS_ROOT / "pickup.fact.accepted"
+C11_DIR = CONTRACTS_ROOT / "pickup.fact.handover_completed"
 ENVELOPE_SCHEMA_PATH = CONTRACTS_ROOT / "envelope" / "v1.schema.json"
 
 
@@ -54,6 +55,13 @@ def c10_validator() -> Draft202012Validator:
     return build_validator(
         C10_DIR / "v1.schema.json",
         C10_DIR / "v1.payload.schema.json",
+    )
+
+
+def c11_validator() -> Draft202012Validator:
+    return build_validator(
+        C11_DIR / "v1.schema.json",
+        C11_DIR / "v1.payload.schema.json",
     )
 
 

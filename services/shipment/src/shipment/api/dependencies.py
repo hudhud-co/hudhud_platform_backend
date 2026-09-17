@@ -20,11 +20,22 @@ def extract_bearer_token(authorization: str | None) -> str | None:
     return parts[1]
 
 
+def get_unit_of_work(request: Request):
+    """One unit of work per request; FastAPI caches it for that request only."""
+    factory = getattr(request.app.state, "unit_of_work_factory", None)
+    if factory is None:
+        raise HTTPException(status_code=503, detail="persistence unavailable")
+    return factory()
+
+
 def get_acceptance_service(request: Request) -> AcceptanceLifecycleService:
-    service = getattr(request.app.state, "acceptance_service", None)
-    if service is None:
-        raise HTTPException(status_code=503, detail="acceptance service unavailable")
-    return service
+    """Built per request, because it holds that request's unit of work.
+
+    A single long-lived instance shared one `_session` and one set of optimistic version
+    maps across every caller — so two concurrent acceptances could commit against each
+    other's state.
+    """
+    return AcceptanceLifecycleService(get_unit_of_work(request))
 
 
 def get_acceptance_authorizer(request: Request) -> AcceptanceAuthorizer:

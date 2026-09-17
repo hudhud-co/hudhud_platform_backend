@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/delivery.fact.attempt_failed/v1.payload.schema.json",
+  "title": "delivery.fact.attempt_failed v1 payload",
+  "description": "ADR-0011 D2 — a door visit that ended without a handover. The parcel stays in HUDHUD custody (v6.3 p.28, p.34) and what happens next is decided by operations (OPS-08), so this event carries no disposition of its own.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "stop_id",
+    "tracking_code",
+    "reason",
+    "recorded_at",
+    "recorded_by_driver_id",
+    "parcel_remains_in_hudhud_custody"
+  ],
+  "properties": {
+    "stop_id": { "type": "string", "format": "uuid" },
+    "tracking_code": { "type": "string", "pattern": "^SHP-\\d{8}-\\d{6}$" },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "ABSENT_AFTER_WAIT",
+        "VERIFICATION_NOT_COMPLETED",
+        "RECEIVER_REFUSED"
+      ]
+    },
+    "refusal_reason": {
+      "type": ["string", "null"],
+      "enum": ["CHANGED_MIND", "WRONG_ITEM", "LOOKS_DAMAGED", null],
+      "description": "Optional even when the receiver refused — the Driver App does not require one."
+    },
+    "amount_collected_minor_units": {
+      "const": 0,
+      "description": "v6.3 p.34 — nothing is collected on a refusal or a failed attempt."
+    },
+    "recorded_at": { "type": "string", "format": "date-time" },
+    "recorded_by_driver_id": { "type": "string", "format": "uuid" },
+    "parcel_remains_in_hudhud_custody": {
+      "const": true,
+      "description": "Stated rather than implied: a failed attempt never transfers custody."
+    }
+  }
+}

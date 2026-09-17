@@ -22,9 +22,10 @@ class ShipmentStatus(StrEnum):
 
 
 class CustodyType(StrEnum):
-    """Custody holder type at acceptance (ADR-0003 W17-A / Legacy CUSTODY_TYPE_*)."""
+    """Custody holder type (ADR-0003 W17-A / Legacy CUSTODY_TYPE_*)."""
 
     PICKUP_DRIVER = "PICKUP_DRIVER"
+    ORIGIN_HUB = "ORIGIN_HUB"
 
 
 class PickupTaskStatus(StrEnum):
@@ -43,9 +44,17 @@ class PickupTaskAcceptanceState(StrEnum):
 
 
 class ShipmentEventType(StrEnum):
-    """Immutable shipment timeline event types at acceptance."""
+    """Immutable shipment timeline event types."""
 
     ACCEPTANCE_SCAN = "ACCEPTANCE_SCAN"
+    HUB_HANDOVER_RECEIPT = "HUB_HANDOVER_RECEIPT"
+
+
+class HandoverOutcome(StrEnum):
+    """Custody-releasing hub receipt outcomes. A missing parcel releases nothing."""
+
+    RECEIVED = "RECEIVED"
+    RECEIVED_WITH_DISCREPANCY = "RECEIVED_WITH_DISCREPANCY"
 
 
 class AcceptanceOutcome(StrEnum):

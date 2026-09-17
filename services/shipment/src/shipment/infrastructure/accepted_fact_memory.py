@@ -10,6 +10,7 @@ from messaging_conformance.enums import InboxStatus, JetStreamConsumerAction
 from shipment.domain.entities import (
     AcceptanceDecisionRecord,
     AuditLogEntry,
+    CustodyTransferRecord,
     Shipment,
     ShipmentEvent,
 )
@@ -58,12 +59,14 @@ class MemoryAcceptedFactStore:
         self._shipments: dict[UUID, Shipment] = {}
         self._shipment_events: list[ShipmentEvent] = []
         self._audit_logs: list[AuditLogEntry] = []
+        self._custody_transfers: dict[UUID, CustodyTransferRecord] = {}
         self._decisions: dict[UUID, AcceptanceDecisionRecord] = {}
         self._decisions_by_pickup: dict[UUID, UUID] = {}
         self._inbox: dict[tuple[str, UUID], InboxRow] = {}
         self._tx_shipments: dict[UUID, Shipment] | None = None
         self._tx_shipment_events: list[ShipmentEvent] | None = None
         self._tx_audit_logs: list[AuditLogEntry] | None = None
+        self._tx_custody_transfers: dict[UUID, CustodyTransferRecord] | None = None
         self._tx_decisions: dict[UUID, AcceptanceDecisionRecord] | None = None
         self._tx_decisions_by_pickup: dict[UUID, UUID] | None = None
         self._tx_inbox: dict[tuple[str, UUID], InboxRow] | None = None
@@ -89,6 +92,10 @@ class MemoryAcceptedFactStore:
         return _AuditLogRepo(self)
 
     @property
+    def custody_transfers(self) -> _CustodyTransferRepo:
+        return _CustodyTransferRepo(self)
+
+    @property
     def acceptance_decisions(self) -> _DecisionRepo:
         return _DecisionRepo(self)
 
@@ -96,6 +103,7 @@ class MemoryAcceptedFactStore:
         self._tx_shipments = copy.deepcopy(self._shipments)
         self._tx_shipment_events = copy.deepcopy(self._shipment_events)
         self._tx_audit_logs = copy.deepcopy(self._audit_logs)
+        self._tx_custody_transfers = copy.deepcopy(self._custody_transfers)
         self._tx_decisions = copy.deepcopy(self._decisions)
         self._tx_decisions_by_pickup = copy.deepcopy(self._decisions_by_pickup)
         self._tx_inbox = copy.deepcopy(self._inbox)
@@ -111,6 +119,7 @@ class MemoryAcceptedFactStore:
         self._shipments = self._tx_shipments
         self._shipment_events = self._tx_shipment_events  # type: ignore[assignment]
         self._audit_logs = self._tx_audit_logs  # type: ignore[assignment]
+        self._custody_transfers = self._tx_custody_transfers  # type: ignore[assignment]
         self._decisions = self._tx_decisions  # type: ignore[assignment]
         self._decisions_by_pickup = self._tx_decisions_by_pickup  # type: ignore[assignment]
         self._inbox = self._tx_inbox  # type: ignore[assignment]
@@ -125,6 +134,7 @@ class MemoryAcceptedFactStore:
         self._tx_shipments = None
         self._tx_shipment_events = None
         self._tx_audit_logs = None
+        self._tx_custody_transfers = None
         self._tx_decisions = None
         self._tx_decisions_by_pickup = None
         self._tx_inbox = None
@@ -265,6 +275,11 @@ class MemoryAcceptedFactStore:
             return self._tx_shipment_events
         return self._shipment_events
 
+    def _working_custody_transfers(self) -> dict[UUID, CustodyTransferRecord]:
+        if self._tx_custody_transfers is not None:
+            return self._tx_custody_transfers
+        return self._custody_transfers
+
     def _working_audit_logs(self) -> list[AuditLogEntry]:
         if self._tx_audit_logs is not None:
             return self._tx_audit_logs
@@ -350,3 +365,26 @@ class _DecisionRepo:
         if shipment_id is None:
             return None
         return self.get_for_shipment(shipment_id)
+
+
+class _CustodyTransferRepo:
+    """One custody transfer per pickup task — the at-least-once convergence key."""
+
+    def __init__(self, store: MemoryAcceptedFactStore) -> None:
+        self._store = store
+
+    def save(self, transfer: CustodyTransferRecord) -> None:
+        self._store._working_custody_transfers()[transfer.pickup_task_id] = copy.deepcopy(
+            transfer
+        )
+
+    def get_for_pickup_task(self, pickup_task_id: UUID) -> CustodyTransferRecord | None:
+        transfer = self._store._working_custody_transfers().get(pickup_task_id)
+        return copy.deepcopy(transfer) if transfer is not None else None
+
+    def list_for_shipment(self, shipment_id: UUID) -> tuple[CustodyTransferRecord, ...]:
+        return tuple(
+            copy.deepcopy(transfer)
+            for transfer in self._store._working_custody_transfers().values()
+            if transfer.shipment_id == shipment_id
+        )

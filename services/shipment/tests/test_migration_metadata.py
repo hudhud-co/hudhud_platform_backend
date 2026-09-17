@@ -9,6 +9,7 @@ from shipment.infrastructure.persistence.models import (
     AcceptanceDecisionRow,
     AcceptanceIdempotencyRow,
     Base,
+    CustodyTransferRow,
     IntegrationInboxRow,
     OrderIntentRow,
     PickupTaskSnapshotRow,
@@ -27,6 +28,7 @@ def test_single_head_migration_chain() -> None:
         "w16a_shipment_acceptance_idempotency_001.py",
         "w17d_shipment_custody_pickup_driver_001.py",
         "w17f_shipment_accepted_inbox_001.py",
+        "w19b_shipment_hub_custody_transfer_001.py",
     ]
     w16 = (versions / "w16a_shipment_acceptance_idempotency_001.py").read_text(encoding="utf-8")
     assert "down_revision" in w16
@@ -49,6 +51,17 @@ def test_single_head_migration_chain() -> None:
     assert "uq_shipment_inbox_consumer_event" in w17f
     assert "sa.ForeignKey" not in w17f
 
+    w19b = (versions / "w19b_shipment_hub_custody_transfer_001.py").read_text(encoding="utf-8")
+    assert 'down_revision: str | Sequence[str] | None = "w17f_accepted_inbox_001"' in w19b
+    assert 'revision: str = "w19b_hub_custody_transfer_001"' in w19b
+    assert len("w19b_hub_custody_transfer_001") <= 32
+    assert "shipment_custody_transfers" in w19b
+    assert "uq_shipment_custody_transfers_pickup_task_id" in w19b
+    assert "ck_shipment_custody_transfers_actor_differs" in w19b
+    assert "ck_shipment_custody_transfers_releasing_outcome" in w19b
+    assert "custody_transferred_at" in w19b
+    assert "sa.ForeignKey" not in w19b
+
 
 def test_metadata_tables_owned_by_service() -> None:
     table_names = set(Base.metadata.tables)
@@ -61,6 +74,7 @@ def test_metadata_tables_owned_by_service() -> None:
         AcceptanceDecisionRow.__tablename__,
         AcceptanceIdempotencyRow.__tablename__,
         IntegrationInboxRow.__tablename__,
+        CustodyTransferRow.__tablename__,
     }
     assert IntegrationInboxRow.__table_args__[0].name == "uq_shipment_inbox_consumer_event"
 

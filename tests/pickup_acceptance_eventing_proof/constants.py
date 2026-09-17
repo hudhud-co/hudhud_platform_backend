@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
-COMPOSE_PROJECT = "hudhud-pickup-acceptance-eventing-proof-lab"
+# Every name below is namespaced per process by `tests/lab_namespace.py`, so two of these
+# labs — or two pytest sessions — can run at once without tearing down each other's
+# containers. Pin `HUDHUD_LAB_SUFFIX` to share a lab on purpose; set it to "" to restore
+# the old fixed names.
+from lab_namespace import namespaced
+
+COMPOSE_PROJECT = namespaced("hudhud-pickup-acceptance-eventing-proof-lab")
 COMPOSE_PROFILE = "pickup-acceptance-eventing-proof"
-NETWORK_NAME = "hudhud_pickup_acceptance_eventing_proof"
-VOLUME_PG_NAME = "hudhud_pickup_acceptance_eventing_proof_pgdata"
-VOLUME_JS_NAME = "hudhud_pickup_acceptance_eventing_proof_jetstream"
+NETWORK_NAME = namespaced("hudhud_pickup_acceptance_eventing_proof")
+VOLUME_PG_NAME = namespaced("hudhud_pickup_acceptance_eventing_proof_pgdata")
+VOLUME_JS_NAME = namespaced("hudhud_pickup_acceptance_eventing_proof_jetstream")
 
 POSTGRES_SERVICE = "postgres"
 NATS_SERVICE = "nats"
+
+# The container names the health probes inspect. Namespaced like everything else, or a
+# concurrent lab's container would be probed instead of this one's.
+POSTGRES_CONTAINER = namespaced("hudhud-pickup-acceptance-eventing-proof-postgres")
+NATS_CONTAINER = namespaced("hudhud-pickup-acceptance-eventing-proof-nats")
 
 OWNER_USER = "pickup_acc_lab_owner"
 OWNER_PASSWORD = "pickup_acc_lab_owner_dev_only"
@@ -22,8 +33,8 @@ PICKUP_ROLE_PASSWORD = "pickup_svc_dev_only"
 SHIPMENT_ROLE = "shipment_svc"
 SHIPMENT_ROLE_PASSWORD = "shipment_svc_dev_only"
 
-PICKUP_EXPECTED_HEAD = "w17e_pickup_accepted_outbox_001"
-SHIPMENT_EXPECTED_HEAD = "w17f_accepted_inbox_001"
+PICKUP_EXPECTED_HEAD = "w19c_pickup_stop_outcomes_001"
+SHIPMENT_EXPECTED_HEAD = "w19b_hub_custody_transfer_001"
 
 PICKUP_STREAM = "HUDHUD_PICKUP"
 PICKUP_DURABLE = "shipment_pickup_facts_v1"
@@ -54,6 +65,16 @@ PICKUP_TABLES = frozenset(
         "pickup_recovery_idempotency",
         "pickup_acceptance_idempotency",
         "pickup_integration_outbox",
+        "pickup_task_history",
+        "pickup_driver_work_sessions",
+        "pickup_courier_challenges",
+        "pickup_courier_manifests",
+        "pickup_handover_manifests",
+        "pickup_handover_manifest_items",
+        "pickup_offline_authorizations",
+        "pickup_offline_streams",
+        "pickup_offline_events",
+        "pickup_offline_reconciliation_cases",
     }
 )
 
@@ -67,5 +88,6 @@ SHIPMENT_TABLES = frozenset(
         "acceptance_decisions",
         "acceptance_idempotency",
         "shipment_integration_inbox",
+        "shipment_custody_transfers",
     }
 )

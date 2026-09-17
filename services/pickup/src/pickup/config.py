@@ -28,6 +28,9 @@ class ProductionStartupBlockedError(RuntimeError):
     """Raised when production configuration gates are not satisfied."""
 
 
+_MISSING = object()
+
+
 def _optional_str(name: str) -> str | None:
     raw = os.environ.get(name)
     if raw is None or raw.strip() == "":
@@ -100,6 +103,24 @@ class PickupSettings:
 
     adr_0010_credentials_configured: bool = False
 
+    # Handover ceremony and offline authority signing. Secret comes from the
+    # environment only; an unset key disables those features rather than
+    # falling back to a weak default.
+    signing_key: str | None = None
+    #: Base URL of the Identity service. When set together with a service credential,
+    #: Pickup authorizes through real token introspection instead of default-deny.
+    identity_base_url: str | None = None
+    identity_service_credential: str | None = None
+    require_courier_verification: bool = True
+    courier_challenge_ttl_seconds: int = 180
+    courier_verification_valid_seconds: int = 900
+    courier_confirmation_valid_seconds: int = 900
+    courier_max_failed_attempts: int = 5
+    courier_lockout_seconds: int = 300
+    offline_authorization_ttl_minutes: int = 720
+    offline_sync_grace_days: int = 3
+    offline_sync_max_events: int = 200
+
     # Staging/production relay cutover evidence (configuration gates only —
     # a True boolean is not proof that external revocation occurred).
     shipment_acceptance_ingestion_mode_native_confirmed: bool = False
@@ -127,6 +148,10 @@ class PickupSettings:
     nats_tls_ca_file: str | None = None
     nats_connect_timeout_seconds: float = 5.0
 
+    @property
+    def identity_authorization_enabled(self) -> bool:
+        return bool(self.identity_base_url and self.identity_service_credential)
+
     def assert_production_gates(self) -> None:
         """Block production startup when persistence or NATS gates are unsafe."""
         if self.environment is not RuntimeEnvironment.PRODUCTION:
@@ -137,6 +162,15 @@ class PickupSettings:
             raise ProductionStartupBlockedError(msg)
         if not self.database_url:
             missing.append("DATABASE_URL")
+        if not self.signing_key:
+            missing.append("PICKUP_SIGNING_KEY")
+        if not self.identity_authorization_enabled:
+            # Default-deny is safe but unusable: production must authorize for real.
+            missing.append("PICKUP_IDENTITY_BASE_URL")
+            missing.append("PICKUP_IDENTITY_SERVICE_CREDENTIAL")
+        if not self.require_courier_verification:
+            # Driver-unilateral custody start must never reach production.
+            missing.append("require_courier_verification_must_remain_true")
         if self.relay_enabled:
             missing.extend(self.relay_cutover_gate_blockers())
         if self.production_ready:
@@ -145,6 +179,11 @@ class PickupSettings:
             joined = ", ".join(missing)
             msg = f"Production startup blocked — unset gates: {joined}"
             raise ProductionStartupBlockedError(msg)
+
+    @property
+    def driver_features_enabled(self) -> bool:
+        """Handover and offline features need a signing key — otherwise fail closed."""
+        return bool(self.signing_key)
 
     def relay_cutover_gate_blockers(self) -> list[str]:
         """Honest blockers for staging/production relay cutover configuration."""
@@ -243,6 +282,30 @@ def load_settings(**overrides: object) -> PickupSettings:
         env_val = _optional_str(env_name)
         return default if env_val is None else env_val
 
+    signing_key_override = overrides.get("signing_key", _MISSING)
+    if signing_key_override is _MISSING:
+        signing_key = _optional_str("PICKUP_SIGNING_KEY")
+    else:
+        signing_key = None if signing_key_override is None else str(signing_key_override)
+
+    identity_base_url_override = overrides.get("identity_base_url", _MISSING)
+    if identity_base_url_override is _MISSING:
+        identity_base_url = _optional_str("PICKUP_IDENTITY_BASE_URL")
+    else:
+        identity_base_url = (
+            None if identity_base_url_override is None else str(identity_base_url_override)
+        )
+
+    identity_credential_override = overrides.get("identity_service_credential", _MISSING)
+    if identity_credential_override is _MISSING:
+        identity_service_credential = _optional_str("PICKUP_IDENTITY_SERVICE_CREDENTIAL")
+    else:
+        identity_service_credential = (
+            None
+            if identity_credential_override is None
+            else str(identity_credential_override)
+        )
+
     return PickupSettings(
         environment=environment,
         service_name=str(
@@ -252,6 +315,66 @@ def load_settings(**overrides: object) -> PickupSettings:
         persistence_backend=persistence_backend,
         production_ready=bool(
             _override_or("production_ready", "PICKUP_PRODUCTION_READY", False)
+        ),
+        signing_key=signing_key,
+        identity_base_url=identity_base_url,
+        identity_service_credential=identity_service_credential,
+        require_courier_verification=bool(
+            _override_or(
+                "require_courier_verification",
+                "PICKUP_REQUIRE_COURIER_VERIFICATION",
+                True,
+            )
+        ),
+        courier_challenge_ttl_seconds=int(
+            _override_or(
+                "courier_challenge_ttl_seconds",
+                "PICKUP_COURIER_CHALLENGE_TTL_SECONDS",
+                180,
+            )  # type: ignore[arg-type]
+        ),
+        courier_verification_valid_seconds=int(
+            _override_or(
+                "courier_verification_valid_seconds",
+                "PICKUP_COURIER_VERIFICATION_VALID_SECONDS",
+                900,
+            )  # type: ignore[arg-type]
+        ),
+        courier_confirmation_valid_seconds=int(
+            _override_or(
+                "courier_confirmation_valid_seconds",
+                "PICKUP_COURIER_CONFIRMATION_VALID_SECONDS",
+                900,
+            )  # type: ignore[arg-type]
+        ),
+        courier_max_failed_attempts=int(
+            _override_or(
+                "courier_max_failed_attempts",
+                "PICKUP_COURIER_MAX_FAILED_ATTEMPTS",
+                5,
+            )  # type: ignore[arg-type]
+        ),
+        courier_lockout_seconds=int(
+            _override_or(
+                "courier_lockout_seconds", "PICKUP_COURIER_LOCKOUT_SECONDS", 300
+            )  # type: ignore[arg-type]
+        ),
+        offline_authorization_ttl_minutes=int(
+            _override_or(
+                "offline_authorization_ttl_minutes",
+                "PICKUP_OFFLINE_AUTHORIZATION_TTL_MINUTES",
+                720,
+            )  # type: ignore[arg-type]
+        ),
+        offline_sync_grace_days=int(
+            _override_or(
+                "offline_sync_grace_days", "PICKUP_OFFLINE_SYNC_GRACE_DAYS", 3
+            )  # type: ignore[arg-type]
+        ),
+        offline_sync_max_events=int(
+            _override_or(
+                "offline_sync_max_events", "PICKUP_OFFLINE_SYNC_MAX_EVENTS", 200
+            )  # type: ignore[arg-type]
         ),
         adr_0010_credentials_configured=bool(
             _override_or(

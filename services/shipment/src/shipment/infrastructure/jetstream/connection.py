@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from shipment.config import RuntimeEnvironment, ShipmentSettings
-from shipment.domain.contract import PICKUP_ACCEPTED_DURABLE_CONSUMER, PICKUP_ACCEPTED_STREAM
 from shipment.infrastructure.jetstream.binding import (
+    CONSUMER_BINDINGS,
     ConsumerBindingMismatchError,
     verify_consumer_info,
 )
@@ -107,21 +107,27 @@ async def bind_existing_pull_consumer(
     settings: ShipmentSettings,
 ) -> tuple[Any, Any]:
     """Bind to infra-provisioned durable — never create or mutate topology."""
-    if settings.consumer_name != PICKUP_ACCEPTED_DURABLE_CONSUMER:
+    durable, stream = _resolve_binding(settings)
+    info = await js.consumer_info(stream, durable)
+    verify_consumer_info(info, durable_name=durable)
+    subscription = await js.pull_subscribe_bind(durable=durable, stream=stream)
+    bound_info = await subscription.consumer_info()
+    verify_consumer_info(bound_info, durable_name=durable)
+    return subscription, bound_info
+
+
+def _resolve_binding(settings: ShipmentSettings) -> tuple[str, str]:
+    """Resolve the single durable this worker instance serves — never create topology."""
+    binding = CONSUMER_BINDINGS.get(settings.consumer_name)
+    if binding is None:
+        known = ", ".join(sorted(CONSUMER_BINDINGS))
         msg = (
-            "Configured consumer name does not match pickup.fact.accepted durable binding — "
-            f"expected {PICKUP_ACCEPTED_DURABLE_CONSUMER}, got {settings.consumer_name}"
+            "Configured consumer name does not match a registered Pickup durable "
+            f"binding — expected one of {known}, got {settings.consumer_name}"
         )
         raise ConsumerBindingMismatchError(msg)
-    info = await js.consumer_info(PICKUP_ACCEPTED_STREAM, PICKUP_ACCEPTED_DURABLE_CONSUMER)
-    verify_consumer_info(info)
-    subscription = await js.pull_subscribe_bind(
-        durable=PICKUP_ACCEPTED_DURABLE_CONSUMER,
-        stream=PICKUP_ACCEPTED_STREAM,
-    )
-    bound_info = await subscription.consumer_info()
-    verify_consumer_info(bound_info)
-    return subscription, bound_info
+    stream, _subject = binding
+    return settings.consumer_name, stream
 
 
 async def verify_nats_readiness(
@@ -130,19 +136,14 @@ async def verify_nats_readiness(
     settings: ShipmentSettings,
 ) -> NatsConnectionReport:
     """Verify durable binding for readiness without starting the worker."""
-    if settings.consumer_name != PICKUP_ACCEPTED_DURABLE_CONSUMER:
-        msg = (
-            "Configured consumer name does not match pickup.fact.accepted durable binding — "
-            f"expected {PICKUP_ACCEPTED_DURABLE_CONSUMER}, got {settings.consumer_name}"
-        )
-        raise ConsumerBindingMismatchError(msg)
-    info = await js.consumer_info(PICKUP_ACCEPTED_STREAM, PICKUP_ACCEPTED_DURABLE_CONSUMER)
-    verify_consumer_info(info)
+    durable, stream = _resolve_binding(settings)
+    info = await js.consumer_info(stream, durable)
+    verify_consumer_info(info, durable_name=durable)
     return NatsConnectionReport(
         connected=True,
         binding_verified=True,
-        stream=PICKUP_ACCEPTED_STREAM,
-        durable_name=PICKUP_ACCEPTED_DURABLE_CONSUMER,
+        stream=stream,
+        durable_name=durable,
     )
 
 

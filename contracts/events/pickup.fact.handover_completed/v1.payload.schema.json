@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/pickup.fact.handover_completed/v1.payload.schema.json",
+  "title": "pickup.fact.handover_completed v1 payload",
+  "description": "ADR-0009 C11 — Pickup-owned custody-releasing hub handover fact. Minimum fields Shipment persists to move custody from PICKUP_DRIVER to ORIGIN_HUB without reading the Pickup database.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "pickup_task_id",
+    "shipment_id",
+    "handover_manifest_id",
+    "receiving_hub_id",
+    "outcome",
+    "released_at",
+    "releasing_driver_user_id",
+    "receiving_actor_id"
+  ],
+  "properties": {
+    "pickup_task_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "PickupTask aggregate id; MUST equal envelope aggregate_id."
+    },
+    "shipment_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Payload correlation only — not Shipment aggregate authority."
+    },
+    "handover_manifest_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Pickup-owned hub handover manifest the parcel was released on."
+    },
+    "receiving_hub_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Hub that physically received the parcel. For WRONG_HUB_RECEIVED this is the actual receiving hub, not the planned one."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["RECEIVED", "RECEIVED_WITH_DISCREPANCY"],
+      "description": "Custody-releasing outcomes only. A parcel listed but not produced (MISSING) MUST NOT use this event type — it stays in pickup-driver custody."
+    },
+    "discrepancy_reason": {
+      "type": "string",
+      "enum": ["DAMAGED_AT_HANDOVER", "WRONG_HUB_RECEIVED", "OTHER"],
+      "description": "Required when outcome is RECEIVED_WITH_DISCREPANCY. MISSING_FROM_DRIVER is not a releasing reason."
+    },
+    "released_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Operational hub receipt timestamp from Pickup (RFC 3339 UTC). Shipment sets custody_transferred_at from this value."
+    },
+    "releasing_driver_user_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Driver whose custody ends. Shipment verifies this equals its current_custody_id before applying."
+    },
+    "receiving_actor_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Hub-scoped actor that recorded the receipt. Shipment persists as audit actor_id. MUST NOT equal releasing_driver_user_id."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "outcome": { "const": "RECEIVED_WITH_DISCREPANCY" } },
+        "required": ["outcome"]
+      },
+      "then": { "required": ["discrepancy_reason"] }
+    }
+  ],
+  "not": {
+    "anyOf": [
+      { "required": ["lsn"] },
+      { "required": ["xid"] },
+      { "required": ["txid"] },
+      { "required": ["source_op"] },
+      { "required": ["before"] },
+      { "required": ["after"] },
+      { "required": ["row_data"] },
+      { "required": ["raw_row"] },
+      { "required": ["change_data"] },
+      { "required": ["op"] },
+      { "required": ["cdc_payload"] },
+      { "required": ["password"] },
+      { "required": ["token"] },
+      { "required": ["jwt"] },
+      { "required": ["api_key"] },
+      { "required": ["secret"] },
+      { "required": ["inline_evidence"] },
+      { "required": ["evidence_bytes"] },
+      { "required": ["storage_uri"] },
+      { "required": ["shipment_aggregate_version"] }
+    ]
+  }
+}

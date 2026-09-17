@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/finance.fact.payout_decided/v1.payload.schema.json",
+  "title": "finance.fact.payout_decided v1 payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "payout_id",
+    "merchant_id",
+    "status",
+    "amount_minor_units",
+    "currency",
+    "decided_at"
+  ],
+  "properties": {
+    "payout_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "merchant_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "APPROVED",
+        "REJECTED"
+      ]
+    },
+    "amount_minor_units": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "currency": {
+      "type": "string",
+      "enum": [
+        "IQD"
+      ]
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "has_rejection_reason": {
+      "type": "boolean",
+      "description": "Whether a reason was recorded. The reason text stays in Finance; it can name a person or an investigation."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "REJECTED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "has_rejection_reason"
+        ],
+        "properties": {
+          "has_rejection_reason": {
+            "const": true
+          }
+        },
+        "description": "A rejection always says why, even if the words stay inside Finance."
+      }
+    }
+  ]
+}

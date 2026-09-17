@@ -26,10 +26,10 @@ adr_index:
     status: Accepted
   ADR-0004:
     title: Identity, Gateway, and service trust
-    status: Proposed
+    status: Accepted
   ADR-0005:
     title: COD, wallet, ledger, and settlement
-    status: Proposed — Policy Blocked
+    status: superseded by ADR-0012
   ADR-0006:
     title: One-writer data cutover
     status: Accepted
@@ -45,6 +45,12 @@ adr_index:
   ADR-0010:
     title: NATS service identities, subject ACLs, and rotation
     status: Proposed
+  ADR-0011:
+    title: v6.3 platform bounded-context map and service topology
+    status: Accepted
+  ADR-0012:
+    title: COD, driver cash custody, wallet and settlement (v6.3)
+    status: Accepted
 
 wave_6_runtime_evidence:
   integration_date: 2026-09-01
@@ -238,6 +244,65 @@ wave_18_runtime_evidence:
       staging_production_tls_required: enforced_in_config
       production_ready: false
 
+wave_19_runtime_evidence:
+  integration_date: 2026-09-14
+  production_ready: false
+  proof_scope: >
+    W19 Driver/Pickup parity — pickup-capability driver work sessions, driver task
+    lifecycle, sender handover ceremony (dynamic challenge + parcel manifest), hub
+    handover manifest with custody release, offline command queue with signed
+    authorization and append-only replay, Operations reconciliation cases, and the
+    canonical PICKUP_DRIVER → ORIGIN_HUB custody transfer in Shipment.
+  classifications:
+    contract_registered: pickup.fact.handover_completed.v1
+    implementation_status: implementation_authorized_not_production_enabled
+    evidence_class: unit_http_in_process_plus_disposable_migration_lab
+    migration_runtime: proven_local_disposable_lab
+    jetstream_runtime: pickup_fact_accepted_pipeline_reproven_only
+  limitations:
+    - w19_behaviour_proven_against_in_memory_unit_of_work_and_in_process_http_only
+    - no_disposable_postgres_behaviour_probe_for_driver_handover_or_offline_paths
+    - no_jetstream_runtime_proof_for_pickup_fact_handover_completed_subject
+    - handover_durable_topology_provisioning_deferred
+    - driver_command_authorization_adapter_deferred_default_deny
+    - no_production_credentials
+  excluded_scope:
+    finance_cod_cash_custody_settlement_payout:
+      reason: ADR-0005 Proposed — Policy Blocked; implementation allowed = no
+    driver_identity_roles_permissions_store:
+      reason: ADR-0004 Proposed; auth_identity data ownership undecided
+    delivery_capability_attendance_and_delivery_task_lifecycle:
+      reason: delivery context extraction_status = pending_cutover; no delivery service
+    driver_notifications_and_media_storage:
+      reason: notification and media_proof contexts have undecided owners
+  services:
+    pickup:
+      driver_work_session_lifecycle: implemented_unit_and_http_proven
+      driver_task_lifecycle: implemented_forward_only_idempotent
+      sender_handover_ceremony: implemented_fail_closed
+      hub_handover_manifest: implemented_custody_release_via_outbox
+      offline_command_queue: implemented_signed_append_only_replay
+      pickup_fact_handover_completed_producer: proven_in_memory_and_sqlalchemy_outbox
+      driver_wave_migration_disposable_postgres_proof: proven_local_disposable_lab
+      driver_wave_behaviour_postgres_probe: deferred
+      production_ready: false
+    shipment:
+      pickup_fact_handover_completed_consumer: implemented_inbox_fail_closed
+      custody_transfer_origin_hub: implemented_single_writer
+      custody_transfer_migration_disposable_postgres_proof: proven_local_disposable_lab
+      custody_transfer_behaviour_postgres_probe: deferred
+      production_ready: false
+  regression_evidence:
+    service_postgres_proof: 60 passed, 1 pre-existing failure
+    pickup_acceptance_eventing_proof: passed
+    nats_security_proof: 51 passed
+  pre_existing_failure_not_caused_by_this_wave:
+    test: tests/service_postgres_proof/test_shipment_integration.py::test_shipment_http_acceptance_against_postgres
+    cause: >
+      The staging app build in probes/shipment_http.py predates the
+      acceptance_ingestion_mode staging gate added by 70597ca; the probe was last
+      updated in dbf873b and never set the mode. Owned by the eventing cutover scope.
+
 legacy_event_bridge:
   classification: transitional_technical_deployable
   bounded_context: false
@@ -294,14 +359,14 @@ bounded_contexts:
     display_name: Auth and Identity
     legacy_owner: auth
     legacy_module_path: app/modules/auth
-    proposed_platform_owner: auth_identity
+    proposed_platform_owner: identity
     adr_reference: ADR-0004
     adr_status: Proposed
-    transitional_deployable_candidate: deferred_wave_5
-    extraction_status: pending_identity_adr
-    policy_prerequisites: [customer_identity_boundary_adr, organization_model_adr]
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
+    policy_prerequisites: []
     data_ownership:
-      strategy: undecided
+      strategy: dedicated_database
       legacy_tables: [users, user_sessions, otp_requests, roles, permissions, legal_documents]
       notes: RBAC seed in app/core/db/auth_rbac_seed.py — must not become shared package ORM
     allowed_dependencies: []
@@ -313,14 +378,14 @@ bounded_contexts:
     display_name: Customer
     legacy_owner: auth
     legacy_module_path: partial — no standalone module; spread across auth, address_book, send_parcel, tracking, support
-    proposed_platform_owner: undecided
+    proposed_platform_owner: customer
     adr_reference: ADR-0004
     adr_status: Proposed
-    transitional_deployable_candidate: blocked_pending_adr_0004
-    extraction_status: policy_blocked
-    policy_prerequisites: [customer_identity_boundary_adr, organization_model_adr]
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
+    policy_prerequisites: []
     data_ownership:
-      strategy: undecided
+      strategy: dedicated_database
       legacy_tables: partial — profile fields in auth tables
       notes: Customer is a partial capability in legacy, not a module
     allowed_dependencies: []
@@ -332,12 +397,12 @@ bounded_contexts:
     display_name: Address Book
     legacy_owner: address_book
     legacy_module_path: app/modules/address_book
-    proposed_platform_owner: undecided
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
+    proposed_platform_owner: customer
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
     policy_prerequisites: []
     data_ownership:
-      strategy: undecided
+      strategy: dedicated_database
       legacy_tables: [pickup_addresses, receiver_contacts]
     allowed_dependencies: []
     public_api_ownership: undecided
@@ -348,13 +413,29 @@ bounded_contexts:
     display_name: Merchant and Store
     legacy_owner: merchant
     legacy_module_path: app/modules/merchant, app/modules/merchant_applications
-    proposed_platform_owner: undecided
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
+    proposed_platform_owner: merchant
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
     policy_prerequisites: []
     data_ownership:
-      strategy: undecided
+      strategy: dedicated_database
       legacy_tables: [merchants, store_locations, store_categories, store_products, store_team, store_warehouse_assignments]
+    allowed_dependencies: []
+    public_api_ownership: undecided
+    published_events: []
+    consumed_events: []
+
+  driver_workforce:
+    display_name: Driver Workforce
+    legacy_owner: driver
+    legacy_module_path: app/modules/driver, app/modules/driver_shifts
+    proposed_platform_owner: workforce
+    transitional_deployable_candidate: adr_0013_service
+    extraction_status: in_progress
+    policy_prerequisites: []
+    data_ownership:
+      strategy: dedicated_database
+      legacy_tables: [drivers, driver_shifts, driver_leave_requests, driver_attendance]
     allowed_dependencies: []
     public_api_ownership: undecided
     published_events: []
@@ -364,12 +445,12 @@ bounded_contexts:
     display_name: Serviceability
     legacy_owner: send_parcel
     legacy_module_path: app/modules/send_parcel/domain/serviceability.py
-    proposed_platform_owner: undecided
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
-    policy_prerequisites: [serviceability_engine_adr]
+    proposed_platform_owner: ordering
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
+    policy_prerequisites: []
     data_ownership:
-      strategy: undecided
+      strategy: dedicated_database
       legacy_tables: none — env-based allowlist only
       notes: partial — city:area allowlist, no geo engine
     allowed_dependencies: []
@@ -381,12 +462,12 @@ bounded_contexts:
     display_name: Pricing and Quote
     legacy_owner: send_parcel
     legacy_module_path: app/modules/send_parcel/domain/pricing.py
-    proposed_platform_owner: undecided
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
-    policy_prerequisites: [pricing_model_adr]
+    proposed_platform_owner: ordering
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
+    policy_prerequisites: []
     data_ownership:
-      strategy: undecided
+      strategy: dedicated_database
       legacy_tables: none — rule version send_parcel_v1 in code
       notes: partial — flat IQD tariff only
     allowed_dependencies: []
@@ -398,12 +479,12 @@ bounded_contexts:
     display_name: Order
     legacy_owner: order
     legacy_module_path: app/modules/order
-    proposed_platform_owner: undecided
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
+    proposed_platform_owner: ordering
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
     policy_prerequisites: []
     data_ownership:
-      strategy: undecided
+      strategy: dedicated_database
       legacy_tables: [orders]
     allowed_dependencies: []
     public_api_ownership: undecided
@@ -414,12 +495,12 @@ bounded_contexts:
     display_name: Send Parcel
     legacy_owner: send_parcel
     legacy_module_path: app/modules/send_parcel
-    proposed_platform_owner: undecided
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
+    proposed_platform_owner: ordering
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
     policy_prerequisites: []
     data_ownership:
-      strategy: undecided
+      strategy: dedicated_database
       legacy_tables: none — orchestrates order + shipment creation
     allowed_dependencies: []
     public_api_ownership: undecided
@@ -457,21 +538,29 @@ bounded_contexts:
       accepted_fact_worker_composition: postgres_sqlalchemy_fail_closed
       nats_identity_acl_tls_local_proof: proven_local_disposable_lab
       acceptance_ingestion_mode_guards: implemented_fail_closed
+      pickup_fact_handover_completed_consumer: implemented_inbox_fail_closed
+      custody_transfer_origin_hub: implemented_single_writer
+      custody_transfer_migration_disposable_postgres_proof: proven_local_disposable_lab
+      custody_transfer_behaviour_postgres_probe: deferred
+      handover_durable_binding: parameterized_topology_provisioning_deferred
       production_ready: false
     data_ownership:
       strategy: dedicated_database
-      legacy_tables: [shipments, shipment_events, delivery_evidence_attachments]
+      legacy_tables: [shipments, shipment_events, delivery_evidence_attachments, shipment_custody_transfers]
       notes: >
         Platform invariant — sole canonical writer of shipment lifecycle state
         (ADR-0003). Native pickup.fact.accepted SQLAlchemy inbox and JetStream
         pull worker are proven in a local disposable lab (W17). W16 HTTP
         acceptance remains compatibility/internal only. W18 local disposable
         JWT/TLS/ACL proof and cutover mode gates exist; staging/production
-        credential delivery, HA, and real cutover remain deferred.
+        credential delivery, HA, and real cutover remain deferred. W19 adds the
+        canonical PICKUP_DRIVER → ORIGIN_HUB custody transfer applied from
+        pickup.fact.handover_completed through a second durable inbox consumer;
+        JetStream topology provisioning for that durable remains deferred (ADR-0010).
     allowed_dependencies: []
     public_api_ownership: shipment
     published_events: [shipment.fact.delivered, shipment.fact.lifecycle_changed]
-    consumed_events: [pickup.fact.accepted, hub.fact.inbound, linehaul.fact.dispatched, linehaul.fact.arrived, delivery.fact.task_completed]
+    consumed_events: [pickup.fact.accepted, pickup.fact.handover_completed, hub.fact.inbound, linehaul.fact.dispatched, linehaul.fact.arrived, delivery.fact.task_completed]
 
   pickup:
     display_name: Pickup
@@ -499,17 +588,36 @@ bounded_contexts:
       jetstream_runtime_proof: proven_local_disposable_lab
       nats_identity_acl_tls_local_proof: proven_local_disposable_lab
       relay_cutover_gates: implemented_fail_closed
+      driver_work_session_lifecycle: implemented_unit_and_http_proven
+      driver_task_lifecycle: implemented_forward_only_idempotent
+      sender_handover_ceremony: implemented_fail_closed
+      hub_handover_manifest: implemented_custody_release_via_outbox
+      offline_command_queue: implemented_signed_append_only_replay
+      offline_reconciliation_cases: implemented_operations_owned
+      pickup_fact_handover_completed_producer: proven_in_memory_and_sqlalchemy_outbox
+      pickup_fact_handover_completed_contract: registered_not_production_enabled
+      driver_command_authorization_adapter: deferred_default_deny
+      handover_signing_key: required_environment_only_fail_closed
+      driver_wave_migration_disposable_postgres_proof: proven_local_disposable_lab
+      driver_wave_behaviour_postgres_probe: deferred
       production_ready: false
     data_ownership:
       strategy: dedicated_database
-      legacy_tables: [pickup_batches, pickup_tasks, pickup_handover, pickup_evidence, pickup_scheduling]
+      legacy_tables: [pickup_batches, pickup_tasks, pickup_handover, pickup_evidence, pickup_scheduling, pickup_driver_shifts, pickup_courier_challenges, pickup_courier_manifests, pickup_offline_authorizations, pickup_offline_events]
       notes: >
-        Owns PickupTask recovery and attempt history. Consumes Shipment eligibility
-        snapshot through port only — does not own or mutate Shipment custody (ADR-0003).
-        Producer of pickup.fact.accepted (aggregate PickupTask); transactional
-        outbox SQLAlchemy adapter and local disposable JetStream relay proven (W17).
+        Owns PickupTask recovery and attempt history, pickup-capability driver work
+        sessions, the sender handover ceremony (challenge + parcel manifest), the
+        driver-side hub handover manifest, and the offline command queue with its
+        reconciliation cases. Consumes Shipment eligibility snapshot through port only
+        — does not own or mutate Shipment custody (ADR-0003). Producer of
+        pickup.fact.accepted and pickup.fact.handover_completed (aggregate PickupTask);
+        transactional outbox SQLAlchemy adapter and local disposable JetStream relay
+        proven (W17). Driver identity, roles, and cross-capability attendance stay with
+        auth_identity (ADR-0004) and are consumed through the authorization port only.
         W18 local disposable JWT/TLS/ACL proof and relay cutover gates exist;
         staging/production credential delivery, HA, and real cutover remain deferred.
+        W19 driver/handover/offline persistence has unit and HTTP evidence only —
+        disposable PostgreSQL proof for the new tables is deferred.
     allowed_dependencies: []
     public_api_ownership: pickup
     published_events: [pickup.fact.accepted, pickup.fact.handover_completed]
@@ -520,9 +628,9 @@ bounded_contexts:
     legacy_owner: hub
     legacy_module_path: app/modules/hub
     proposed_platform_owner: hub
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
-    policy_prerequisites: [shipment_sole_lifecycle_writer]
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
+    policy_prerequisites: []
     data_ownership:
       strategy: dedicated_database
       legacy_tables: [hubs, hub_operations]
@@ -536,10 +644,10 @@ bounded_contexts:
     display_name: Linehaul
     legacy_owner: linehaul
     legacy_module_path: app/modules/linehaul
-    proposed_platform_owner: linehaul
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
-    policy_prerequisites: [shipment_sole_lifecycle_writer]
+    proposed_platform_owner: hub
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
+    policy_prerequisites: []
     data_ownership:
       strategy: dedicated_database
       legacy_tables: [linehaul_trips, linehaul_trip_shipments]
@@ -556,17 +664,27 @@ bounded_contexts:
     proposed_platform_owner: delivery
     adr_reference: ADR-0003
     adr_status: Accepted
-    transitional_deployable_candidate: deferred_wave_4
-    extraction_status: pending_cutover
-    policy_prerequisites: [shipment_sole_lifecycle_writer, physical_delivery_irreversible]
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
+    policy_prerequisites: []
     data_ownership:
       strategy: dedicated_database
       legacy_tables: [delivery_tasks, delivery_cod_collections, delivery_evidence]
       notes: Physical delivery irreversible; publishes DeliveryCompleted and CodCollected — no direct Wallet write
-    allowed_dependencies: [shipment]
+    allowed_dependencies: [shipment, identity, workforce]
     public_api_ownership: delivery
-    published_events: [delivery.fact.task_completed, delivery.fact.task_failed, delivery.fact.cod_collected]
+    published_events:
+      - delivery.fact.delivered
+      - delivery.fact.attempt_failed
+      - delivery.fact.cod_collected
+      - delivery.fact.departed_for_receiver
     consumed_events: []
+    runtime_evidence:
+      implementation: last_mile_delivery_service
+      migration_head: w26_delivery_core_001
+      identity_dependency: http_token_introspection_never_python_import
+      workforce_dependency: http_eligibility_read_ADR_0013
+      open_source_conflicts: [DRV-L05, DRV-L07]
 
   tracking:
     display_name: Tracking
@@ -619,12 +737,12 @@ bounded_contexts:
     display_name: Wallet and COD
     legacy_owner: wallet
     legacy_module_path: app/modules/wallet
-    proposed_platform_owner: wallet_cod
+    proposed_platform_owner: finance
     adr_reference: ADR-0005
     adr_status: Proposed — Policy Blocked
-    transitional_deployable_candidate: deferred_wave_6
-    extraction_status: policy_blocked
-    policy_prerequisites: [cod_wallet_separation, double_entry_ledger_adr, settlement_policy_adr]
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
+    policy_prerequisites: []
     data_ownership:
       strategy: dedicated_database
       legacy_tables: [wallet_accounts, wallet_ledger_entries, payout_requests]
@@ -641,9 +759,9 @@ bounded_contexts:
     proposed_platform_owner: finance
     adr_reference: ADR-0005
     adr_status: Proposed — Policy Blocked
-    transitional_deployable_candidate: policy_blocked
-    extraction_status: not_started
-    policy_prerequisites: [double_entry_ledger_adr, settlement_policy_adr]
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
+    policy_prerequisites: []
     data_ownership:
       strategy: dedicated_database
       legacy_tables: []
@@ -657,12 +775,12 @@ bounded_contexts:
     display_name: Notification
     legacy_owner: notification
     legacy_module_path: app/modules/notification
-    proposed_platform_owner: undecided
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
+    proposed_platform_owner: notification
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
     policy_prerequisites: []
     data_ownership:
-      strategy: undecided
+      strategy: dedicated_database
       legacy_tables: [notification_preferences, device_tokens, in_app_notifications, push_outbox]
     allowed_dependencies: []
     public_api_ownership: undecided
@@ -674,12 +792,12 @@ bounded_contexts:
     display_name: Support and Claims
     legacy_owner: support
     legacy_module_path: app/modules/support, app/modules/claims
-    proposed_platform_owner: undecided
-    transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
+    proposed_platform_owner: claims
+    transitional_deployable_candidate: adr_0011_service
+    extraction_status: in_progress
     policy_prerequisites: []
     data_ownership:
-      strategy: undecided
+      strategy: dedicated_database
       legacy_tables: [support_tickets, support_claims, claims]
     allowed_dependencies: []
     public_api_ownership: undecided
@@ -690,10 +808,10 @@ bounded_contexts:
     display_name: Media and Proof
     legacy_owner: proof
     legacy_module_path: app/modules/proof, evidence in pickup/shipment/delivery_task
-    proposed_platform_owner: undecided
+    proposed_platform_owner: none
     transitional_deployable_candidate: pending_adr
-    extraction_status: pending_legacy_audit
-    policy_prerequisites: [evidence_ownership_adr]
+    extraction_status: not_a_service_reference_only
+    policy_prerequisites: []
     data_ownership:
       strategy: undecided
       legacy_tables: [proof_records]

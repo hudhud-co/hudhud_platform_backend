@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from pickup.domain.value_objects import (
+    AssignmentDeclineReason,
+    AssignmentState,
+    ConditionDecision,
     OutboxStatus,
+    PackagingAssessment,
+    PickupExceptionReason,
+    PickupRefusalReason,
     PickupTaskAcceptanceState,
     PickupTaskStatus,
     RecoveryAction,
+    StopOutcome,
 )
 
 
@@ -39,10 +46,41 @@ class PickupTask:
     recovered_at: datetime | None
     cancelled_at: datetime | None
     version: int
+    assignment_state: AssignmentState = AssignmentState.OFFERED
+    declined_reason: AssignmentDeclineReason | None = None
+    declined_at: datetime | None = None
+    arrived_at: datetime | None = None
+    scanned_at: datetime | None = None
+    scanned_identifier: str | None = None
+    condition_proof_captured_at: datetime | None = None
+    package_condition_status: str | None = None
+    exception_reason: PickupExceptionReason | None = None
+    exception_reported_at: datetime | None = None
+    failed_at: datetime | None = None
+    packaging_assessment: PackagingAssessment | None = None
+    condition_decision: ConditionDecision | None = None
+    photo_documentation_required: bool = False
+    stop_outcome: StopOutcome | None = None
+    stop_outcome_reason: PickupRefusalReason | None = None
+    stop_outcome_at: datetime | None = None
 
     @property
     def is_terminal(self) -> bool:
         return self.status in (PickupTaskStatus.SUPERSEDED, PickupTaskStatus.CANCELLED)
+
+    @property
+    def is_acknowledged(self) -> bool:
+        return self.assignment_state is AssignmentState.ACKNOWLEDGED
+
+    @property
+    def is_stop_resolved(self) -> bool:
+        """True once this expected parcel has an outcome the merchant stop can close on.
+
+        A stop closes only when every expected parcel is resolved — accepted into custody,
+        refused, not presented, or closed by recovery. "Every expected parcel needs an
+        outcome" (Driver App v8 ``progress``).
+        """
+        return self.is_accepted or self.stop_outcome is not None or self.is_terminal
 
     @property
     def is_accepted(self) -> bool:
@@ -111,3 +149,23 @@ class OutboxRecord:
     last_error_code: str | None
     last_error_message: str | None
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class TaskHistoryEntry:
+    """Append-only Pickup audit record binding an actor to one state change.
+
+    Actor identity always comes from the authorization adapter, never from a request
+    body or a forwarded identity header.
+    """
+
+    history_id: UUID
+    pickup_task_id: UUID
+    action: str
+    actor_id: str
+    actor_role: str
+    previous_status: str | None
+    new_status: str | None
+    occurred_at: datetime
+    request_id: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)

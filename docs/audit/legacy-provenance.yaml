@@ -1,3 +1,152 @@
 # Legacy code provenance registry.
 # Every file copied or adapted from hudhud-backend must have a record here.
-records: []
+#
+# No file in this repository is a verbatim copy of legacy source. The records below are
+# *behavioural* ports: business rules read from the legacy monolith and re-expressed in
+# this repository's bounded contexts, ports/adapters, and event contracts. Legacy module
+# layout, ORM, and cross-module imports were deliberately not carried over.
+records:
+  - target_path: services/pickup/src/pickup/application/driver_session_service.py
+    legacy_source:
+      repository: hudhud-backend
+      commit_range: a4f7d95..541f407
+      modules:
+        - app/modules/driver/application/attendance.py
+        - app/modules/pickup/application/start_pickup_driver_shift.py
+        - app/modules/pickup/application/pause_pickup_driver_shift.py
+        - app/modules/pickup/application/end_pickup_driver_shift.py
+        - app/modules/pickup/application/end_shift_safety.py
+    port_type: behavioural
+    ported_rules:
+      - one open work session per driver
+      - availability derived from session state, never client-asserted
+      - pause and end blocked by open custody and outstanding hub handover
+      - OTHER reason requires notes
+      - repeated transitions are idempotent replays
+    deliberate_divergence: >
+      Scoped to the PICKUP capability only. Cross-capability attendance and the
+      DELIVERY capability stay out of Pickup because the delivery context is not
+      extracted and driver identity belongs to auth_identity (ADR-0004).
+
+  - target_path: services/pickup/src/pickup/application/task_lifecycle_service.py
+    legacy_source:
+      repository: hudhud-backend
+      commit_range: a4f7d95..541f407
+      modules:
+        - app/modules/pickup/application/arrive_pickup_task.py
+        - app/modules/pickup/application/scan_pickup_task.py
+        - app/modules/pickup/application/capture_pickup_proof.py
+        - app/modules/pickup/application/report_pickup_exception.py
+        - app/modules/pickup/application/fail_pickup_task.py
+        - app/modules/pickup/application/exception_validation.py
+        - app/modules/pickup/domain/enums.py
+    port_type: behavioural
+    ported_rules:
+      - forward-only task progression; arrival and scan are evidence, not custody
+      - acting driver must equal the assigned driver
+      - per-reason minimum exception evidence (contact attempts, notes, condition proof)
+      - assignment offer must be acknowledged before field progress
+    deliberate_divergence: >
+      Assignment response is modelled as an explicit assignment_state dimension rather
+      than folded into task status, so acceptance, progression, and assignment can be
+      reasoned about independently.
+
+  - target_path: services/pickup/src/pickup/application/handover_verification_service.py
+    legacy_source:
+      repository: hudhud-backend
+      commit_range: a4f7d95..541f407
+      modules:
+        - app/modules/pickup/application/issue_pickup_courier_challenge.py
+        - app/modules/pickup/application/verify_pickup_courier.py
+        - app/modules/pickup/application/submit_pickup_courier_manifest.py
+        - app/modules/pickup/application/confirm_pickup_courier_manifest.py
+        - app/modules/pickup/application/courier_verification_policy.py
+        - app/modules/pickup/application/courier_verification_tokens.py
+        - app/modules/pickup/application/invalidate_pickup_courier_verification.py
+    port_type: behavioural
+    ported_rules:
+      - assignment-bound single-use challenge; only the hash is persisted
+      - the assigned courier can never satisfy the sender half
+      - failed-attempt lockout and expiry are persisted even when the request is rejected
+      - reassignment invalidates both challenge and manifest
+      - acceptance requires a live verified challenge and a confirmed manifest digest
+      - one ceremony authorises exactly one acceptance
+    deliberate_divergence: >
+      The challenge secret lives only in the single issue response; this repository has
+      no Redis display store. Verification is keyed HMAC over a service-owned signing
+      key rather than the monolith's shared JWT secret.
+
+  - target_path: services/pickup/src/pickup/application/hub_handover_service.py
+    legacy_source:
+      repository: hudhud-backend
+      commit_range: a4f7d95..541f407
+      modules:
+        - app/modules/pickup/application/create_handover_manifest.py
+        - app/modules/pickup/application/arrive_handover_manifest_at_hub.py
+        - app/modules/pickup/application/cancel_handover_manifest.py
+        - app/modules/pickup/application/process_handover_manifest_inbound_scan.py
+        - app/modules/pickup/application/handover_manifest_helpers.py
+        - app/modules/hub/application/close_handover_manifest.py
+    port_type: behavioural
+    ported_rules:
+      - received and discrepant parcels release custody; missing parcels do not
+      - a receiver-closed manifest with missing or discrepant items completes with discrepancies
+      - a parcel received at an unplanned hub moves to the actual receiving hub
+      - concurrent scans converge on one receipt
+      - a driver may never record its own hub receipt
+    deliberate_divergence: >
+      Pickup does not mutate Shipment custody. Each released parcel enqueues
+      pickup.fact.handover_completed on the service-owned outbox and Shipment applies
+      the canonical transfer (ADR-0003, ADR-0008).
+
+  - target_path: services/pickup/src/pickup/application/offline_sync_service.py
+    legacy_source:
+      repository: hudhud-backend
+      commit_range: a4f7d95..541f407
+      modules:
+        - app/modules/driver/application/wave4.py
+        - app/modules/driver/application/offline_tokens.py
+        - app/modules/driver/infrastructure/wave4_repository.py
+    port_type: behavioural
+    ported_rules:
+      - signed, device-bound, time-boxed authorization with a sync deadline
+      - every submission is preserved; rejections become reconciliation cases
+      - operation_id is the client idempotency key; reuse with new content is a conflict
+      - contiguous sequencing, with a resumable sequence gap
+      - captures outside the clock-skew window or the authorization scope are reconciled
+      - custody acceptance is never authorized from an offline capture
+    deliberate_divergence: >
+      Tokens are HMAC-SHA256 compact tokens over a service-owned signing key instead of
+      JWT, so Pickup adds no auth dependency. The assignment revision covers assignment
+      identity only (driver, batch, attempt, assignment state, supersede) and not task
+      progress, so a whole offline batch replays under one downloaded revision.
+
+  - target_path: contracts/events/pickup.fact.handover_completed/
+    legacy_source:
+      repository: hudhud-backend
+      commit_range: a4f7d95..541f407
+      modules:
+        - app/modules/pickup/application/process_handover_manifest_inbound_scan.py
+        - docs/api/driver_wave2_pickup_contract.md
+    port_type: behavioural
+    ported_rules:
+      - the hub-handover outcome table (received / discrepancy / missing) and its custody effect
+    deliberate_divergence: >
+      Expressed as a registered integration event with a PickupTask aggregate rather than
+      a direct Shipment write. MISSING_FROM_DRIVER is excluded from the contract because
+      it never releases custody.
+
+  - target_path: services/shipment/src/shipment/application/handover_fact_apply.py
+    legacy_source:
+      repository: hudhud-backend
+      commit_range: a4f7d95..541f407
+      modules:
+        - app/modules/pickup/application/process_handover_manifest_inbound_scan.py
+        - app/modules/shipment/infrastructure/repositories.py
+    port_type: behavioural
+    ported_rules:
+      - custody moves from the pickup driver to the receiving origin hub on hub receipt
+      - a release claimed by someone who does not hold custody is refused
+    deliberate_divergence: >
+      Shipment is the sole writer and applies the transfer from a validated integration
+      fact through its durable inbox, instead of Pickup updating shipment rows directly.

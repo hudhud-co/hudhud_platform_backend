@@ -10,6 +10,12 @@ from pathlib import Path
 import pytest
 import yaml
 
+# The compose file and the cleanup script carry `${HUDHUD_LAB_SUFFIX:-}` rather
+# than any one run's value, and the compose file's network and volume *keys* are
+# the unsuffixed local aliases. Assertions against that literal text therefore
+# compare the base name (see tests/lab_namespace.py).
+from lab_namespace import base
+
 from .constants import (
     AUDIT_ROLE,
     BRIDGE_ROLE,
@@ -63,8 +69,8 @@ def test_compose_uses_dedicated_project_network_and_volume() -> None:
     assert result.returncode == 0, result.stderr
     rendered = yaml.safe_load(result.stdout)
     assert rendered.get("name") == COMPOSE_PROJECT
-    assert NETWORK_NAME in rendered["networks"]
-    assert VOLUME_NAME in rendered["volumes"]
+    assert base(NETWORK_NAME) in rendered["networks"]
+    assert base(VOLUME_NAME) in rendered["volumes"]
 
 
 def test_compose_publishes_loopback_ephemeral_port_only() -> None:
@@ -97,9 +103,9 @@ def test_cleanup_script_is_executable_and_targets_dedicated_resources() -> None:
     cleanup = LAB_ROOT / "scripts" / "cleanup.sh"
     assert cleanup.is_file()
     text = cleanup.read_text(encoding="utf-8")
-    assert COMPOSE_PROJECT in text
-    assert NETWORK_NAME in text
-    assert VOLUME_NAME in text
+    assert base(COMPOSE_PROJECT) in text
+    assert base(NETWORK_NAME) in text
+    assert base(VOLUME_NAME) in text
     assert "docker system prune" not in text
     if shutil.which("sh") is None:
         pytest.skip("sh not available")

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/merchant.fact.application_decided/v1.payload.schema.json",
+  "title": "merchant.fact.application_decided v1 payload",
+  "description": "ADR-0011 M1 — Merchant-owned outcome of a merchant-status application (v6.3 p.9). Carries no application content: the answers a merchant supplies are business PII and stay behind Merchant's API. The review reason is deliberately excluded for the same reason.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "application_id",
+    "applicant_principal_id",
+    "decision",
+    "decided_at"
+  ],
+  "properties": {
+    "application_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "MerchantApplication aggregate id; MUST equal envelope aggregate_id."
+    },
+    "applicant_principal_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identity principal that applied. A rejected applicant stays a regular customer (v6.3 p.9)."
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["APPROVED", "CHANGES_REQUESTED"],
+      "description": "CHANGES_REQUESTED is not a final rejection — the applicant may edit and resubmit."
+    },
+    "decided_at": { "type": "string", "format": "date-time" },
+    "merchant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Present only for APPROVED: the merchant created by the approval."
+    },
+    "merchant_code": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]{4,16}$",
+      "description": "Present only for APPROVED. Quoted to support and printed on labels."
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/delivery.fact.departed_for_receiver/v1.payload.schema.json",
+  "title": "delivery.fact.departed_for_receiver v1 payload",
+  "description": "ADR-0011 D4 — the driver has set off. Notification turns this into the three-way pre-delivery notice of v6.3 p.26: app notification, SMS and a phone call, giving an ETA rather than an exact time.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["stop_id", "tracking_code", "departed_at", "driver_id"],
+  "properties": {
+    "stop_id": { "type": "string", "format": "uuid" },
+    "tracking_code": { "type": "string", "pattern": "^SHP-\\d{8}-\\d{6}$" },
+    "departed_at": { "type": "string", "format": "date-time" },
+    "driver_id": { "type": "string", "format": "uuid" },
+    "eta_window_minutes_from": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "An ETA window, never an exact time (v6.3 p.26)."
+    },
+    "eta_window_minutes_to": { "type": ["integer", "null"], "minimum": 1 }
+  }
+}

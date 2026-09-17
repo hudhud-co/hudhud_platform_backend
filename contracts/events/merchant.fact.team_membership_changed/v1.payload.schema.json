@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/merchant.fact.team_membership_changed/v1.payload.schema.json",
+  "title": "merchant.fact.team_membership_changed v1 payload",
+  "description": "ADR-0011 M2 — Merchant-owned store team membership fact. The invitee's phone number is never published: an invitation is addressed to a number that may not yet have an account, and that number is business PII.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "membership_id",
+    "merchant_id",
+    "status",
+    "role",
+    "store_ids",
+    "changed_at"
+  ],
+  "properties": {
+    "membership_id": { "type": "string", "format": "uuid" },
+    "merchant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Merchant aggregate id; MUST equal envelope aggregate_id."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["PENDING", "ACTIVE", "DECLINED", "REMOVED"],
+      "description": "PENDING grants nothing: until the invitee accepts in their own account they see nothing of the store."
+    },
+    "role": {
+      "type": "string",
+      "enum": ["WAREHOUSE_KEEPER"],
+      "description": "Customer App v3: 'For now every member is a warehouse keeper.'"
+    },
+    "member_principal_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Known only once the invitee accepts. Null while PENDING."
+    },
+    "store_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "format": "uuid" },
+      "description": "The branches this member works in. A member sees only these branches' parcels."
+    },
+    "changed_at": { "type": "string", "format": "date-time" }
+  }
+}

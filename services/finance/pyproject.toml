@@ -1,0 +1,57 @@
+[project]
+name = "finance"
+version = "0.1.0"
+description = "HUDHUD Finance service — COD, driver cash custody, double-entry ledger and settlement (ADR-0012)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "event-envelope",
+    "fastapi>=0.115",
+    "jsonschema>=4.23",
+    "messaging-conformance",
+    "nats-py>=2.9",
+    "psycopg[binary]>=3.2",
+    "pydantic>=2.10",
+    "pyyaml>=6.0",
+    "referencing>=0.35",
+    "sqlalchemy>=2.0",
+    "uvicorn>=0.32",
+]
+
+[dependency-groups]
+dev = [
+    "alembic>=1.14",
+    "httpx>=0.28",
+    "pytest>=8.0",
+    "ruff>=0.8",
+]
+
+[tool.uv.sources]
+event-envelope = { path = "../../packages/event_envelope", editable = true }
+messaging-conformance = { path = "../../packages/messaging_conformance", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/finance"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "ARG", "PL"]
+# PLR0917: FastAPI dependency injection puts every dependency in the signature.
+ignore = ["PLR0911", "PLR0912", "PLR0913", "PLR0917", "PLR2004"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ARG001", "PLR0913"]
+"alembic/**" = ["ARG001"]
+"src/finance/infrastructure/memory.py" = ["ARG002"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+addopts = "-q"

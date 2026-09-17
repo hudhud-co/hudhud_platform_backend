@@ -15,7 +15,11 @@ from shipment.application.acceptance_service import (
     CreateOrderIntentCommand,
     RegisterPickupTaskCommand,
 )
-from shipment.config import RuntimeEnvironment, load_settings
+from shipment.config import (
+    AcceptanceIngestionMode,
+    RuntimeEnvironment,
+    load_settings,
+)
 from shipment.infrastructure.authorizers.default_deny import DefaultDenyAcceptanceAuthorizer
 from shipment.infrastructure.authorizers.fake import FakeAcceptanceAuthorizer
 from shipment.infrastructure.persistence.acceptance_uow import SqlAlchemyAcceptanceUnitOfWork
@@ -76,7 +80,19 @@ def _build_app(
     authorizer: FakeAcceptanceAuthorizer | DefaultDenyAcceptanceAuthorizer,
     environment: RuntimeEnvironment = RuntimeEnvironment.TEST,
 ):
-    settings = load_settings(environment=environment, database_url=database_url)
+    overrides: dict[str, object] = {
+        "environment": environment,
+        "database_url": database_url,
+    }
+    if environment in {RuntimeEnvironment.STAGING, RuntimeEnvironment.PRODUCTION}:
+        # Staging and production must declare which acceptance ingestion path is live —
+        # exactly one is, and `assert_production_gates` refuses to start without it. This
+        # probe is checking the authorization readiness gate, so it declares the
+        # compatibility path the same way a real staging deployment would.
+        overrides["acceptance_ingestion_mode"] = (
+            AcceptanceIngestionMode.COMPATIBILITY_HTTP
+        )
+    settings = load_settings(**overrides)
     return create_app(
         settings,
         unit_of_work=uow,

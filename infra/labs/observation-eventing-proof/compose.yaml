@@ -2,12 +2,12 @@
 # Synthetic credentials only; NATS_AUTH_ENABLED=false is local disposable proof only.
 # Ephemeral loopback host ports; dedicated Compose project, network, and volumes.
 
-name: hudhud-observation-eventing-proof-lab
+name: hudhud-observation-eventing-proof-lab${HUDHUD_LAB_SUFFIX:-}
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: hudhud-observation-eventing-proof-postgres
+    container_name: hudhud-observation-eventing-proof-postgres${HUDHUD_LAB_SUFFIX:-}
     profiles:
       - observation-eventing-proof
     restart: unless-stopped
@@ -46,7 +46,7 @@ services:
 
   nats:
     image: nats:2.10-alpine
-    container_name: hudhud-observation-eventing-proof-nats
+    container_name: hudhud-observation-eventing-proof-nats${HUDHUD_LAB_SUFFIX:-}
     profiles:
       - observation-eventing-proof
     restart: unless-stopped
@@ -81,7 +81,7 @@ services:
 
   topology-bootstrap:
     image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-    container_name: hudhud-observation-eventing-proof-bootstrap
+    container_name: hudhud-observation-eventing-proof-bootstrap${HUDHUD_LAB_SUFFIX:-}
     profiles:
       - observation-eventing-proof
     restart: "no"
@@ -93,6 +93,11 @@ services:
     environment:
       NATS_URL: nats://nats:4222
       UV_CACHE_DIR: /tmp/uv-cache
+      # The repository is bind-mounted read-write, so a container `uv run` would sync
+      # into the host's ./.venv and replace macOS wheels with Linux ones — which shows
+      # up much later as `dlopen(...): slice is not valid mach-o file` in a completely
+      # unrelated suite. Keep the container's environment inside the container.
+      UV_PROJECT_ENVIRONMENT: /tmp/bootstrap-venv
     command:
       - /bin/sh
       - -c
@@ -105,11 +110,11 @@ services:
 
 networks:
   hudhud_observation_eventing_proof:
-    name: hudhud_observation_eventing_proof
+    name: hudhud_observation_eventing_proof${HUDHUD_LAB_SUFFIX:-}
     driver: bridge
 
 volumes:
   hudhud_observation_eventing_proof_pgdata:
-    name: hudhud_observation_eventing_proof_pgdata
+    name: hudhud_observation_eventing_proof_pgdata${HUDHUD_LAB_SUFFIX:-}
   hudhud_observation_eventing_proof_jetstream:
-    name: hudhud_observation_eventing_proof_jetstream
+    name: hudhud_observation_eventing_proof_jetstream${HUDHUD_LAB_SUFFIX:-}

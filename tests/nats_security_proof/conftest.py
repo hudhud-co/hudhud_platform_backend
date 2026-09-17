@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import importlib.util
 import shutil
-import subprocess
 
 import pytest
 
 from .helpers import (
-    REPO_ROOT,
     compose_down,
     compose_up,
     dedicated_resources_absent,
@@ -33,21 +31,21 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def _ensure_nkeys() -> None:
-    """JWT .creds auth in-process requires nkeys; install into the lab venv if absent."""
+    """JWT .creds auth in-process requires nkeys.
+
+    It is a declared dev dependency in the root `pyproject.toml` rather than something
+    installed on demand. The on-demand version used `uv pip install`, which uv then
+    removed as extraneous on the next `uv run` — so this suite passed when run alone and
+    failed whenever another suite in the same session invoked uv first. This check now
+    reports the missing dependency instead of trying to paper over it.
+    """
     if importlib.util.find_spec("nkeys") is not None:
         return
-    result = subprocess.run(
-        ["uv", "pip", "install", "nkeys"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
+    msg = (
+        "nkeys is required for NATS JWT proof connections and is a declared dev "
+        "dependency of the root project. Run `uv sync` and try again."
     )
-    importlib.invalidate_caches()
-    if result.returncode != 0 or importlib.util.find_spec("nkeys") is None:
-        detail = (result.stderr or result.stdout).strip()
-        msg = f"nkeys is required for NATS JWT proof connections: {detail}"
-        raise RuntimeError(msg)
+    raise RuntimeError(msg)
 
 
 @pytest.fixture(scope="session")

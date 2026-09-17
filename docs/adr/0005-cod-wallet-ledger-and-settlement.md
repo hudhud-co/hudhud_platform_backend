@@ -1,14 +1,21 @@
 # ADR-0005: COD, Wallet, Double-Entry Ledger, Settlement, and Reconciliation
 
-- **Status:** Proposed — Policy Blocked
+- **Status:** superseded by ADR-0012
 - **Date:** 2026-08-30
 - **Deciders:** (pending — finance, operations, and platform architecture review)
 - **Workstream:** W1-E
-- **Implementation allowed:** no
+- **Implementation allowed:** superseded — see ADR-0012 (yes)
 
 Label key: **[evidence]** verified from repository or legacy audit; **[proposal]** recommended design not yet accepted; **[decision]** binding only after acceptance; **[assumption]** engineering default pending validation; **[unresolved policy]** requires named deciders and must not be invented here.
 
 ---
+
+## Superseded
+
+This ADR was blocked because its policy register had no decider. *The Shipment Journey* v6.3
+supplies those decisions as Confirmed-decision blocks. See
+[ADR-0012](0012-cod-cash-custody-wallet-and-settlement-v63.md), which supersedes this record and
+authorizes implementation. The evidence below remains accurate and is retained for history.
 
 ## Context
 

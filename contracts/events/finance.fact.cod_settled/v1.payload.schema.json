@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/finance.fact.cod_settled/v1.payload.schema.json",
+  "title": "finance.fact.cod_settled v1 payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "collection_id",
+    "tracking_code",
+    "merchant_id",
+    "channel",
+    "goods_minor_units",
+    "delivery_fee_minor_units",
+    "currency",
+    "settled_at"
+  ],
+  "properties": {
+    "collection_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "tracking_code": {
+      "type": "string",
+      "pattern": "^SHP-\\d{8}-\\d{6}$"
+    },
+    "merchant_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "ONLINE",
+        "POS_CARD",
+        "CASH",
+        "AT_HUB_IN_PERSON"
+      ],
+      "description": "PAY-03 \u2014 there is deliberately no wallet channel; v6.3 p.33 offers receivers no digital wallet payment option."
+    },
+    "goods_minor_units": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "delivery_fee_minor_units": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "enum": [
+        "IQD"
+      ]
+    },
+    "settled_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "settling_deposit_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid",
+      "description": "Present only for cash: the hub-cashier deposit that made it paid (PAY-04 \u2014 an exchange transfer never appears here)."
+    },
+    "journal_entry_id": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "channel": {
+            "const": "CASH"
+          }
+        },
+        "required": [
+          "channel"
+        ]
+      },
+      "then": {
+        "required": [
+          "settling_deposit_id"
+        ],
+        "properties": {
+          "settling_deposit_id": {
+            "type": "string"
+          }
+        },
+        "description": "PAY-01 \u2014 cash counts as paid only once it reaches a hub cashier, so a settled cash collection always names the deposit that did it."
+      }
+    }
+  ]
+}

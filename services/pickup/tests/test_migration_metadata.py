@@ -2,34 +2,55 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from pickup.infrastructure.persistence.models import (
     AcceptanceIdempotencyRow,
     Base,
+    CourierChallengeRow,
+    CourierManifestRow,
+    DriverWorkSessionRow,
+    HandoverManifestItemRow,
+    HandoverManifestRow,
     IntegrationOutboxRow,
+    OfflineAuthorizationRow,
+    OfflineEventRow,
+    OfflineStreamRow,
     PickupTaskRow,
+    ReconciliationCaseRow,
     RecoveryHistoryRow,
     RecoveryIdempotencyRow,
+    TaskHistoryRow,
 )
 
 
-def test_single_head_migration_chain() -> None:
+def _migration_files() -> list[Path]:
     versions = Path(__file__).resolve().parents[1] / "alembic" / "versions"
-    migration_files = sorted(
-        path for path in versions.glob("*.py") if path.name != "__init__.py"
-    )
-    assert len(migration_files) == 2
-    heads = [
-        path
-        for path in migration_files
-        if 'down_revision: str | Sequence[str] | None = "w15b_pickup_recovery_001"'
-        in path.read_text(encoding="utf-8")
-        or "down_revision: str | Sequence[str] | None = None" in path.read_text(encoding="utf-8")
-    ]
-    assert len(heads) == 2  # root + one child
-    w17 = next(path for path in migration_files if "w17e" in path.name)
-    assert 'revision: str = "w17e_pickup_accepted_outbox_001"' in w17.read_text(encoding="utf-8")
+    return sorted(path for path in versions.glob("*.py") if path.name != "__init__.py")
+
+
+def test_single_head_migration_chain() -> None:
+    """Exactly one root and one head — no branch, no duplicate down_revision."""
+    revisions: dict[str, str | None] = {}
+    for path in _migration_files():
+        content = path.read_text(encoding="utf-8")
+        revision = re.search(r'^revision: str = "([^"]+)"', content, re.MULTILINE)
+        down = re.search(
+            r"^down_revision: str \| Sequence\[str\] \| None = (?:\"([^\"]+)\"|None)",
+            content,
+            re.MULTILINE,
+        )
+        assert revision is not None, path.name
+        assert down is not None, path.name
+        revisions[revision.group(1)] = down.group(1)
+
+    roots = [rev for rev, down in revisions.items() if down is None]
+    assert roots == ["w15b_pickup_recovery_001"]
+    parents = {down for down in revisions.values() if down is not None}
+    assert len(parents) == len(revisions) - 1  # no two migrations share a parent
+    heads = [rev for rev in revisions if rev not in parents]
+    assert heads == ["w19c_pickup_stop_outcomes_001"]
 
 
 def test_metadata_tables_owned_by_service() -> None:
@@ -40,6 +61,16 @@ def test_metadata_tables_owned_by_service() -> None:
         RecoveryIdempotencyRow.__tablename__,
         AcceptanceIdempotencyRow.__tablename__,
         IntegrationOutboxRow.__tablename__,
+        TaskHistoryRow.__tablename__,
+        DriverWorkSessionRow.__tablename__,
+        CourierChallengeRow.__tablename__,
+        CourierManifestRow.__tablename__,
+        HandoverManifestRow.__tablename__,
+        HandoverManifestItemRow.__tablename__,
+        OfflineAuthorizationRow.__tablename__,
+        OfflineStreamRow.__tablename__,
+        OfflineEventRow.__tablename__,
+        ReconciliationCaseRow.__tablename__,
     }
 
 
@@ -71,6 +102,15 @@ def test_outbox_row_declares_uniqueness_constraints() -> None:
     assert "uq_pickup_outbox_event_id" in constraint_names
     assert "uq_pickup_outbox_aggregate_version" in constraint_names
     assert "uq_pickup_outbox_event_type_aggregate" in constraint_names
+
+
+def test_pickup_task_row_indexes_the_driver_workload_query() -> None:
+    index_names = {
+        item.name
+        for item in PickupTaskRow.__table_args__  # type: ignore[union-attr]
+        if hasattr(item, "name")
+    }
+    assert "ix_pickup_tasks_driver_status" in index_names
 
 
 def test_pickup_task_row_declares_attempt_lineage_constraint() -> None:

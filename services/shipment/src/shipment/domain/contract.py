@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from shipment.infrastructure.contracts.registry import load_pickup_accepted_registry
+from shipment.infrastructure.contracts.registry import (
+    load_pickup_accepted_registry,
+    load_pickup_handover_registry,
+)
 
 _REGISTRY = load_pickup_accepted_registry().contract
+_HANDOVER_REGISTRY = load_pickup_handover_registry().contract
 
 PICKUP_ACCEPTED_EVENT_TYPE = _REGISTRY.event_type
 PICKUP_ACCEPTED_EVENT_VERSION = _REGISTRY.event_version
@@ -69,4 +73,38 @@ PLACEHOLDER_DRIVER_IDENTITIES: frozenset[str] = frozenset(
         "acting_driver",
         "assigned_driver",
     }
+)
+
+
+PICKUP_HANDOVER_EVENT_TYPE = _HANDOVER_REGISTRY.event_type
+PICKUP_HANDOVER_EVENT_VERSION = _HANDOVER_REGISTRY.event_version
+PICKUP_HANDOVER_SUBJECT = _HANDOVER_REGISTRY.subject
+PICKUP_HANDOVER_STREAM = _HANDOVER_REGISTRY.stream
+PICKUP_HANDOVER_DURABLE_CONSUMER = _HANDOVER_REGISTRY.durable_consumer
+PICKUP_HANDOVER_PRODUCER = _HANDOVER_REGISTRY.producer
+PICKUP_HANDOVER_MESSAGE_KIND = _HANDOVER_REGISTRY.message_kind
+PICKUP_HANDOVER_AGGREGATE_SCOPE = _HANDOVER_REGISTRY.aggregate_scope
+PICKUP_HANDOVER_AGGREGATE_TYPE = _HANDOVER_REGISTRY.aggregate_type
+PICKUP_HANDOVER_SCHEMA_URI = _HANDOVER_REGISTRY.schema_uri
+
+#: Only these outcomes release pickup-driver custody. MISSING never appears here.
+ALLOWED_HANDOVER_OUTCOMES: frozenset[str] = frozenset(
+    {"RECEIVED", "RECEIVED_WITH_DISCREPANCY"}
+)
+
+#: MISSING_FROM_DRIVER describes a parcel that never reached the hub, so it can never
+#: accompany a custody-releasing fact.
+ALLOWED_HANDOVER_DISCREPANCY_REASONS: frozenset[str] = frozenset(
+    {"DAMAGED_AT_HANDOVER", "WRONG_HUB_RECEIVED", "OTHER"}
+)
+
+REQUIRED_HANDOVER_PAYLOAD_FIELDS: tuple[str, ...] = (
+    "pickup_task_id",
+    "shipment_id",
+    "handover_manifest_id",
+    "receiving_hub_id",
+    "outcome",
+    "released_at",
+    "releasing_driver_user_id",
+    "receiving_actor_id",
 )

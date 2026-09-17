@@ -47,3 +47,213 @@ contracts:
     payload_schema_path: pickup.fact.accepted/v1.payload.schema.json
     adr: ADR-0009-C10
     implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: pickup.fact.handover_completed
+    event_version: 1
+    producer: pickup
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: pickup_task
+    subject: hudhud.pickup.pickup.fact.handover_completed.v1
+    stream: HUDHUD_PICKUP
+    schema_uri: https://hudhud.platform/contracts/events/pickup.fact.handover_completed/v1.schema.json
+    schema_path: pickup.fact.handover_completed/v1.schema.json
+    payload_schema_path: pickup.fact.handover_completed/v1.payload.schema.json
+    adr: ADR-0009-C11
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: merchant.fact.application_decided
+    event_version: 1
+    producer: merchant
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: merchant_application
+    subject: hudhud.merchant.merchant.fact.application_decided.v1
+    stream: HUDHUD_MERCHANT
+    schema_uri: https://hudhud.platform/contracts/events/merchant.fact.application_decided/v1.schema.json
+    schema_path: merchant.fact.application_decided/v1.schema.json
+    payload_schema_path: merchant.fact.application_decided/v1.payload.schema.json
+    adr: ADR-0011-M1
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: merchant.fact.team_membership_changed
+    event_version: 1
+    producer: merchant
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: merchant
+    subject: hudhud.merchant.merchant.fact.team_membership_changed.v1
+    stream: HUDHUD_MERCHANT
+    schema_uri: https://hudhud.platform/contracts/events/merchant.fact.team_membership_changed/v1.schema.json
+    schema_path: merchant.fact.team_membership_changed/v1.schema.json
+    payload_schema_path: merchant.fact.team_membership_changed/v1.payload.schema.json
+    adr: ADR-0011-M2
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: order.fact.shipment_registered
+    event_version: 1
+    producer: ordering
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: shipment_request
+    subject: hudhud.order.order.fact.shipment_registered.v1
+    stream: HUDHUD_ORDER
+    schema_uri: https://hudhud.platform/contracts/events/order.fact.shipment_registered/v1.schema.json
+    schema_path: order.fact.shipment_registered/v1.schema.json
+    payload_schema_path: order.fact.shipment_registered/v1.payload.schema.json
+    adr: ADR-0011-O1
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: order.fact.shipment_cancelled
+    event_version: 1
+    producer: ordering
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: shipment_request
+    subject: hudhud.order.order.fact.shipment_cancelled.v1
+    stream: HUDHUD_ORDER
+    schema_uri: https://hudhud.platform/contracts/events/order.fact.shipment_cancelled/v1.schema.json
+    schema_path: order.fact.shipment_cancelled/v1.schema.json
+    payload_schema_path: order.fact.shipment_cancelled/v1.payload.schema.json
+    adr: ADR-0011-O2
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: hub.fact.drop_off_accepted
+    event_version: 1
+    producer: hub
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: hub_drop_off
+    subject: hudhud.hub.hub.fact.drop_off_accepted.v1
+    stream: HUDHUD_HUB
+    schema_uri: https://hudhud.platform/contracts/events/hub.fact.drop_off_accepted/v1.schema.json
+    schema_path: hub.fact.drop_off_accepted/v1.schema.json
+    payload_schema_path: hub.fact.drop_off_accepted/v1.payload.schema.json
+    adr: ADR-0011-H1
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: hub.fact.parcel_held
+    event_version: 1
+    producer: hub
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: hub_parcel
+    subject: hudhud.hub.hub.fact.parcel_held.v1
+    stream: HUDHUD_HUB
+    schema_uri: https://hudhud.platform/contracts/events/hub.fact.parcel_held/v1.schema.json
+    schema_path: hub.fact.parcel_held/v1.schema.json
+    payload_schema_path: hub.fact.parcel_held/v1.payload.schema.json
+    adr: ADR-0011-H2
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: delivery.fact.delivered
+    event_version: 1
+    producer: delivery
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: delivery_stop
+    subject: hudhud.delivery.delivery.fact.delivered.v1
+    stream: HUDHUD_DELIVERY
+    schema_uri: https://hudhud.platform/contracts/events/delivery.fact.delivered/v1.schema.json
+    schema_path: delivery.fact.delivered/v1.schema.json
+    payload_schema_path: delivery.fact.delivered/v1.payload.schema.json
+    adr: ADR-0011-D1
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: delivery.fact.attempt_failed
+    event_version: 1
+    producer: delivery
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: delivery_stop
+    subject: hudhud.delivery.delivery.fact.attempt_failed.v1
+    stream: HUDHUD_DELIVERY
+    schema_uri: https://hudhud.platform/contracts/events/delivery.fact.attempt_failed/v1.schema.json
+    schema_path: delivery.fact.attempt_failed/v1.schema.json
+    payload_schema_path: delivery.fact.attempt_failed/v1.payload.schema.json
+    adr: ADR-0011-D2
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: delivery.fact.cod_collected
+    event_version: 1
+    producer: delivery
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: delivery_stop
+    subject: hudhud.delivery.delivery.fact.cod_collected.v1
+    stream: HUDHUD_DELIVERY
+    schema_uri: https://hudhud.platform/contracts/events/delivery.fact.cod_collected/v1.schema.json
+    schema_path: delivery.fact.cod_collected/v1.schema.json
+    payload_schema_path: delivery.fact.cod_collected/v1.payload.schema.json
+    adr: ADR-0011-D3
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: delivery.fact.departed_for_receiver
+    event_version: 1
+    producer: delivery
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: delivery_stop
+    subject: hudhud.delivery.delivery.fact.departed_for_receiver.v1
+    stream: HUDHUD_DELIVERY
+    schema_uri: https://hudhud.platform/contracts/events/delivery.fact.departed_for_receiver/v1.schema.json
+    schema_path: delivery.fact.departed_for_receiver/v1.schema.json
+    payload_schema_path: delivery.fact.departed_for_receiver/v1.payload.schema.json
+    adr: ADR-0011-D4
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: finance.fact.cod_settled
+    event_version: 1
+    producer: finance
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: cod_collection
+    subject: hudhud.finance.finance.fact.cod_settled.v1
+    stream: HUDHUD_FINANCE
+    schema_uri: https://hudhud.platform/contracts/events/finance.fact.cod_settled/v1.schema.json
+    schema_path: finance.fact.cod_settled/v1.schema.json
+    payload_schema_path: finance.fact.cod_settled/v1.payload.schema.json
+    adr: ADR-0012-F1
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: finance.fact.payout_requested
+    event_version: 1
+    producer: finance
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: payout_request
+    subject: hudhud.finance.finance.fact.payout_requested.v1
+    stream: HUDHUD_FINANCE
+    schema_uri: https://hudhud.platform/contracts/events/finance.fact.payout_requested/v1.schema.json
+    schema_path: finance.fact.payout_requested/v1.schema.json
+    payload_schema_path: finance.fact.payout_requested/v1.payload.schema.json
+    adr: ADR-0012-F2
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: finance.fact.payout_decided
+    event_version: 1
+    producer: finance
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: payout_request
+    subject: hudhud.finance.finance.fact.payout_decided.v1
+    stream: HUDHUD_FINANCE
+    schema_uri: https://hudhud.platform/contracts/events/finance.fact.payout_decided/v1.schema.json
+    schema_path: finance.fact.payout_decided/v1.schema.json
+    payload_schema_path: finance.fact.payout_decided/v1.payload.schema.json
+    adr: ADR-0012-F3
+    implementation_status: implementation_authorized_not_production_enabled
+
+  - event_type: finance.fact.cash_limit_breached
+    event_version: 1
+    producer: finance
+    message_kind: integration
+    aggregate_scope: aggregate
+    aggregate_type: driver_cash_account
+    subject: hudhud.finance.finance.fact.cash_limit_breached.v1
+    stream: HUDHUD_FINANCE
+    schema_uri: https://hudhud.platform/contracts/events/finance.fact.cash_limit_breached/v1.schema.json
+    schema_path: finance.fact.cash_limit_breached/v1.schema.json
+    payload_schema_path: finance.fact.cash_limit_breached/v1.payload.schema.json
+    adr: ADR-0012-F4
+    implementation_status: implementation_authorized_not_production_enabled

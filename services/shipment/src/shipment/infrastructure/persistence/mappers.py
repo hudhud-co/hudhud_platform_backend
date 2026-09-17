@@ -11,6 +11,7 @@ from shipment.domain.entities import (
     AcceptanceDecisionRecord,
     AcceptanceIdempotencyRecord,
     AuditLogEntry,
+    CustodyTransferRecord,
     OrderIntent,
     PickupTaskSnapshot,
     Shipment,
@@ -21,6 +22,7 @@ from shipment.domain.value_objects import (
     AcceptanceOutcome,
     CustodyType,
     EvidenceReference,
+    HandoverOutcome,
     PickupTaskAcceptanceState,
     PickupTaskStatus,
     ShipmentEventType,
@@ -31,6 +33,7 @@ from shipment.infrastructure.persistence.models import (
     AcceptanceAuditLogRow,
     AcceptanceDecisionRow,
     AcceptanceIdempotencyRow,
+    CustodyTransferRow,
     IntegrationInboxRow,
     OrderIntentRow,
     PickupTaskSnapshotRow,
@@ -70,6 +73,7 @@ def shipment_to_row(shipment: Shipment, *, version: int) -> ShipmentRow:
             else None
         ),
         current_custody_id=shipment.current_custody_id,
+        custody_transferred_at=shipment.custody_transferred_at,
         version=version,
     )
 
@@ -90,6 +94,7 @@ def shipment_from_row(row: ShipmentRow) -> tuple[Shipment, int]:
             CustodyType(row.current_custody_type) if row.current_custody_type is not None else None
         ),
         current_custody_id=row.current_custody_id,
+        custody_transferred_at=row.custody_transferred_at,
         version=row.version,
     )
     return shipment, row.version
@@ -245,6 +250,44 @@ def decision_from_row(row: AcceptanceDecisionRow) -> AcceptanceDecisionRecord:
         scan_timestamp=row.scan_timestamp,  # type: ignore[arg-type]
         recorded_at=row.recorded_at,  # type: ignore[arg-type]
         exception_evidence=_evidence_from_json(row.exception_evidence),
+    )
+
+
+def custody_transfer_to_row(transfer: CustodyTransferRecord) -> CustodyTransferRow:
+    return CustodyTransferRow(
+        transfer_id=transfer.transfer_id,
+        shipment_id=transfer.shipment_id,
+        pickup_task_id=transfer.pickup_task_id,
+        handover_manifest_id=transfer.handover_manifest_id,
+        from_custody_type=transfer.from_custody_type.value,
+        from_custody_id=transfer.from_custody_id,
+        to_custody_type=transfer.to_custody_type.value,
+        to_custody_id=transfer.to_custody_id,
+        outcome=transfer.outcome.value,
+        discrepancy_reason=transfer.discrepancy_reason,
+        released_at=transfer.released_at,
+        recorded_at=transfer.recorded_at,
+        receiving_actor_id=transfer.receiving_actor_id,
+        condition_evidence=_evidence_to_json(transfer.condition_evidence),
+    )
+
+
+def custody_transfer_from_row(row: CustodyTransferRow) -> CustodyTransferRecord:
+    return CustodyTransferRecord(
+        transfer_id=row.transfer_id,  # type: ignore[arg-type]
+        shipment_id=row.shipment_id,  # type: ignore[arg-type]
+        pickup_task_id=row.pickup_task_id,  # type: ignore[arg-type]
+        handover_manifest_id=row.handover_manifest_id,  # type: ignore[arg-type]
+        from_custody_type=CustodyType(row.from_custody_type),
+        from_custody_id=row.from_custody_id,
+        to_custody_type=CustodyType(row.to_custody_type),
+        to_custody_id=row.to_custody_id,
+        outcome=HandoverOutcome(row.outcome),
+        discrepancy_reason=row.discrepancy_reason,
+        released_at=row.released_at,  # type: ignore[arg-type]
+        recorded_at=row.recorded_at,  # type: ignore[arg-type]
+        receiving_actor_id=row.receiving_actor_id,
+        condition_evidence=_evidence_from_json(row.condition_evidence),
     )
 
 

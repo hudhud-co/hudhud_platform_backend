@@ -1,0 +1,63 @@
+# The role vocabulary Identity actually grants (ADR-0004).
+#
+# Identity is the authority on what a role is called. Every other service resolves a
+# caller by introspecting a token, and the `roles` in that response use exactly these
+# names — so a service whose adapter maps a name that is not here silently drops the
+# role, and the caller authenticates with no permissions at all.
+#
+# That is not hypothetical. `delivery`, `finance` and `workforce` each mapped
+# `LAST_MILE_DRIVER` and `MERCHANT_OWNER`, which Identity has never had. Every unit test
+# passed, because each service's fake authorizer handed out its own names; the first live
+# sign-in produced a driver with no driver role. This file exists so that mismatch is a
+# failing test in every service rather than a 403 in production.
+#
+# Consumers read this file in a test. They never import Identity's package.
+version: 1
+
+roles:
+  - name: CUSTOMER
+    scope: GLOBAL
+    self_service: true
+    notes: The only role a self-service sign-up may produce.
+
+  - name: MERCHANT_MEMBER
+    scope: MERCHANT
+    privileged: false
+    notes: >
+      Membership of one merchant. Identity holds the grant and its scope id; which
+      stores that member may act on is the merchant service's to decide.
+
+  - name: PICKUP_DRIVER
+    scope: GLOBAL
+    privileged: true
+
+  - name: DELIVERY_DRIVER
+    scope: GLOBAL
+    privileged: true
+    notes: >
+      The last-mile driver. Services that call this role LAST_MILE_DRIVER in their own
+      domain language must map it from this name.
+
+  - name: HUB_OPERATOR
+    scope: HUB
+    privileged: true
+
+  - name: HUB_CASHIER
+    scope: HUB
+    privileged: true
+    notes: >
+      Scoped to the hub whose cash they take. ADR-0012 keeps this separate from
+      ACCOUNTANT: a cashier confirms a hub deposit, an accountant verifies an exchange
+      receipt, and neither is the other.
+
+  - name: ACCOUNTANT
+    scope: GLOBAL
+    privileged: true
+
+  - name: SUPPORT
+    scope: GLOBAL
+    privileged: true
+
+  - name: OPERATIONS
+    scope: GLOBAL
+    privileged: true

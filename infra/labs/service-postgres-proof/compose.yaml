@@ -2,12 +2,12 @@
 # Synthetic credentials only; no legacy, staging, or production connectivity.
 # Ephemeral loopback host port; dedicated Compose project, network, and volume.
 
-name: hudhud-service-postgres-proof-lab
+name: hudhud-service-postgres-proof-lab${HUDHUD_LAB_SUFFIX:-}
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: hudhud-service-postgres-proof-postgres
+    container_name: hudhud-service-postgres-proof-postgres${HUDHUD_LAB_SUFFIX:-}
     profiles:
       - service-postgres-proof
     restart: unless-stopped
@@ -46,9 +46,9 @@ services:
 
 networks:
   hudhud_service_postgres_proof:
-    name: hudhud_service_postgres_proof
+    name: hudhud_service_postgres_proof${HUDHUD_LAB_SUFFIX:-}
     driver: bridge
 
 volumes:
   hudhud_service_postgres_proof_pgdata:
-    name: hudhud_service_postgres_proof_pgdata
+    name: hudhud_service_postgres_proof_pgdata${HUDHUD_LAB_SUFFIX:-}

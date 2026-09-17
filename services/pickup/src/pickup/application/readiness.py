@@ -24,6 +24,7 @@ def evaluate_readiness(
     persistence_wired: bool,
     authorization_configured: bool,
     shipment_eligibility_configured: bool,
+    driver_command_authorization_configured: bool = False,
     nats_reachable: bool | None = None,
 ) -> ReadinessReport:
     database_configured = bool(settings.database_url)
@@ -53,6 +54,11 @@ def evaluate_readiness(
         "database_configured": database_configured or skip_live_db,
         "database_reachable": database_reachable or skip_live_db,
         "authorization_configured": authorization_configured,
+        "driver_command_authorization_configured": (
+            driver_command_authorization_configured
+        ),
+        "handover_signing_key_configured": settings.driver_features_enabled,
+        "courier_verification_required": settings.require_courier_verification,
         "shipment_eligibility_configured": shipment_eligibility_configured,
         "memory_persistence_allowed": not memory_in_production,
         "relay_configuration_valid": settings.relay_configuration_valid(),
@@ -74,6 +80,12 @@ def evaluate_readiness(
         blockers.append("memory_persistence_forbidden_in_production")
     if not checks["authorization_configured"]:
         blockers.append("authorization_adapter_not_configured")
+    if not checks["driver_command_authorization_configured"]:
+        blockers.append("driver_command_authorization_adapter_not_configured")
+    if not checks["handover_signing_key_configured"]:
+        blockers.append("handover_signing_key_missing")
+    if not checks["courier_verification_required"]:
+        blockers.append("courier_verification_disabled")
     if not checks["shipment_eligibility_configured"]:
         blockers.append("shipment_eligibility_adapter_deferred")
     if relay_active and not checks["relay_configuration_valid"]:
@@ -93,6 +105,9 @@ def evaluate_readiness(
         and checks["database_configured"]
         and checks["database_reachable"]
         and checks["authorization_configured"]
+        and checks["driver_command_authorization_configured"]
+        and checks["handover_signing_key_configured"]
+        and checks["courier_verification_required"]
         and checks["shipment_eligibility_configured"]
         and checks["memory_persistence_allowed"]
         and checks["relay_configuration_valid"]

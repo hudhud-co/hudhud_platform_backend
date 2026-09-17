@@ -11,6 +11,7 @@ from messaging_conformance.enums import InboxStatus, JetStreamConsumerAction
 from shipment.domain.entities import (
     AcceptanceDecisionRecord,
     AuditLogEntry,
+    CustodyTransferRecord,
     Shipment,
     ShipmentEvent,
 )
@@ -45,6 +46,16 @@ class AcceptanceDecisionRepository(Protocol):
     def get_for_pickup_task(self, pickup_task_id: UUID) -> AcceptanceDecisionRecord | None: ...
 
 
+class CustodyTransferRepository(Protocol):
+    """One custody transfer per released pickup task — the convergence key."""
+
+    def save(self, transfer: CustodyTransferRecord) -> None: ...
+
+    def get_for_pickup_task(self, pickup_task_id: UUID) -> CustodyTransferRecord | None: ...
+
+    def list_for_shipment(self, shipment_id: UUID) -> tuple[CustodyTransferRecord, ...]: ...
+
+
 class AcceptedFactUnitOfWork(Protocol):
     """Atomic native fact boundary — shipment + decision + event + audit + inbox."""
 
@@ -52,6 +63,21 @@ class AcceptedFactUnitOfWork(Protocol):
     shipment_events: FactShipmentEventRepository
     audit_logs: FactAuditLogRepository
     acceptance_decisions: AcceptanceDecisionRepository
+
+    def begin(self) -> None: ...
+
+    def commit(self) -> None: ...
+
+    def rollback(self) -> None: ...
+
+
+class HandoverFactUnitOfWork(Protocol):
+    """Atomic custody-transfer boundary — shipment + transfer + event + audit + inbox."""
+
+    shipments: FactShipmentRepository
+    shipment_events: FactShipmentEventRepository
+    audit_logs: FactAuditLogRepository
+    custody_transfers: CustodyTransferRepository
 
     def begin(self) -> None: ...
 

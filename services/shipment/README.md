@@ -168,3 +168,25 @@ disposable Pickup/Shipment JWT+TLS+ACL proof lives in
 authorization remains fail-closed. ADR-0010 remains Proposed; local disposable
 JWT/TLS/ACL evidence exists (W18). Staging/production credential delivery, HA,
 real cutover, and post-acceptance lifecycle remain deferred.
+
+## W19-B: hub custody transfer
+
+Shipment consumes `pickup.fact.handover_completed` on a second durable inbox consumer
+(`shipment_pickup_handover_facts_v1`) and applies the canonical
+`PICKUP_DRIVER` → `ORIGIN_HUB` custody move. Pickup states that a hub received the
+parcel; Shipment decides whether that statement applies to the shipment it holds.
+
+Fail-closed rules enforced beyond JSON Schema, because a schema cannot compare two
+payload fields:
+
+- `receiving_actor_id` must differ from `releasing_driver_user_id` — a driver may never
+  record its own hub receipt.
+- `releasing_driver_user_id` must equal the shipment's current custody holder.
+- `MISSING` and `MISSING_FROM_DRIVER` never release custody.
+
+Delivery is at-least-once, so `shipment_custody_transfers.pickup_task_id` is unique and
+acts as the convergence key: a redelivered fact converges on the existing transfer, while
+a *different* transfer claiming the same pickup task is quarantined for Operations.
+
+One worker instance serves one durable consumer; `SHIPMENT_CONSUMER_NAME` selects which.
+JetStream topology provisioning for the handover durable remains gated (ADR-0010).

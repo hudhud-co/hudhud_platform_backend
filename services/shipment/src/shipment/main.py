@@ -7,7 +7,6 @@ from fastapi import FastAPI
 from shipment import __version__
 from shipment.api.acceptance import router as acceptance_router
 from shipment.api.health import router as health_router
-from shipment.application.acceptance_service import AcceptanceLifecycleService
 from shipment.application.readiness import evaluate_readiness
 from shipment.config import RuntimeEnvironment, ShipmentSettings, load_settings
 from shipment.infrastructure.authorizers.default_deny import DefaultDenyAcceptanceAuthorizer
@@ -34,20 +33,28 @@ def create_app(
 
     engine = None
     persistence_wired = False
-    uow = unit_of_work
+    unit_of_work_factory = None
 
-    if uow is None and resolved.database_url:
+    if unit_of_work is None and resolved.database_url:
         async_engine = build_async_engine(resolved.database_url)
-        uow = SqlAlchemyAcceptanceUnitOfWork(build_async_session_factory(async_engine))
+        _session_factory = build_async_session_factory(async_engine)
+
+        def unit_of_work_factory():
+            # One per request. This unit of work keeps `_session` and the optimistic
+            # version maps on itself, so a shared instance let concurrent requests read
+            # each other's pending versions and fight over one session.
+            return SqlAlchemyAcceptanceUnitOfWork(_session_factory)
+
         engine = build_engine(_sync_database_url(resolved.database_url))
         persistence_wired = True
-    elif uow is not None:
+    elif unit_of_work is not None:
+        make = getattr(unit_of_work, "new_unit_of_work", None)
+        unit_of_work_factory = make or (lambda: unit_of_work)
         persistence_wired = True
         if resolved.database_url:
             engine = build_engine(_sync_database_url(resolved.database_url))
 
     authorizer = acceptance_authorizer or DefaultDenyAcceptanceAuthorizer()
-    acceptance_service = AcceptanceLifecycleService(uow) if uow is not None else None
 
     app = FastAPI(
         title="HUDHUD Shipment",
@@ -55,13 +62,13 @@ def create_app(
         description="Canonical shipment lifecycle writer — acceptance command API (W16-A)",
     )
     app.include_router(health_router)
-    if acceptance_service is not None:
+    if unit_of_work_factory is not None:
         app.include_router(acceptance_router)
     app.state.settings = resolved
     app.state.engine = engine
-    app.state.acceptance_service = acceptance_service
     app.state.acceptance_authorizer = authorizer
-    app.state.unit_of_work = uow
+    # A factory, never a unit of work — see tests/architecture/test_request_scoped_state.py.
+    app.state.unit_of_work_factory = unit_of_work_factory
     app.state.readiness_report = evaluate_readiness(
         settings=resolved,
         engine=engine,

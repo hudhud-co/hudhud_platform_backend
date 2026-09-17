@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/hub.fact.drop_off_accepted/v1.payload.schema.json",
+  "title": "hub.fact.drop_off_accepted v1 payload",
+  "description": "ADR-0011 H1 — the second way custody can begin. v6.3 p.18: a regular customer's parcel gets no pickup; hub staff label and scan it, and 'from this point, the parcel is treated exactly as an accepted parcel would be — custody begins'. Shipment consumes this exactly as it consumes pickup.fact.accepted. The receiver's contact details are not published: Hub does not hold them and does not need to.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "drop_off_id",
+    "hub_id",
+    "tracking_code",
+    "label_code",
+    "weight_grams",
+    "accepted_at",
+    "accepting_actor_id"
+  ],
+  "properties": {
+    "drop_off_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "DropOff aggregate id; MUST equal envelope aggregate_id."
+    },
+    "hub_id": { "type": "string", "format": "uuid" },
+    "shipment_request_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Present when the customer entered details in the app beforehand; null when hub staff took them on the spot (v6.3 p.18)."
+    },
+    "tracking_code": { "type": "string", "pattern": "^SHP-\\d{8}-\\d{6}$" },
+    "label_code": {
+      "type": "string",
+      "minLength": 6,
+      "maxLength": 32,
+      "description": "Applied and scanned by hub staff, never by the customer (CUS-05)."
+    },
+    "weight_grams": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The hub weighs the parcel at drop-off (CUS-07)."
+    },
+    "destination_governorate": { "type": ["string", "null"], "maxLength": 32 },
+    "accepted_at": { "type": "string", "format": "date-time" },
+    "accepting_actor_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The hub operator who accepted custody. Every custody change is attributable (SEC-09)."
+    }
+  }
+}

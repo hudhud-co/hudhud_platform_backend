@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from shipment.domain.entities import (
     AcceptanceDecisionRecord,
     AuditLogEntry,
+    CustodyTransferRecord,
     Shipment,
     ShipmentEvent,
 )
@@ -23,6 +24,8 @@ from shipment.domain.types import InboxRow
 from shipment.infrastructure.persistence.mappers import (
     audit_log_from_row,
     audit_log_to_row,
+    custody_transfer_from_row,
+    custody_transfer_to_row,
     decision_from_row,
     decision_to_row,
     inbox_from_row,
@@ -34,6 +37,7 @@ from shipment.infrastructure.persistence.mappers import (
 from shipment.infrastructure.persistence.models import (
     AcceptanceAuditLogRow,
     AcceptanceDecisionRow,
+    CustodyTransferRow,
     IntegrationInboxRow,
     ShipmentEventRow,
     ShipmentRow,
@@ -59,6 +63,10 @@ class SqlAlchemyAcceptedFactStore:
     @property
     def audit_logs(self) -> _AuditLogRepo:
         return _AuditLogRepo(self)
+
+    @property
+    def custody_transfers(self) -> _CustodyTransferRepo:
+        return _CustodyTransferRepo(self)
 
     @property
     def acceptance_decisions(self) -> _DecisionRepo:
@@ -424,6 +432,42 @@ class _DecisionRepo:
                 )
             ).scalar_one_or_none()
             return decision_from_row(row) if row is not None else None
+        finally:
+            if owned:
+                session.close()
+
+
+class _CustodyTransferRepo:
+    def __init__(self, store: SqlAlchemyAcceptedFactStore) -> None:
+        self._store = store
+
+    def save(self, transfer: CustodyTransferRecord) -> None:
+        session = self._store._require_session()
+        session.add(custody_transfer_to_row(transfer))
+        session.flush()
+
+    def get_for_pickup_task(self, pickup_task_id: UUID) -> CustodyTransferRecord | None:
+        session, owned = self._store._session_or_factory()
+        try:
+            row = session.execute(
+                select(CustodyTransferRow).where(
+                    CustodyTransferRow.pickup_task_id == pickup_task_id
+                )
+            ).scalar_one_or_none()
+            return custody_transfer_from_row(row) if row is not None else None
+        finally:
+            if owned:
+                session.close()
+
+    def list_for_shipment(self, shipment_id: UUID) -> tuple[CustodyTransferRecord, ...]:
+        session, owned = self._store._session_or_factory()
+        try:
+            rows = session.execute(
+                select(CustodyTransferRow)
+                .where(CustodyTransferRow.shipment_id == shipment_id)
+                .order_by(CustodyTransferRow.released_at)
+            ).scalars()
+            return tuple(custody_transfer_from_row(row) for row in rows)
         finally:
             if owned:
                 session.close()

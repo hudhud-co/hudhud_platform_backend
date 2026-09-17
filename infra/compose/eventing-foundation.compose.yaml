@@ -52,6 +52,11 @@ services:
     environment:
       NATS_URL: nats://nats:4222
       UV_CACHE_DIR: /tmp/uv-cache
+      # The repository is bind-mounted read-write. Without this, a container `uv run`
+      # syncs into the host's ./.venv and replaces macOS wheels with Linux ones, which
+      # surfaces much later as `dlopen(...): slice is not valid mach-o file` in an
+      # unrelated suite. Keep the container's environment inside the container.
+      UV_PROJECT_ENVIRONMENT: /tmp/eventing-venv
     command:
       - /bin/sh
       - -c

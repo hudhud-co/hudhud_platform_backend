@@ -47,6 +47,7 @@ class ShipmentRow(Base):
     sla_started_at: Mapped[object | None] = mapped_column(DateTime(timezone=True))
     current_custody_type: Mapped[str | None] = mapped_column(String(32))
     current_custody_id: Mapped[str | None] = mapped_column(String(128))
+    custody_transferred_at: Mapped[object | None] = mapped_column(DateTime(timezone=True))
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
@@ -131,6 +132,38 @@ class AcceptanceIdempotencyRow(Base):
     shipment_id: Mapped[object] = mapped_column(Uuid(as_uuid=True), nullable=False)
     pickup_task_id: Mapped[object] = mapped_column(Uuid(as_uuid=True), nullable=False)
     recorded_at: Mapped[object] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CustodyTransferRow(Base):
+    """Canonical custody handover record — Shipment is the sole writer (ADR-0003)."""
+
+    __tablename__ = "shipment_custody_transfers"
+    __table_args__ = (
+        # One transfer per released pickup task: the at-least-once convergence key.
+        UniqueConstraint(
+            "pickup_task_id", name="uq_shipment_custody_transfers_pickup_task_id"
+        ),
+        Index("ix_shipment_custody_transfers_shipment_id", "shipment_id"),
+    )
+
+    transfer_id: Mapped[object] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    shipment_id: Mapped[object] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    pickup_task_id: Mapped[object] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    handover_manifest_id: Mapped[object] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    from_custody_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    from_custody_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    to_custody_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    to_custody_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(64), nullable=False)
+    discrepancy_reason: Mapped[str | None] = mapped_column(String(32))
+    released_at: Mapped[object] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[object] = mapped_column(DateTime(timezone=True), nullable=False)
+    receiving_actor_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    condition_evidence: Mapped[list[dict[str, str | bool | None]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+    )
 
 
 class IntegrationInboxRow(Base):

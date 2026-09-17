@@ -11,7 +11,8 @@ adr_references:
   eventing: ADR-0002
   data_cutover: ADR-0006
   identity_trust: ADR-0004
-  finance_settlement: ADR-0005
+  finance_settlement: ADR-0012
+  platform_topology: ADR-0011
   deployables: ADR-0001
   legacy_bridge: ADR-0007
   outbox_inbox: ADR-0008
@@ -58,64 +59,251 @@ legacy_event_bridge:
 
 ownership:
   auth_identity:
-    canonical_writer: auth_identity
+    canonical_writer: identity
     adr_reference: ADR-0004
-    adr_status: Proposed
-    readers: [customer, merchant_store, pickup, delivery, gateway]
-    api_owner: auth_identity
-    event_publisher: auth_identity
-    database_owner: auth_identity
+    adr_status: Accepted
+    service: identity
+    readers: [customer, merchant_store, pickup, delivery, hub, gateway]
+    api_owner: identity
+    event_publisher: identity
+    database_owner: identity
+    runtime_evidence:
+      implementation: otp_sign_in_sessions_role_grants
+      unit_fake_evidence: verified
+      fastapi_command_api: implemented
+      secret_storage: keyed_hash_only_never_recoverable
+      token_model: opaque_bearer_server_side_revocable
+      device_binding: implemented
+      rate_limiting: per_phone_window
+      service_to_service_introspection: implemented_credential_gated
+      bootstrap_operator: configuration_only
+      default_production_authorization: fail_closed
+      postgres_persistence: implemented_not_yet_lab_proven
+      production_ready: false
+    owns:
+      - principal_and_phone_credential
+      - otp_challenge_and_rate_limit
+      - session_and_access_token
+      - role_grant
+      - token_introspection
+    forbidden:
+      - domain_membership_storage
+      - business_lifecycle_ownership
 
   customer:
-    canonical_writer: undecided
-    adr_reference: ADR-0004
-    adr_status: Proposed
-    readers: [send_parcel, tracking, support_claims]
-    api_owner: undecided
-    event_publisher: undecided
-    database_owner: undecided
+    canonical_writer: customer
+    adr_reference: ADR-0011
+    adr_status: Accepted
+    service: customer
+    readers: [send_parcel, tracking, support_claims, order]
+    api_owner: customer
+    event_publisher: customer
+    database_owner: customer
+    runtime_evidence:
+      implementation: profile_legal_acceptance_address_book
+      unit_fake_evidence: verified
+      fastapi_command_api: implemented
+      legal_version_enforcement: implemented_version_scoped
+      ownership_isolation: implemented_actor_scoped
+      default_production_authorization: fail_closed
+      postgres_persistence: implemented_not_yet_lab_proven
+      production_ready: false
+    owns:
+      - customer_profile
+      - legal_document_acceptance
+      - notification_preference
+    forbidden:
+      - credential_storage
 
   address_book:
-    canonical_writer: address_book
-    readers: [order, send_parcel]
-    api_owner: address_book
-    event_publisher: address_book
-    database_owner: address_book
+    canonical_writer: customer
+    adr_reference: ADR-0011
+    adr_status: Accepted
+    service: customer
+    readers: [order, send_parcel, merchant_store]
+    api_owner: customer
+    event_publisher: customer
+    database_owner: customer
 
   merchant_store:
-    canonical_writer: merchant_store
-    readers: [order, shipment, wallet_cod, send_parcel]
-    api_owner: merchant_store
-    event_publisher: merchant_store
-    database_owner: merchant_store
+    canonical_writer: merchant
+    adr_reference: ADR-0011
+    adr_status: Accepted
+    service: merchant
+    readers: [order, shipment, wallet_cod, send_parcel, pickup]
+    api_owner: merchant
+    event_publisher: merchant
+    database_owner: merchant
+    owns:
+      - merchant_application_and_activation
+      - store_and_store_location
+      - store_team_membership
+      - label_stock_allocation
+      - packaging_seal_stock_allocation
+      - standing_shipment_policy
+    forbidden:
+      - shipment_or_parcel_lifecycle_ownership
+      - wallet_or_cod_visibility_for_team_members
+      - on_demand_per_parcel_label_minting
+    runtime_evidence:
+      implementation: application_stores_team_label_stock_catalogue
+      fastapi_command_api: implemented
+      authorization: identity_introspection_over_http
+      default_production_authorization: fail_closed
+      transactional_outbox: implemented_contract_validated
+      durable_inbox: implemented_state_aware_dedup
+      postgres_persistence: implemented_lab_proven
+      migration_proof: disposable_postgres_16_upgrade_and_downgrade
+      blocked_operation: merchant_application_submission_mer_02
+      production_ready: false
 
-  serviceability:
-    canonical_writer: serviceability
-    readers: [send_parcel, order]
-    api_owner: serviceability
-    event_publisher: serviceability
-    database_owner: undecided
+  hub:
+    canonical_writer: hub
+    adr_reference: ADR-0011
+    adr_status: Accepted
+    service: hub
+    readers: [shipment, delivery, tracking, notification, claims]
+    api_owner: hub
+    event_publisher: hub
+    database_owner: hub
+    owns:
+      - customer_drop_off_intake_and_acceptance
+      - hub_parcel_presence_and_sorting
+      - consignment_grouping_and_hub_security_seal
+      - per_hub_cut_off_time
+      - inter_city_linehaul_and_vehicle_position
+      - hub_activity_view
+    forbidden:
+      - shipment_custody_lifecycle_ownership
+      - merchant_per_parcel_packaging_seal_ownership
+      - cash_collection_or_finance_posting
+    runtime_evidence:
+      implementation: drop_off_processing_consignments_linehaul_seal_checks
+      fastapi_command_api: implemented
+      authorization: identity_introspection_with_hub_posting
+      default_production_authorization: fail_closed
+      custody_start_second_path: implemented_drop_off_accepted_fact
+      cut_off_policy: per_hub_column_not_company_wide
+      seal_mismatch_policy: opens_investigation_never_silent_pass_through
+      checkpoint_interception_policy: return_to_merchant_fixed_by_v63
+      transactional_outbox: implemented_contract_validated
+      durable_inbox: implemented_state_aware_dedup
+      postgres_persistence: implemented_lab_proven
+      migration_proof: disposable_postgres_16_upgrade_and_downgrade
+      production_ready: false
 
-  pricing_quote:
-    canonical_writer: pricing_quote
-    readers: [send_parcel, order]
-    api_owner: pricing_quote
-    event_publisher: pricing_quote
-    database_owner: undecided
+  driver_workforce:
+    canonical_writer: workforce
+    adr_reference: ADR-0013
+    adr_status: Accepted
+    service: workforce
+    readers: [pickup, delivery, hub]
+    api_owner: workforce
+    event_publisher: workforce
+    database_owner: workforce
+    owns:
+      - driver_onboarding_application_and_office_verification
+      - working_hours_pattern
+      - shift_attendance_and_lateness
+      - leave_request
+      - work_assignment_eligibility
+    forbidden:
+      - authentication_credential_storage
+      - custody_or_parcel_lifecycle_ownership
+      - driver_cash_custody_or_finance_posting
+      - publishing_integration_events
+    runtime_evidence:
+      implementation: onboarding_office_verification_shifts_attendance_blocks_leave
+      fastapi_command_api: implemented
+      authorization: identity_introspection_over_http
+      default_production_authorization: fail_closed
+      office_verification_gate: enforced_in_service_and_schema
+      lateness_policy: configuration_no_invented_threshold
+      shift_pattern_change: effective_tomorrow_outgoing_pattern_still_covers_today
+      leave_protection: pending_or_approved_waives_lateness_penalty
+      support_only_decisions: enforced_in_service_and_schema
+      assignment_eligibility_query: implemented_http_read_model
+      durable_inbox: implemented_state_aware_dedup
+      publishes_events: false
+      postgres_persistence: implemented_lab_proven
+      migration_proof: disposable_postgres_16_upgrade_and_downgrade
+      production_ready: false
 
   order:
-    canonical_writer: order
+    canonical_writer: ordering
+    adr_reference: ADR-0011
+    adr_status: Accepted
+    service: ordering
+    readers: [shipment, pickup, hub, delivery, finance, notification, tracking]
+    api_owner: ordering
+    event_publisher: ordering
+    database_owner: ordering
+    owns:
+      - order_and_shipment_request
+      - label_linkage
+      - pickup_booking_window
+      - shipment_edit_rules
+      - cancellation_before_custody
+      - goods_taxonomy
+      - delivery_tariff_and_serviceability
+      - public_tracking_code_lookup
+    forbidden:
+      - custody_or_checkpoint_lifecycle_ownership
+      - cash_collection_or_finance_posting
+      - receiver_pii_in_published_events
+    runtime_evidence:
+      implementation: orders_shipment_requests_labels_pickup_pricing_tracking
+      fastapi_command_api: implemented
+      authorization: identity_introspection_plus_merchant_store_access
+      default_production_authorization: fail_closed
+      money_representation: integer_minor_units_with_explicit_currency
+      tariff_policy: configuration_no_default_fails_closed
+      serviceability_policy: configuration_no_default_fails_closed
+      transactional_outbox: implemented_contract_validated
+      durable_inbox: implemented_state_aware_dedup
+      postgres_persistence: implemented_lab_proven
+      migration_proof: disposable_postgres_16_upgrade_and_downgrade
+      production_ready: false
+
+  serviceability:
+    adr_reference: ADR-0011
+    adr_status: Accepted
+    service: ordering
+    canonical_writer: ordering
+    readers: [send_parcel, order]
+    api_owner: ordering
+    event_publisher: ordering
+    database_owner: ordering
+
+  pricing_quote:
+    adr_reference: ADR-0011
+    adr_status: Accepted
+    service: ordering
+    canonical_writer: ordering
+    readers: [send_parcel, order]
+    api_owner: ordering
+    event_publisher: ordering
+    database_owner: ordering
+
+  order:
+    adr_reference: ADR-0011
+    adr_status: Accepted
+    service: ordering
+    canonical_writer: ordering
     readers: [send_parcel, shipment]
-    api_owner: order
-    event_publisher: order
-    database_owner: order
+    api_owner: ordering
+    event_publisher: ordering
+    database_owner: ordering
 
   send_parcel:
-    canonical_writer: send_parcel
+    adr_reference: ADR-0011
+    adr_status: Accepted
+    service: ordering
+    canonical_writer: ordering
     readers: []
-    api_owner: send_parcel
-    event_publisher: send_parcel
-    database_owner: undecided
+    api_owner: ordering
+    event_publisher: ordering
+    database_owner: ordering
 
   shipment:
     canonical_writer: shipment
@@ -148,6 +336,11 @@ ownership:
       accepted_fact_worker_composition: postgres_sqlalchemy_fail_closed
       nats_identity_acl_tls_local_proof: proven_local_disposable_lab
       acceptance_ingestion_mode_guards: implemented_fail_closed
+      pickup_fact_handover_completed_consumer: implemented_inbox_fail_closed
+      custody_transfer_origin_hub: implemented_single_writer
+      custody_types_canonical: [PICKUP_DRIVER, ORIGIN_HUB]
+      custody_transfer_migration_disposable_postgres_proof: proven_local_disposable_lab
+      custody_transfer_behaviour_postgres_probe: deferred
       production_ready: false
 
   pickup:
@@ -156,6 +349,20 @@ ownership:
     api_owner: pickup
     event_publisher: pickup
     database_owner: pickup
+    owns:
+      - pickup_task_recovery_and_attempt_history
+      - driver_pickup_capability_work_session
+      - sender_handover_ceremony_challenge_and_manifest
+      - driver_side_hub_handover_manifest
+      - offline_work_authorization_and_command_queue
+      - offline_reconciliation_cases
+      - merchant_stop_parcel_outcomes
+      - packaging_assessment_and_condition_decision
+    forbidden:
+      - driver_identity_role_or_permission_storage
+      - cross_capability_driver_attendance
+      - shipment_custody_mutation
+      - driver_cash_custody_or_finance_posting
     writes_to_other_contexts:
       legacy_violation: shipment.status
       platform_replacement: publish pickup.fact.* events
@@ -177,6 +384,24 @@ ownership:
       jetstream_runtime_proof: proven_local_disposable_lab
       nats_identity_acl_tls_local_proof: proven_local_disposable_lab
       relay_cutover_gates: implemented_fail_closed
+      driver_work_session_lifecycle: implemented_unit_and_http_proven
+      driver_task_lifecycle: implemented_forward_only_idempotent
+      sender_handover_ceremony: implemented_fail_closed
+      hub_handover_manifest: implemented_custody_release_via_outbox
+      offline_command_queue: implemented_signed_append_only_replay
+      offline_reconciliation_cases: implemented_operations_owned
+      pickup_fact_handover_completed_producer: proven_in_memory_and_sqlalchemy_outbox
+      driver_command_authorization_adapter: implemented_identity_introspection
+      driver_endpoints_proven_usable_with_real_authorization: proven_cross_service_http
+      driver_wave_migration_disposable_postgres_proof: proven_local_disposable_lab
+      driver_wave_behaviour_postgres_probe: deferred
+      packaging_decision_table: implemented_too_weak_refuse_only
+      merchant_stop_outcomes: implemented_non_custody_no_event
+      photo_documentation_acceptance_gate: implemented_fail_closed_opt_in
+      scan_resolution: implemented_read_only
+      stop_completion_gate: implemented_every_parcel_resolved
+      acceptance_status_query: implemented_read_only_idempotent_recovery
+      stop_outcome_migration_disposable_postgres_proof: proven_local_disposable_lab
       production_ready: false
     notes: >
       Owns PickupTask recovery and attempt history. Shipment eligibility consumed
@@ -187,6 +412,9 @@ ownership:
       and real cutover remain deferred.
 
   hub:
+    adr_reference: ADR-0011
+    adr_status: Accepted
+    service: hub
     canonical_writer: hub
     readers: [shipment, linehaul]
     api_owner: hub
@@ -197,11 +425,14 @@ ownership:
       platform_replacement: publish hub.fact.* events
 
   linehaul:
-    canonical_writer: linehaul
+    adr_reference: ADR-0011
+    adr_status: Accepted
+    service: hub
+    canonical_writer: hub
     readers: [shipment, hub]
-    api_owner: linehaul
-    event_publisher: linehaul
-    database_owner: linehaul
+    api_owner: hub
+    event_publisher: hub
+    database_owner: hub
     writes_to_other_contexts:
       legacy_violation: shipment.status
       platform_replacement: publish linehaul.fact.* events
@@ -210,19 +441,56 @@ ownership:
     canonical_writer: delivery
     adr_reference: ADR-0003
     adr_status: Accepted
-    readers: [shipment, finance_settlement]
+    service: delivery
+    readers: [shipment, finance_settlement, tracking, notification, claims]
     api_owner: delivery
     event_publisher: delivery
     database_owner: delivery
+    owns:
+      - last_mile_manifest_and_driver_custody
+      - doorstep_verification_delivery_code_and_named_receiver_id_fallback
+      - parcel_seal_check_and_open_box_inspection
+      - payment_at_the_door_prepaid_cash_and_pos_card
+      - delivery_refusal_and_failed_attempt
+      - next_attempt_disposition_and_three_day_hold
+      - receiver_handover_preference_and_issue_report
+      - private_courier_rating
+    forbidden:
+      - wallet_cod_direct_credit
+      - shipment_lifecycle_direct_mutation
+      - driver_shift_leave_or_lateness_ownership
+      - delivery_code_storage_in_the_clear
+      - identity_document_image_retention
     writes_to_other_contexts:
       legacy_violation: shipment.status
-      platform_replacement: publish delivery.fact.task_completed and delivery.fact.cod_collected
+      platform_replacement: publish delivery.fact.* events
     separate_facts:
       - cod_collection_record
       - physical_delivery_completion
     forbidden_writes:
       - wallet_cod.direct_credit
       - shipment.lifecycle_direct_mutation
+    runtime_evidence:
+      implementation: manifest_custody_doorstep_verification_payment_outcomes_ratings
+      fastapi_command_api: implemented
+      authorization: identity_introspection_over_http
+      default_production_authorization: fail_closed
+      driver_work_eligibility: workforce_http_read_ADR_0013_fail_closed
+      wait_at_the_door: ten_minutes_constant_both_sources_agree
+      delivery_code: keyed_hmac_digest_bound_to_the_stop_never_stored_in_the_clear
+      delivery_code_length: undecided_source_conflict_fails_closed_DRV_L05
+      id_photograph_retention: no_column_exists_source_conflict_DRV_L07
+      cod_not_delivered_unless_collected: enforced_in_service_and_schema
+      card_money_never_enters_driver_cash_custody: enforced_in_service_and_contract
+      next_attempt_decision: operations_only_enforced_in_service_and_schema
+      three_day_hold: implemented_attributed_return_sweep
+      courier_rating_privacy: aggregate_only_no_rater_no_note
+      transactional_outbox: implemented_four_facts
+      durable_inbox: implemented_state_aware_dedup
+      publishes_events: true
+      postgres_persistence: implemented_lab_proven
+      optimistic_concurrency: postgres_proven_version_conditional_update
+      migration_head: w26_delivery_core_001
 
   tracking:
     canonical_writer: none
@@ -251,52 +519,157 @@ ownership:
     notes: read aggregation only
 
   wallet_cod:
-    canonical_writer: wallet_cod
-    adr_reference: ADR-0005
-    adr_status: Proposed — Policy Blocked
+    canonical_writer: finance
+    adr_reference: ADR-0012
+    adr_status: Accepted
+    service: finance
     readers: [finance_settlement, merchant_store]
-    api_owner: wallet_cod
-    event_publisher: wallet_cod
-    database_owner: wallet_cod
+    api_owner: finance
+    event_publisher: finance
+    database_owner: finance
     notes: Projection of Finance-authorized merchant payable — not written by Delivery
     separate_facts:
       - finance_authorized_projection_only
 
   finance_settlement:
-    canonical_writer: finance_settlement
-    adr_reference: ADR-0005
-    adr_status: Proposed — Policy Blocked
+    canonical_writer: finance
+    adr_reference: ADR-0012
+    adr_status: Accepted
+    service: finance
     readers: [merchant_store, wallet_cod]
-    api_owner: finance_settlement
-    event_publisher: finance_settlement
-    database_owner: finance_settlement
-    status: policy_blocked
+    api_owner: finance
+    event_publisher: finance
+    database_owner: finance
+    status: implementable
+    owns:
+      - double_entry_ledger
+      - driver_cash_custody_and_limit
+      - cash_deposit_and_exchange_transfer
+      - merchant_payable_and_wallet_projection
+      - payout_request
+      - refund_authorization
+    forbidden:
+      - parcel_or_shipment_lifecycle_ownership
+      - driver_shift_leave_or_lateness_ownership
+      - mutating_or_deleting_a_posted_ledger_entry
+      - single_sided_or_unbalanced_posting
+      - float_or_decimal_money_representation
     consumed_events:
       - delivery.fact.cod_collected
-      - shipment.fact.delivered
+      - delivery.fact.attempt_failed
+    published_events:
+      - finance.fact.cod_settled
+      - finance.fact.payout_requested
+      - finance.fact.payout_decided
+      - finance.fact.cash_limit_breached
     publishes_to:
       - wallet_cod.projection
+    runtime_evidence:
+      implementation: double_entry_ledger_cod_cash_custody_deposits_payouts_refunds
+      fastapi_command_api: implemented
+      authorization: identity_introspection_over_http
+      default_production_authorization: fail_closed
+      separation_of_duties: driver_deposits_cashier_or_accountant_confirms_operations_approves
+      ledger_append_only: postgres_trigger_refuses_update_and_delete
+      ledger_balance: postgres_deferred_constraint_trigger_at_commit
+      money_representation: integer_minor_units_bigint_no_float_no_numeric
+      idempotency: unique_partial_index_on_entry_idempotency_key
+      cash_limit: configuration_no_invented_number_production_refuses_without_it
+      exchange_office_settlement: frees_limit_at_once_settles_no_parcel_PAY_04
+      cod_paid_definition: hub_cashier_confirmation_for_cash_immediate_for_card_and_online
+      payout_payment: blocked_PAY_07_fail_closed_posts_nothing_publishes_nothing
+      return_trip_charge: implemented_v63_p38_p39
+      return_fee_waiver: blocked_PAY_08_behind_configuration_flag_off_by_default
+      transactional_outbox: implemented_contract_validated
+      durable_inbox: implemented_state_aware_dedup
+      postgres_persistence: implemented_lab_proven
+      optimistic_concurrency: postgres_proven_version_conditional_update
+      migration_head: w27_finance_core_001
 
   notification:
     canonical_writer: notification
+    adr_reference: ADR-0011
+    adr_status: Accepted
+    service: notification
     readers: []
     api_owner: notification
-    event_publisher: notification
+    # Notification consumes journey facts and publishes none.
+    event_publisher: none
     database_owner: notification
+    owns:
+      - journey_notification_fan_out
+      - channel_reachability_profile
+      - per_category_channel_preference
+      - in_app_notification_centre
+      - notification_dispatch_record
+      - channel_delivery_attempt
+    forbidden:
+      - delivery_code_storage
+      - recipient_phone_number_storage
+      - rendered_message_body_storage
+      - publishing_integration_events
+    runtime_evidence:
+      implementation: acceptance_pre_delivery_seal_and_bulletin_fan_out
+      fastapi_command_api: implemented
+      authorization: identity_introspection_over_http
+      default_production_authorization: fail_closed
+      delivery_code_handling: delivered_never_stored_never_logged
+      recipient_storage: keyed_hmac_digest_plus_last4
+      mandatory_acceptance_sms: enforced_in_service_and_schema
+      default_transports: fail_closed_refuse_to_send
+      durable_inbox: implemented_state_aware_dedup
+      publishes_events: false
+      postgres_persistence: implemented_lab_proven
+      migration_proof: disposable_postgres_16_upgrade_and_downgrade
+      production_ready: false
 
   support_claims:
-    canonical_writer: support_claims
+    canonical_writer: claims
+    adr_reference: ADR-0011
+    adr_status: Accepted
+    service: claims
     readers: [customer]
-    api_owner: support_claims
-    event_publisher: support_claims
-    database_owner: support_claims
+    api_owner: claims
+    event_publisher: claims
+    database_owner: claims
+    owns:
+      - support_ticket_and_conversation
+      - compensation_claim_and_review
+      - claim_evidence_reference
+      - driver_incident_report
+      - returns_and_claims_operations_view
+    forbidden:
+      - parcel_or_shipment_lifecycle_ownership
+      - paying_a_compensation_directly
+      - showing_a_driver_a_compensation_or_claim_value
+      - compensating_anyone_but_the_sender
+    runtime_evidence:
+      implementation: compensation_claims_support_thread_driver_incidents
+      authorization: identity_introspection_over_http
+      default_production_authorization: fail_closed
+      who_may_open_a_claim: sender_receiver_or_driver_v63_p42
+      who_is_compensated: the_sender_always_v63_p40_CLM_01
+      review_before_deciding: enforced_in_the_state_machine_CLM_03
+      rejection_reason: closed_enum_plus_note_required_CLM_04
+      liability_boundary: ends_when_receiver_tests_it_inside_v63_p37
+      return_window_after_acceptance: none_refused_CLM_06
+      driver_visibility: no_compensation_field_exists_on_any_driver_read_model_SEC_07
+      decide_permission: operations_or_accountant_only_support_may_review_not_decide
+      incident_resolution: operations_only_OPS_07
+      high_value_threshold: blocked_CLM_08_no_default_fails_closed
+      request_scoped_unit_of_work: yes_built_this_way_from_the_start
 
   media_proof:
-    canonical_writer: undecided
+    canonical_writer: none
+    adr_reference: ADR-0011
+    adr_status: Accepted
     readers: [control_tower, pickup, delivery, support_claims]
-    api_owner: undecided
-    event_publisher: undecided
-    database_owner: undecided
+    api_owner: none
+    event_publisher: none
+    database_owner: none
+    notes: >
+      Not a service. Evidence is referenced by an opaque EvidenceMediaRef (bucket + key)
+      owned by whichever context records it. No context stores inline bytes.
 
   audit:
     canonical_writer: audit
@@ -338,6 +711,30 @@ cross_cutting_rules:
   - name: data_cutover
     rule: One-writer cutover; no bidirectional dual-write; credential revocation mandatory
     adr: ADR-0006
+  - name: custody_release
+    rule: >
+      A parcel leaves pickup-driver custody only when a hub-scoped actor records a
+      receipt; a listed-but-missing parcel stays with its driver and publishes nothing.
+      Shipment applies the canonical transfer from pickup.fact.handover_completed.
+    adr: ADR-0003
+  - name: merchant_stop_outcome
+    rule: >
+      A parcel refused at the door or never presented by the merchant stays with the
+      merchant. Neither outcome starts custody, so neither publishes a fact and neither
+      changes Shipment. Packaging judged too weak to survive transport can only be
+      refused — it can never be accepted with a warning or a note.
+
+  - name: sender_handover_ceremony
+    rule: >
+      Custody starts only after the sender verifies the assigned courier and confirms
+      the parcel manifest. The assigned courier can never satisfy the sender half, and
+      one ceremony authorizes exactly one acceptance.
+  - name: offline_work_authority
+    rule: >
+      A driver may only replay offline commands for work downloaded under a signed,
+      device-bound, time-boxed authorization. Every submission is preserved; nothing is
+      silently dropped; custody acceptance is never authorized offline.
+    adr: ADR-0008
   - name: cross_service_fk
     rule: Forbidden — use IDs and events instead
   - name: legacy_dependency

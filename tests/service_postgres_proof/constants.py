@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-COMPOSE_PROJECT = "hudhud-service-postgres-proof-lab"
+# Every name below is namespaced per process by `tests/lab_namespace.py`, so two of these
+# labs — or two pytest sessions — can run at once without tearing down each other's
+# containers. Pin `HUDHUD_LAB_SUFFIX` to share a lab on purpose; set it to "" to restore
+# the old fixed names.
+from lab_namespace import namespaced
+
+COMPOSE_PROJECT = namespaced("hudhud-service-postgres-proof-lab")
 COMPOSE_PROFILE = "service-postgres-proof"
-NETWORK_NAME = "hudhud_service_postgres_proof"
-VOLUME_NAME = "hudhud_service_postgres_proof_pgdata"
+NETWORK_NAME = namespaced("hudhud_service_postgres_proof")
+VOLUME_NAME = namespaced("hudhud_service_postgres_proof_pgdata")
 POSTGRES_SERVICE = "postgres"
 
 OWNER_USER = "svc_pg_lab_owner"
@@ -29,8 +35,8 @@ PICKUP_ROLE_PASSWORD = "pickup_svc_dev_only"
 
 BRIDGE_EXPECTED_HEAD = "w5a_bridge_pipeline_002"
 AUDIT_EXPECTED_HEAD = "w5b_audit_observation_001"
-SHIPMENT_EXPECTED_HEAD = "w17f_accepted_inbox_001"
-PICKUP_EXPECTED_HEAD = "w17e_pickup_accepted_outbox_001"
+SHIPMENT_EXPECTED_HEAD = "w19b_hub_custody_transfer_001"
+PICKUP_EXPECTED_HEAD = "w19c_pickup_stop_outcomes_001"
 
 SHIPMENT_PRE_CUSTODY_REVISION = "w16a_acceptance_idempotency_001"
 
@@ -79,6 +85,7 @@ SHIPMENT_TABLES = frozenset(
         "acceptance_decisions",
         "acceptance_idempotency",
         "shipment_integration_inbox",
+        "shipment_custody_transfers",
     }
 )
 
@@ -89,5 +96,15 @@ PICKUP_TABLES = frozenset(
         "pickup_recovery_idempotency",
         "pickup_acceptance_idempotency",
         "pickup_integration_outbox",
+        "pickup_task_history",
+        "pickup_driver_work_sessions",
+        "pickup_courier_challenges",
+        "pickup_courier_manifests",
+        "pickup_handover_manifests",
+        "pickup_handover_manifest_items",
+        "pickup_offline_authorizations",
+        "pickup_offline_streams",
+        "pickup_offline_events",
+        "pickup_offline_reconciliation_cases",
     }
 )

@@ -61,6 +61,12 @@ class InMemoryAcceptanceUnitOfWork:
         return _IdempotencyRepo(self)
 
     async def begin(self) -> None:
+        if self._tx_shipments is not None:
+            # The SQLAlchemy store raises here, so this double must too — one that
+            # quietly restarted the transaction would hide exactly the defect this
+            # guards: a unit of work shared between concurrent requests.
+            msg = "transaction already active"
+            raise RuntimeError(msg)
         self._tx_orders = copy.deepcopy(self._orders)
         self._tx_shipments = copy.deepcopy(self._shipments)
         self._tx_pickup_tasks = copy.deepcopy(self._pickup_tasks)

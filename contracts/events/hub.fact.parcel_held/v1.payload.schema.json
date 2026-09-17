@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hudhud.platform/contracts/events/hub.fact.parcel_held/v1.payload.schema.json",
+  "title": "hub.fact.parcel_held v1 payload",
+  "description": "ADR-0011 H2 — a parcel stopped inside the network. Carries the disposition the business has already decided, so downstream services do not each re-derive it: v6.3 p.24 Confirmed decision fixes RETURN_TO_MERCHANT for a checkpoint interception, and p.25 forbids a silent pass-through after a seal mismatch.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["hub_id", "tracking_code", "reason", "disposition", "held_at"],
+  "properties": {
+    "hub_id": { "type": "string", "format": "uuid" },
+    "tracking_code": { "type": "string", "pattern": "^SHP-\\d{8}-\\d{6}$" },
+    "consignment_id": { "type": ["string", "null"], "format": "uuid" },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "TAMPER_INVESTIGATION",
+        "CHECKPOINT_INTERCEPTION",
+        "DAMAGED_IN_HUB",
+        "MISSING_AT_RECONCILIATION",
+        "OPERATIONS_HOLD"
+      ]
+    },
+    "disposition": {
+      "type": "string",
+      "enum": ["CONTINUE", "RETURN_TO_MERCHANT", "AWAIT_OPERATIONS"]
+    },
+    "held_at": { "type": "string", "format": "date-time" },
+    "reported_by_actor_id": { "type": ["string", "null"], "format": "uuid" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "reason": { "const": "CHECKPOINT_INTERCEPTION" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "disposition": {
+            "const": "RETURN_TO_MERCHANT",
+            "description": "v6.3 p.24 Confirmed decision: if a checkpoint opens a parcel, Hudhud returns that parcel to the merchant. Not a judgement call."
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "reason": { "const": "TAMPER_INVESTIGATION" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "disposition": {
+            "not": { "const": "CONTINUE" },
+            "description": "v6.3 p.25: a seal mismatch opens an investigation, never a silent pass-through."
+          }
+        }
+      }
+    }
+  ]
+}

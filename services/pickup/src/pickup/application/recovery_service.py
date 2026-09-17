@@ -20,6 +20,7 @@ from pickup.domain.errors import (
     StalePickupTaskVersion,
 )
 from pickup.domain.value_objects import (
+    AssignmentState,
     CustodyType,
     PickupTaskStatus,
     RecoveryAction,
@@ -39,6 +40,10 @@ class RegisterPickupTaskCommand:
     status: PickupTaskStatus = PickupTaskStatus.PROOF_CAPTURED
     has_pickup_condition_proof: bool = False
     created_at: datetime | None = None
+    assignment_state: AssignmentState = AssignmentState.ACKNOWLEDGED
+    #: Set when the merchant bought the photo-documentation add-on for this shipment.
+    #: Defaults to off, matching "Without this add-on, no photo is taken at any stage".
+    photo_documentation_required: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +110,8 @@ class PickupRecoveryService:
             recovered_at=None,
             cancelled_at=None,
             version=1,
+            assignment_state=command.assignment_state,
+            photo_documentation_required=command.photo_documentation_required,
         )
         self._uow.pickup_tasks.save_pickup_task(task)
         return task
@@ -327,6 +334,9 @@ class PickupRecoveryService:
             recovered_at=None,
             cancelled_at=None,
             version=1,
+            # The photo add-on belongs to the shipment, not to one attempt, so it
+            # survives retry, reschedule and reassignment.
+            photo_documentation_required=original.photo_documentation_required,
         )
 
     def _reconstruct_cached_result(self, record: IdempotencyRecord) -> RecoveryResult:

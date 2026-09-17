@@ -11,7 +11,11 @@ import nats
 from sqlalchemy.engine import Engine
 
 from shipment.application.accepted_fact_apply import NativePickupAcceptedApplyService
-from shipment.application.accepted_fact_coordinator import PickupAcceptedFactCoordinator
+from shipment.application.accepted_fact_coordinator import (
+    PickupAcceptedFactCoordinator,
+    build_handover_fact_coordinator,
+)
+from shipment.application.handover_fact_apply import PickupHandoverCustodyApplyService
 from shipment.config import PersistenceBackend, RuntimeEnvironment, ShipmentSettings, load_settings
 from shipment.infrastructure.jetstream.broker import JetStreamBrokerAckClient
 from shipment.infrastructure.jetstream.connection import (
@@ -74,18 +78,27 @@ def build_coordinator(
 
     session_factory = build_session_factory(engine)
     store = SqlAlchemyAcceptedFactStore(session_factory=session_factory)
-    apply_service = NativePickupAcceptedApplyService(store)
-    coordinator = PickupAcceptedFactCoordinator(
-        unit_of_work=store,
-        inbox=store,
-        transport=transport,
-        apply_service=apply_service,
-        consumer_name=settings.consumer_name,
-        handler_version=settings.handler_version,
-        processing_owner=settings.processing_owner,
-        lease_duration=timedelta(seconds=settings.inbox_lease_seconds),
-        max_attempts=settings.inbox_max_attempts,
-    )
+    shared = {
+        "unit_of_work": store,
+        "inbox": store,
+        "transport": transport,
+        "consumer_name": settings.consumer_name,
+        "handler_version": settings.handler_version,
+        "processing_owner": settings.processing_owner,
+        "lease_duration": timedelta(seconds=settings.inbox_lease_seconds),
+        "max_attempts": settings.inbox_max_attempts,
+    }
+    # One worker instance serves one durable consumer (ADR-0008).
+    if settings.consumes_handover_facts():
+        coordinator = build_handover_fact_coordinator(
+            apply_service=PickupHandoverCustodyApplyService(store),
+            **shared,
+        )
+    else:
+        coordinator = PickupAcceptedFactCoordinator(
+            apply_service=NativePickupAcceptedApplyService(store),
+            **shared,
+        )
     return coordinator, engine
 
 

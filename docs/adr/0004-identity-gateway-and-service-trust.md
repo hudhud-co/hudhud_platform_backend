@@ -1,14 +1,22 @@
 # ADR-0004: Identity Ownership, Gateway Responsibilities, and Service-to-Service Trust
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-08-30
-- **Deciders:** (pending — platform architecture review)
+- **Deciders:** platform architecture review; product owner (v6.3 authorization, 2026-09-14)
 
 Statement classes used throughout: **evidence**, **proposal**, **decision**, **assumption**,
 **unresolved policy**. This ADR does not mark any ownership or trust mechanism as accepted.
 Implementation of Identity or Gateway services is explicitly out of scope.
 
 ---
+
+## Acceptance note (2026-09-14)
+
+Accepted under ADR-0011. The two questions this ADR left open are now decided:
+**customer identity boundary** — Identity owns principals, credentials and role grants; the
+`customer` service owns profile, legal acceptance and addresses; domain services own their own
+membership. **Organization model** — a merchant store is a `merchant`-owned aggregate that
+references principals by id; Identity stores no organization membership.
 
 ## Context
 

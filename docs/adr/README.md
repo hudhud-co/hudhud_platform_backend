@@ -27,13 +27,16 @@ This directory holds Architecture Decision Records (ADRs) for the HUDHUD platfor
 | [ADR-0001](0001-transitional-deployables-and-extraction-order.md) | Transitional deployables and extraction order | **Accepted** | Staged transitional deployables; low-risk consumer-first extraction; Hub ≠ Linehaul preserved | Capacity proof for exact runtime count (3–5 provisional); exit criteria per plateau | ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006 |
 | [ADR-0002](0002-event-envelope-outbox-inbox-and-jetstream.md) | Event envelope, outbox/inbox, and JetStream | **Accepted** | Versioned envelope; transactional outbox; durable inbox; JetStream; at-least-once delivery; per-service durables | Numeric retention/retry/size defaults; NATS HA; schema bootstrap | ADR-0001, ADR-0003, ADR-0004, ADR-0005, ADR-0006 |
 | [ADR-0003](0003-shipment-lifecycle-authority-and-delivery-facts.md) | Shipment lifecycle authority | **Accepted** | Shipment canonical single-writer; irreversible physical delivery facts; Finance-mediated COD flow | Unresolved operational policies (reattempt, return, lost parcel, etc.) | ADR-0002, ADR-0004, ADR-0005 |
-| [ADR-0004](0004-identity-gateway-and-service-trust.md) | Identity, Gateway, and service trust | **Proposed** | Identity owns auth identity; domain services own membership/policy; Gateway routes only | Customer/Organization ownership; hub/driver grant ownership finalization | ADR-0001, ADR-0002, ADR-0006 |
-| [ADR-0005](0005-cod-wallet-ledger-and-settlement.md) | COD, wallet, ledger, and settlement | **Proposed — Policy Blocked** | Double-entry finance authority recommended; Wallet as projection; Delivery→Finance not Delivery→Wallet | Policy register P-01–P-17; COA; commission/settlement rules | ADR-0002 (Accepted), ADR-0003 (Accepted), ADR-0004 (Proposed) |
+| [ADR-0004](0004-identity-gateway-and-service-trust.md) | Identity, Gateway, and service trust | **Accepted** | Identity owns auth identity; domain services own membership/policy; Gateway routes only | Customer/Organization ownership; hub/driver grant ownership finalization | ADR-0001, ADR-0002, ADR-0006 |
+| [ADR-0005](0005-cod-wallet-ledger-and-settlement.md) | COD, wallet, ledger, and settlement | **Superseded by ADR-0012** | Double-entry finance authority recommended; Wallet as projection; Delivery→Finance not Delivery→Wallet | Policy register P-01–P-17; COA; commission/settlement rules | ADR-0002 (Accepted), ADR-0003 (Accepted), ADR-0004 (Proposed) |
 | [ADR-0006](0006-one-writer-data-cutover-and-reconciliation.md) | One-writer data cutover | **Accepted** | One-writer cutover; semantic reconciliation; credential revocation; zero-gap HWM capture | CDC/replication tooling; per-context cutover execution | ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005 |
 | [ADR-0007](0007-legacy-event-bridge-strategy.md) | Legacy event bridge strategy | **Accepted** | CDC transitional transport; Legacy Event Bridge observations only; polling not authoritative | Production Bridge gates G1–G10; EXPORT_SNAPSHOT drill; durable landing | ADR-0001, ADR-0002, ADR-0003, ADR-0005, ADR-0006, ADR-0008, ADR-0009 |
 | [ADR-0008](0008-service-owned-outbox-inbox-processing.md) | Service-owned outbox/inbox | **Accepted** | Per-service outbox/inbox; no shared ORM; conformance kit; state-aware inbox duplicates | messaging_conformance allowlist; disposable DB proof; first service bootstrap | ADR-0002, ADR-0003, ADR-0006, ADR-0007 |
 | [ADR-0009](0009-initial-integration-event-contracts.md) | Initial integration event contracts | **Accepted — minimal observation set only** | Two Bridge observations: shipment timeline + audit entry | JSON Schemas; production publishers; consumer inbox | ADR-0002, ADR-0007, ADR-0003, ADR-0005 |
 | [ADR-0010](0010-nats-service-identities-subject-acls-and-rotation.md) | NATS service identities, subject ACLs, and rotation | **Proposed** | NATS transport auth; per-deployable JWT+TLS; JetStream API grants | ADR approval; ACL proof; rotation drills; Bridge/Audit live proof | ADR-0002, ADR-0004, ADR-0007, ADR-0008, ADR-0009 |
+| [ADR-0011](0011-v63-platform-bounded-context-and-service-topology.md) | v6.3 platform bounded-context and service topology | **Accepted** | Target 13-service map; every product context gets a named owner; missing service is a work item, not a blocker | Per-service build-out and cutover | ADR-0001, ADR-0003, ADR-0004, ADR-0008, ADR-0009 |
+| [ADR-0012](0012-cod-cash-custody-wallet-and-settlement-v63.md) | COD, cash custody, wallet and settlement (v6.3) | **Accepted** | Supersedes ADR-0005; double-entry ledger; driver cash custody and limits; exchange-office settlement; integer minor units | Payout procedure per method (PAY-07) stays an executive open item | ADR-0003, ADR-0011 |
+| [ADR-0013](0013-driver-workforce-bounded-context.md) | Driver workforce bounded context | **Accepted** | Adds the `workforce` service: onboarding, shift attendance, lateness, leave, assignment eligibility | Lateness threshold and block duration are configuration | ADR-0004, ADR-0011 |
 
 ## Wave 7 ADR Index (NATS transport security)
 
@@ -56,6 +59,9 @@ This directory holds Architecture Decision Records (ADRs) for the HUDHUD platfor
 | ADR-0008 | Service-owned outbox/inbox persistence |
 | ADR-0009 | Initial integration event contracts (minimal Bridge observations) |
 | ADR-0010 | NATS service identities, subject ACLs, and credential rotation |
+| ADR-0011 | v6.3 platform bounded-context and service topology |
+| ADR-0012 | COD, cash custody, wallet and settlement (v6.3) — supersedes ADR-0005 |
+| ADR-0013 | Driver workforce bounded context |
 
 ## Relationship to Legacy
 

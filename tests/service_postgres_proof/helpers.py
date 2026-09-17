@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
+from lab_ports import published_binding
+
 from .constants import (
     ALLOWED_DATABASES,
     ALLOWED_HOSTS,
@@ -123,16 +125,12 @@ def discover_host_port(*, force_refresh: bool = False) -> int:
         _wait_for_tcp_port("127.0.0.1", _host_port_cache.port)
         return _host_port_cache.port
 
-    result = compose("port", POSTGRES_SERVICE, "5432")
-    if result.returncode != 0:
-        msg = result.stderr.strip() or result.stdout.strip()
-        raise RuntimeError(f"failed to discover postgres port: {msg}")
-    binding = result.stdout.strip().splitlines()[-1].strip()
-    host, _, port_text = binding.rpartition(":")
-    if host not in ALLOWED_HOSTS:
-        msg = f"postgres published on unexpected host: {host!r}"
-        raise AssertionError(msg)
-    port = int(port_text)
+    # Polled rather than read once: `docker compose port` answers successfully while a
+    # container that has just been restarted still has no published port. See
+    # `tests/lab_ports.py` for the failure that came from reading it once.
+    host, port = published_binding(
+        compose, POSTGRES_SERVICE, 5432, allowed_hosts=ALLOWED_HOSTS
+    )
     _wait_for_tcp_port(host, port)
     _host_port_cache.port = port
     return port
@@ -572,6 +570,13 @@ def _service_subprocess_env(database_url: str | None = None) -> dict[str, str]:
     env.pop("VIRTUAL_ENV", None)
     if database_url is not None:
         env["DATABASE_URL"] = database_url
+    # Several labs run `uv run` from the repository root at once. Each such run syncs
+    # the shared root virtualenv, and two syncs racing can leave a half-written native
+    # library behind — which surfaces much later as
+    # `dlopen(... _sodium.abi3.so): slice is not valid mach-o file`, nowhere near the
+    # cause. The environment is already built by the time any test runs, so no test
+    # needs to sync it.
+    env["UV_NO_SYNC"] = "1"
     return env
 
 

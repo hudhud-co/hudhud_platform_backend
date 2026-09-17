@@ -6,7 +6,10 @@ import os
 from dataclasses import dataclass
 from enum import StrEnum
 
-from shipment.domain.contract import PICKUP_ACCEPTED_DURABLE_CONSUMER
+from shipment.domain.contract import (
+    PICKUP_ACCEPTED_DURABLE_CONSUMER,
+    PICKUP_HANDOVER_DURABLE_CONSUMER,
+)
 
 
 class RuntimeEnvironment(StrEnum):
@@ -123,7 +126,15 @@ class ShipmentSettings:
         return self.acceptance_ingestion_mode is AcceptanceIngestionMode.DISABLED
 
     def exact_durable_binding_configured(self) -> bool:
-        return self.consumer_name == PICKUP_ACCEPTED_DURABLE_CONSUMER
+        """True when the configured durable is one of the registered Pickup bindings."""
+        return self.consumer_name in {
+            PICKUP_ACCEPTED_DURABLE_CONSUMER,
+            PICKUP_HANDOVER_DURABLE_CONSUMER,
+        }
+
+    def consumes_handover_facts(self) -> bool:
+        """One worker instance serves one durable; this selects which."""
+        return self.consumer_name == PICKUP_HANDOVER_DURABLE_CONSUMER
 
     def native_worker_startup_blockers(self) -> tuple[str, ...]:
         """Secret-safe blockers preventing native pickup-fact worker start."""

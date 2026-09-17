@@ -239,12 +239,14 @@ def test_readiness_when_relay_enabled_and_nats_ok() -> None:
         relay_enabled=True,
         nats_url="nats://localhost:4222",
         nats_dev_no_auth=True,
+        signing_key="test-signing-key-value-32-chars-long",
     )
     report = evaluate_readiness(
         settings=settings,
         engine=None,
         persistence_wired=True,
         authorization_configured=True,
+        driver_command_authorization_configured=True,
         shipment_eligibility_configured=True,
         nats_reachable=True,
     )

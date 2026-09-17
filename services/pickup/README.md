@@ -146,3 +146,123 @@ disposable Pickup/Shipment JWT+TLS+ACL proof lives in
 remain fail-closed / deferred. Relay is disabled by default; ADR-0010 remains
 Proposed. Local disposable JWT/TLS/ACL evidence exists (W18); staging/production
 credential delivery, HA, and real cutover remain open.
+
+## W19-A: driver workforce, sender handover, hub handover, offline work
+
+Pickup now owns the driver-facing half of pickup operations. Driver identity, roles,
+and cross-capability attendance stay with `auth_identity` (ADR-0004) and reach this
+service only through `PickupAuthorizer` — nothing about identity is stored here.
+
+### Driver work session (pickup capability only)
+
+| Endpoint | Notes |
+|---|---|
+| `POST /pickup/work-sessions/start` | One open session per driver (partial unique index + `FOR UPDATE`). |
+| `POST /pickup/work-sessions/{id}/pause` | `OTHER` requires notes. |
+| `POST /pickup/work-sessions/{id}/resume` | |
+| `POST /pickup/work-sessions/{id}/end` | Blocked by open custody, an active hub manifest, an active assigned task, or unreconciled offline work. |
+| `GET /pickup/work-sessions/current` | Availability is derived from session state, never client-asserted. |
+
+### Driver task lifecycle
+
+`acknowledge` → `arrive` → `scan` → `condition-proof` → `accept`, plus `decline`,
+`exception`, and `fail`. Progress is forward-only; repeating a step the task already
+reached is an idempotent replay, which is what makes offline replay safe. Acceptance
+additionally requires a completed sender ceremony.
+
+`GET /pickup/tasks/{id}/history` returns the append-only audit trail with the actor
+identity taken from the authorization decision.
+
+## W19-C: packaging decision and merchant-stop outcomes
+
+Audit: `docs/audits/hudhud-app-redesign-v6.3/`. Product evidence: Driver App v8
+(`condition`, `refuse`, `notAccepted`, `progress`, `scanner`, `scanEx:*`, `connLost`) and
+*The Shipment Journey* v6.3 chapter 3.
+
+### Packaging decision
+
+`condition-proof` optionally carries a `packaging_assessment` (`GOOD`, `BORDERLINE`,
+`TOO_WEAK`, `PRE_EXISTING_DAMAGE`) and a `decision` (`ACCEPT`, `ACCEPT_WITH_WARNING`,
+`ACCEPT_WITH_NOTE`, `REFUSE`). The permitted-decision table is enforced in the domain, and
+its binding entry is that **`TOO_WEAK` can only be refused** — packaging that will not
+survive handling can never be accepted with a warning or a note. Both fields are optional:
+omitting them derives the assessment from `package_condition_status`, so clients and rows
+that predate this wave behave exactly as before.
+
+### Merchant-stop outcomes
+
+`POST /pickup/tasks/{id}/refuse` (`TOO_WEAK_PACKAGING`, `DAMAGED_BEFORE_PICKUP`,
+`DOES_NOT_MATCH_SHIPMENT`) and `POST /pickup/tasks/{id}/not-presented` record terminal
+outcomes for one expected parcel. Neither starts custody, so **neither publishes anything
+and neither changes Shipment** — the parcel stays with the merchant. A parcel already in
+custody can no longer receive either outcome.
+
+`GET /pickup/batches/{batch_id}/stop` reports the outcome counts for a merchant stop and
+whether it may be completed: a stop closes only when every expected parcel has an outcome.
+
+### Scan resolution and acceptance status
+
+`POST /pickup/batches/{batch_id}/scan-resolution` classifies a scanned label as `VALID`,
+`UNKNOWN_LABEL`, `NOT_IN_THIS_PICKUP`, `ALREADY_ACCEPTED`, `CANCELLED_SHIPMENT`,
+`DUPLICATE_SCAN` or `UNREADABLE`. It is strictly read-only: an unregistered label can
+never become a shipment in the field, and an unreadable label is never resolved to a task.
+`WRONG_MERCHANT` is deliberately not produced — separating it from `NOT_IN_THIS_PICKUP`
+needs merchant identity, which belongs to the `merchant_store` context.
+
+`GET /pickup/tasks/{id}/acceptance` answers "was my acceptance recorded?" after a
+connection drop, so a driver checks instead of accepting twice.
+
+### Photo documentation
+
+A task created with `photo_documentation_required` refuses acceptance until evidence media
+refs are supplied. The flag defaults to off, matching "Without this add-on, no photo is
+taken at any stage", and it survives retry, reschedule and reassignment because the add-on
+belongs to the shipment rather than to one attempt.
+
+### Sender handover ceremony
+
+A dynamic challenge proves the sender handed the parcel to the **assigned** courier; a
+parcel manifest proves **which** parcel. The assigned courier can never satisfy the
+sender half, only the keyed hash of the challenge secret is persisted, failed attempts
+lock the challenge out, reassignment invalidates both halves, and one ceremony
+authorises exactly one acceptance.
+
+Set `PICKUP_SIGNING_KEY` to enable the ceremony and offline work. Without it those
+routes are not served **and acceptance is not served either** — the service fails
+closed rather than degrading to a driver-unilateral custody start.
+
+### Hub handover
+
+`POST /pickup/handover-manifests` … `/arrive` … `/receipts` … `/close`. A received or
+disputed parcel releases custody and enqueues `pickup.fact.handover_completed` on the
+transactional outbox; a parcel listed but not produced at the hub stays in
+pickup-driver custody and publishes nothing. Shipment applies the canonical
+`PICKUP_DRIVER` → `ORIGIN_HUB` transfer (ADR-0003).
+
+### Offline work
+
+`POST /pickup/offline/authorizations` issues a signed, device-bound, time-boxed
+authorization (device id stored hashed, token stored hashed). `POST /pickup/offline/sync`
+replays captures through the same application services as online commands. Every
+submission is preserved: sequence gaps, fingerprint mismatches, stale assignment
+revisions, and domain rejections become Operations-owned reconciliation cases rather
+than silent drops. Custody acceptance can never be authorised offline.
+
+The assignment revision covers assignment identity only — driver, batch, attempt,
+assignment state, supersede — so an entire offline batch replays under the one revision
+the driver downloaded, while reassignment or decline invalidates it.
+
+### Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PICKUP_SIGNING_KEY` | unset | Challenge and offline-token HMAC key. Required in production. |
+| `PICKUP_REQUIRE_COURIER_VERIFICATION` | `true` | Must stay true in production. |
+| `PICKUP_COURIER_CHALLENGE_TTL_SECONDS` | `180` | |
+| `PICKUP_COURIER_VERIFICATION_VALID_SECONDS` | `900` | |
+| `PICKUP_COURIER_CONFIRMATION_VALID_SECONDS` | `900` | |
+| `PICKUP_COURIER_MAX_FAILED_ATTEMPTS` | `5` | |
+| `PICKUP_COURIER_LOCKOUT_SECONDS` | `300` | |
+| `PICKUP_OFFLINE_AUTHORIZATION_TTL_MINUTES` | `720` | |
+| `PICKUP_OFFLINE_SYNC_GRACE_DAYS` | `3` | |
+| `PICKUP_OFFLINE_SYNC_MAX_EVENTS` | `200` | |

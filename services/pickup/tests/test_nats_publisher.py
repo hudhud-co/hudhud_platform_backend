@@ -7,18 +7,27 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
+import yaml
 from fakes.nats_fake import FakeJetStreamClient
 
 from pickup.application.publisher import OutboxPublisher
 from pickup.config import RuntimeEnvironment, load_settings
 from pickup.domain.entities import OutboxRecord
 from pickup.domain.value_objects import OutboxStatus
+from pickup.infrastructure.contracts.registry import resolve_contracts_root
 from pickup.infrastructure.memory import InMemoryPickupUnitOfWork
 from pickup.infrastructure.nats.client import assert_nats_configuration
 from pickup.infrastructure.nats.errors import NatsNotConfiguredError
 from pickup.infrastructure.nats.publisher import JetStreamPublisherAdapter
 from pickup.infrastructure.nats.serialization import envelope_dict_to_wire_bytes
-from pickup.infrastructure.nats.subjects import ACCEPTED_SUBJECT, STREAM_PICKUP
+from pickup.infrastructure.nats.subjects import (
+    ACCEPTED_SUBJECT,
+    ALLOWED_SUBJECTS,
+    HANDOVER_COMPLETED_SUBJECT,
+    STREAM_PICKUP,
+    expected_stream_for_subject,
+    validate_subject_allowed,
+)
 
 
 def _sample_envelope_dict(*, event_id: UUID | None = None) -> dict:
@@ -381,3 +390,25 @@ def test_lost_ack_redelivery_same_msg_id() -> None:
     publisher.publish_pending()
     assert fake.publish_log[1][2] == first_msg_id
     assert fake.publish_log[1][2] == str(row.event_id)
+
+
+def test_the_handover_subject_is_publishable_and_bound_to_the_pickup_stream() -> None:
+    """A registered Pickup fact must not be quarantined by the publish allowlist."""
+    validate_subject_allowed(HANDOVER_COMPLETED_SUBJECT)
+    assert expected_stream_for_subject(HANDOVER_COMPLETED_SUBJECT) == STREAM_PICKUP
+
+
+def test_an_unregistered_subject_is_still_refused() -> None:
+    with pytest.raises(ValueError, match="not allowlisted"):
+        validate_subject_allowed("hudhud.pickup.pickup.fact.invented.v1")
+
+
+def test_every_registered_pickup_contract_subject_is_publishable() -> None:
+    """Registering a contract without allowlisting its subject would strand the outbox."""
+    registry = yaml.safe_load(
+        (resolve_contracts_root() / "events" / "registry.yaml").read_text(encoding="utf-8")
+    )
+    pickup_subjects = {
+        entry["subject"] for entry in registry["contracts"] if entry["producer"] == "pickup"
+    }
+    assert pickup_subjects <= ALLOWED_SUBJECTS
