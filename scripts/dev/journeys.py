@@ -170,16 +170,38 @@ def _short(body: Any, limit: int = 200) -> str:
 # ------------------------------------------------------------------ identity
 
 
+#: Identity prints the OTP rather than sending it, so signing in means reading its log.
+#: `make up` writes that log to .dev-stack/logs/; `make docker-up` keeps it inside the
+#: container. Reading both means these journeys are the same acceptance test whichever
+#: way the platform is running, which is the whole point of them.
+LOG_READERS: tuple[list[str], ...] = (
+    ["uv", "run", "python", str(REPO_ROOT / "scripts/dev/stack.py"),
+     "logs", "identity", "--tail-bytes", "40000"],
+    ["docker", "compose", "-f", str(REPO_ROOT / "infra/compose/platform.compose.yaml"),
+     "logs", "--tail", "400", "identity"],
+)
+
+
+def identity_log() -> str:
+    """Identity's recent output, from whichever stack is up. A reader that cannot run
+    contributes nothing rather than failing the read."""
+    chunks = []
+    for command in LOG_READERS:
+        try:
+            result = subprocess.run(
+                command, cwd=REPO_ROOT, capture_output=True, text=True, check=False
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        chunks.append(result.stdout)
+    return "\n".join(chunks)
+
+
 def read_otp(challenge_id: str) -> str | None:
     """Read the code Identity printed. Local only: `IDENTITY_OTP_DELIVERY_CHANNEL`
     refuses `console` outside local and test."""
     for _ in range(20):
-        result = subprocess.run(
-            ["uv", "run", "python", str(REPO_ROOT / "scripts/dev/stack.py"),
-             "logs", "identity", "--tail-bytes", "40000"],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=False,
-        )
-        for line in reversed(result.stdout.splitlines()):
+        for line in reversed(identity_log().splitlines()):
             if f"reference={challenge_id}" in line and "code=" in line:
                 return line.split("code=")[1].split()[0]
         time.sleep(0.3)

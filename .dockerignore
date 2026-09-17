@@ -1,0 +1,38 @@
+# Service images build from the repository root, because every service resolves
+# `packages/event_envelope` and `packages/messaging_conformance` through a relative
+# `[tool.uv.sources]` path. Without this file that context is ~1.5 GB of virtualenvs and
+# caches, none of which belongs in an image.
+
+# Virtualenvs — the image builds its own with `uv sync --frozen`.
+.venv/
+services/*/.venv/
+packages/*/.venv/
+
+# Caches and bookkeeping
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.uv/
+.make/
+.dev-stack/
+
+# Version control and editor state
+.git/
+.github/
+.cursor/
+.idea/
+.vscode/
+*.swp
+
+# Product sources and audits: ~9 MB of PDF and HTML that no service reads at runtime.
+docs/
+
+# Tests and labs are not part of a service image.
+tests/
+infra/labs/
+scripts/
+
+# OS noise
+.DS_Store

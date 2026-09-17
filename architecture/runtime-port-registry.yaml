@@ -515,6 +515,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev
@@ -545,6 +546,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev
@@ -575,6 +577,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev
@@ -605,6 +608,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev
@@ -635,6 +639,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev
@@ -665,6 +670,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev
@@ -695,6 +701,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev
@@ -725,6 +732,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev
@@ -755,6 +763,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev
@@ -785,6 +794,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev
@@ -815,6 +825,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev
@@ -845,6 +856,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev
@@ -875,6 +887,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev
@@ -946,6 +959,7 @@ allocations:
     statement: evidence
     evidence:
       - scripts/dev/stack.py
+      - infra/compose/platform.compose.yaml
       - docs/audits/hudhud-app-redesign-v6.3/12-RUNNING-THE-PLATFORM.md
     bindings:
       - environment: platform_local_dev

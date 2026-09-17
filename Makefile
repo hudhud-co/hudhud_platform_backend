@@ -29,6 +29,7 @@ SYNC_INPUTS := pyproject.toml uv.lock \
                $(wildcard services/*/pyproject.toml) $(wildcard services/*/uv.lock)
 
 .PHONY: help up down restart status logs journeys token \
+        docker-up docker-down docker-build docker-status docker-logs docker-restart \
         sync resync lint verify test test-services test-integration proofs \
         check check-all clean
 
@@ -60,6 +61,29 @@ logs: ## Tail one service's log: make logs s=finance
 
 journeys: ## Drive the real HTTP APIs: make journeys [only=finance]
 	$(UV) run python $(JOURNEYS) $(if $(only),--only $(only))
+
+# --------------------------------------------------------------- everything in docker
+
+COMPOSE := docker compose -f infra/compose/platform.compose.yaml
+
+docker-up: ## Start the whole platform in containers (builds images if needed)
+	$(COMPOSE) up -d --build
+	@echo
+	@$(MAKE) --no-print-directory docker-status
+
+docker-down: ## Stop the containerised platform and remove the data
+	$(COMPOSE) down --volumes --remove-orphans
+
+docker-build: ## Build all 14 service images without starting anything
+	$(COMPOSE) build
+
+docker-restart: docker-down docker-up ## Rebuild and restart the containerised platform
+
+docker-status: ## What is running in containers
+	@$(COMPOSE) ps --format 'table {{.Service}}\t{{.Status}}\t{{.Ports}}'
+
+docker-logs: ## Tail container logs: make docker-logs s=finance (omit s for all)
+	$(COMPOSE) logs -f --tail=100 $(s)
 
 # ------------------------------------------------------------------ environments
 

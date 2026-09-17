@@ -17,6 +17,25 @@ then hands over to `scripts/dev/stack.py`. The stack starts its services with
 `UV_NO_SYNC=1`, so a stale environment would otherwise surface as a dozen confusing
 service failures instead of one clear step.
 
+### Or entirely in containers
+
+```bash
+make docker-up      # build 14 images, then run the platform in containers
+make docker-status
+make docker-logs s=finance
+make docker-down
+```
+
+Same ports, same URLs, same journeys — the difference is that nothing runs on the host
+and no virtualenv is needed. Each service gets its own image built from its own
+`Dockerfile`, migrates its own database on start, and reaches the others by service name
+on a private bridge network. `infra/compose/platform.compose.yaml` explains the three
+decisions worth knowing about.
+
+Use `make up` while developing — it restarts a service in a second and reads source
+straight from the tree. Use `make docker-up` when you want the platform without a Python
+toolchain, or to check a service behaves the same when it is packaged.
+
 Services listen on `127.0.0.1:8101`–`8114`, each serving `/docs`, `/health` and `/ready`.
 `make status` prints the table. **`ready: no` is often correct** — it is a production
 readiness gate, and several services deliberately refuse to start serving a decision the

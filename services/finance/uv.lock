@@ -124,6 +124,7 @@ source = { editable = "." }
 dependencies = [
     { name = "event-envelope" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "jsonschema" },
     { name = "messaging-conformance" },
     { name = "nats-py" },
@@ -147,6 +148,7 @@ dev = [
 requires-dist = [
     { name = "event-envelope", editable = "../../packages/event_envelope" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "jsonschema", specifier = ">=4.23" },
     { name = "messaging-conformance", editable = "../../packages/messaging_conformance" },
     { name = "nats-py", specifier = ">=2.9" },

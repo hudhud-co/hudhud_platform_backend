@@ -81,6 +81,7 @@ source = { editable = "." }
 dependencies = [
     { name = "event-envelope" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "messaging-conformance" },
     { name = "nats-py" },
     { name = "psycopg", extra = ["binary"] },
@@ -102,6 +103,7 @@ dev = [
 requires-dist = [
     { name = "event-envelope", editable = "../../packages/event_envelope" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "messaging-conformance", editable = "../../packages/messaging_conformance" },
     { name = "nats-py", specifier = ">=2.9" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },

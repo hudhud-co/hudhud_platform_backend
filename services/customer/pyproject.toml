@@ -7,6 +7,8 @@ requires-python = ">=3.12"
 dependencies = [
     "event-envelope",
     "fastapi>=0.115",
+    # Production authorization calls the Identity introspection endpoint over HTTP.
+    "httpx>=0.28",
     "messaging-conformance",
     "nats-py>=2.9",
     "psycopg[binary]>=3.2",

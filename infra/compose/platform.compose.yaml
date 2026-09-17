@@ -1,0 +1,425 @@
+# The whole HUDHUD platform in containers: one PostgreSQL, one NATS, fourteen services.
+#
+#     docker compose -f infra/compose/platform.compose.yaml up -d --build
+#
+# or, from the repository root, `make docker-up`.
+#
+# Three things worth knowing:
+#
+# * **A database per service, not a schema per service** (ADR-0011). `postgres-init/`
+#   creates all fourteen on first boot, and each service is handed only its own URL.
+# * **Each service migrates its own schema** before it serves — it owns that schema, so
+#   nothing else is entitled to. See any service's `docker-entrypoint.sh`.
+# * **Every service is wired to Identity.** These services deny everything when Identity
+#   is unreachable, so a stack without it looks broken in a confusing way.
+#
+# Ports match `architecture/runtime-port-registry.yaml` for `platform_local_dev`: the
+# container port equals the host port, bound to 127.0.0.1 because the registry records
+# `public_exposure: false`. The same URLs work whether you ran `make up` or `make
+# docker-up`.
+#
+# The secrets here are development values, and are the same ones `scripts/dev/stack.py`
+# uses. Identity refuses `console` OTP delivery outside local and test, so this file
+# cannot be pointed at staging by accident.
+
+name: hudhud-platform
+
+x-service: &service
+  restart: unless-stopped
+  networks: [hudhud]
+  depends_on:
+    postgres: {condition: service_healthy}
+    nats: {condition: service_started}
+
+networks:
+  hudhud:
+    driver: bridge
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: hudhud_dev_only
+      POSTGRES_DB: postgres
+    ports: ["127.0.0.1:55432:5432"]
+    volumes:
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    # Disposable by design: `down` leaves nothing on disk and never touches a
+    # developer's own PostgreSQL.
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      # `pg_isready` answers yes to the temporary socket-only server the image runs while
+      # it initialises, so this asks for a real query over TCP instead.
+      test: ["CMD-SHELL", "PGPASSWORD=hudhud_dev_only psql -h 127.0.0.1 -U postgres -d claims_db -tAc 'SELECT 1' || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    networks: [hudhud]
+
+  nats:
+    image: nats:2.10.24-alpine
+    command: ["-js", "-m", "8222"]
+    ports: ["127.0.0.1:54222:4222"]
+    networks: [hudhud]
+
+
+  identity:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/identity/Dockerfile
+    image: hudhud/identity:dev
+    ports: ["127.0.0.1:8101:8101"]
+    environment:
+      IDENTITY_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/identity_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/identity_db"
+      IDENTITY_ENVIRONMENT: "local"
+      IDENTITY_NATS_URL: "nats://nats:4222"
+      IDENTITY_SIGNING_KEY: "hudhud-dev-identity-signing-key"
+      IDENTITY_SERVICE_CREDENTIALS: "customer:hudhud-dev-service-credential,merchant:hudhud-dev-service-credential,ordering:hudhud-dev-service-credential,hub:hudhud-dev-service-credential,notification:hudhud-dev-service-credential,workforce:hudhud-dev-service-credential,delivery:hudhud-dev-service-credential,finance:hudhud-dev-service-credential,pickup:hudhud-dev-service-credential,shipment:hudhud-dev-service-credential,tracking:hudhud-dev-service-credential,audit:hudhud-dev-service-credential,claims:hudhud-dev-service-credential"
+      IDENTITY_OTP_DELIVERY_CHANNEL: "console"
+      IDENTITY_BOOTSTRAP_OPERATIONS_PHONE: "+9647700000001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8101/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  customer:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/customer/Dockerfile
+    image: hudhud/customer:dev
+    ports: ["127.0.0.1:8102:8102"]
+    environment:
+      CUSTOMER_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/customer_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/customer_db"
+      CUSTOMER_ENVIRONMENT: "local"
+      CUSTOMER_NATS_URL: "nats://nats:4222"
+      CUSTOMER_IDENTITY_BASE_URL: "http://identity:8101"
+      CUSTOMER_IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8102/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_started}
+      identity: {condition: service_healthy}
+
+  merchant:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/merchant/Dockerfile
+    image: hudhud/merchant:dev
+    ports: ["127.0.0.1:8103:8103"]
+    environment:
+      MERCHANT_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/merchant_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/merchant_db"
+      MERCHANT_ENVIRONMENT: "local"
+      MERCHANT_NATS_URL: "nats://nats:4222"
+      MERCHANT_IDENTITY_BASE_URL: "http://identity:8101"
+      MERCHANT_IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8103/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_started}
+      identity: {condition: service_healthy}
+
+  ordering:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/ordering/Dockerfile
+    image: hudhud/ordering:dev
+    ports: ["127.0.0.1:8104:8104"]
+    environment:
+      ORDERING_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/ordering_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/ordering_db"
+      ORDERING_ENVIRONMENT: "local"
+      ORDERING_NATS_URL: "nats://nats:4222"
+      ORDERING_IDENTITY_BASE_URL: "http://identity:8101"
+      ORDERING_IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8104/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_started}
+      identity: {condition: service_healthy}
+      merchant: {condition: service_healthy}
+
+  hub:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/hub/Dockerfile
+    image: hudhud/hub:dev
+    ports: ["127.0.0.1:8105:8105"]
+    environment:
+      HUB_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/hub_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/hub_db"
+      HUB_ENVIRONMENT: "local"
+      HUB_NATS_URL: "nats://nats:4222"
+      HUB_IDENTITY_BASE_URL: "http://identity:8101"
+      HUB_IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8105/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_started}
+      identity: {condition: service_healthy}
+
+  notification:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/notification/Dockerfile
+    image: hudhud/notification:dev
+    ports: ["127.0.0.1:8106:8106"]
+    environment:
+      NOTIFICATION_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/notification_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/notification_db"
+      NOTIFICATION_ENVIRONMENT: "local"
+      NOTIFICATION_NATS_URL: "nats://nats:4222"
+      NOTIFICATION_IDENTITY_BASE_URL: "http://identity:8101"
+      NOTIFICATION_IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8106/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_started}
+      identity: {condition: service_healthy}
+
+  workforce:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/workforce/Dockerfile
+    image: hudhud/workforce:dev
+    ports: ["127.0.0.1:8107:8107"]
+    environment:
+      WORKFORCE_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/workforce_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/workforce_db"
+      WORKFORCE_ENVIRONMENT: "local"
+      WORKFORCE_NATS_URL: "nats://nats:4222"
+      WORKFORCE_IDENTITY_BASE_URL: "http://identity:8101"
+      WORKFORCE_IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8107/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_started}
+      identity: {condition: service_healthy}
+
+  delivery:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/delivery/Dockerfile
+    image: hudhud/delivery:dev
+    ports: ["127.0.0.1:8108:8108"]
+    environment:
+      DELIVERY_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/delivery_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/delivery_db"
+      DELIVERY_ENVIRONMENT: "local"
+      DELIVERY_NATS_URL: "nats://nats:4222"
+      DELIVERY_IDENTITY_BASE_URL: "http://identity:8101"
+      DELIVERY_IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      DELIVERY_WORKFORCE_BASE_URL: "http://workforce:8107"
+      DELIVERY_WORKFORCE_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      DELIVERY_CODE_HMAC_KEY: "hudhud-dev-delivery-code-key"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8108/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_started}
+      identity: {condition: service_healthy}
+      workforce: {condition: service_healthy}
+
+  finance:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/finance/Dockerfile
+    image: hudhud/finance:dev
+    ports: ["127.0.0.1:8109:8109"]
+    environment:
+      FINANCE_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/finance_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/finance_db"
+      FINANCE_ENVIRONMENT: "local"
+      FINANCE_NATS_URL: "nats://nats:4222"
+      FINANCE_IDENTITY_BASE_URL: "http://identity:8101"
+      FINANCE_IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      FINANCE_DEFAULT_CASH_LIMIT: "1000000"
+      FINANCE_RETURN_TRIP_FEE: "5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8109/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_started}
+      identity: {condition: service_healthy}
+
+  pickup:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/pickup/Dockerfile
+    image: hudhud/pickup:dev
+    ports: ["127.0.0.1:8110:8110"]
+    environment:
+      PICKUP_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/pickup_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/pickup_db"
+      PICKUP_ENVIRONMENT: "local"
+      PICKUP_NATS_URL: "nats://nats:4222"
+      PICKUP_IDENTITY_BASE_URL: "http://identity:8101"
+      PICKUP_IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8110/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_started}
+      identity: {condition: service_healthy}
+
+  shipment:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/shipment/Dockerfile
+    image: hudhud/shipment:dev
+    ports: ["127.0.0.1:8111:8111"]
+    environment:
+      SHIPMENT_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/shipment_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/shipment_db"
+      SHIPMENT_ENVIRONMENT: "local"
+      SHIPMENT_NATS_URL: "nats://nats:4222"
+      SHIPMENT_IDENTITY_BASE_URL: "http://identity:8101"
+      SHIPMENT_IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8111/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_started}
+      identity: {condition: service_healthy}
+
+  tracking:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/tracking/Dockerfile
+    image: hudhud/tracking:dev
+    ports: ["127.0.0.1:8112:8112"]
+    environment:
+      TRACKING_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/tracking_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/tracking_db"
+      TRACKING_ENVIRONMENT: "local"
+      TRACKING_NATS_URL: "nats://nats:4222"
+      TRACKING_IDENTITY_BASE_URL: "http://identity:8101"
+      TRACKING_IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8112/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  audit:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/audit/Dockerfile
+    image: hudhud/audit:dev
+    ports: ["127.0.0.1:8113:8113"]
+    environment:
+      AUDIT_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/audit_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/audit_db"
+      AUDIT_ENVIRONMENT: "local"
+      AUDIT_NATS_URL: "nats://nats:4222"
+      AUDIT_IDENTITY_BASE_URL: "http://identity:8101"
+      AUDIT_IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8113/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  claims:
+    <<: *service
+    build:
+      context: ../..
+      dockerfile: services/claims/Dockerfile
+    image: hudhud/claims:dev
+    ports: ["127.0.0.1:8114:8114"]
+    environment:
+      CLAIMS_DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/claims_db"
+      DATABASE_URL: "postgresql+psycopg://postgres:hudhud_dev_only@postgres:5432/claims_db"
+      CLAIMS_ENVIRONMENT: "local"
+      CLAIMS_NATS_URL: "nats://nats:4222"
+      CLAIMS_IDENTITY_BASE_URL: "http://identity:8101"
+      CLAIMS_IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+      IDENTITY_SERVICE_CREDENTIAL: "hudhud-dev-service-credential"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8114/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_started}
+      identity: {condition: service_healthy}
